@@ -25,7 +25,7 @@ async def db():
                 "default_connection": "knowledge_base",
             }
         },
-        "use_tz": True,
+        "use_tz": False,
         "timezone": "Asia/Shanghai",
     }
 

@@ -213,12 +213,16 @@ class AliyunOSSAdapter(FileSourceAdapter):
             else:
                 content_type = "application/octet-stream"
 
+            # 将时间戳转换为 datetime 对象
+            from datetime import datetime as dt
+            last_modified_dt = result.last_modified if isinstance(result.last_modified, dt) else dt.fromtimestamp(result.last_modified)
+
             return FileItem(
                 uri=uri,
                 name=name,
                 size=result.content_length,
                 content_type=content_type,
-                last_modified=result.last_modified,
+                last_modified=last_modified_dt,
                 metadata={
                     "etag": result.etag.strip('"') if result.etag else None,
                 }
@@ -257,12 +261,16 @@ class AliyunOSSAdapter(FileSourceAdapter):
                     if any(key.endswith(ext) for ext in filter.blocked_extensions):
                         continue
 
+                # 将时间戳转换为 datetime 对象
+                from datetime import datetime as dt
+                last_modified_dt = obj.last_modified if isinstance(obj.last_modified, dt) else dt.fromtimestamp(obj.last_modified)
+
                 yield FileItem(
                     uri=key,
                     name=key.split("/")[-1] if "/" in key else key,
                     size=obj.size,
                     content_type="application/octet-stream",
-                    last_modified=obj.last_modified,
+                    last_modified=last_modified_dt,
                     metadata={
                         "etag": obj.etag.strip('"') if obj.etag else None,
                     }

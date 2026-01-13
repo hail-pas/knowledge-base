@@ -60,9 +60,6 @@ class FileSourceAdapter(ABC):
         Returns:
             文件内容（字节数组）
 
-        Raises:
-            FileNotFoundError: 文件不存在
-            PermissionError: 无访问权限
         """
         pass
 
