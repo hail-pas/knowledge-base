@@ -1,0 +1,6 @@
+# 校验提示语, RequestValidationError.
+
+# 字段名
+msgid "username"
+msgstr "用户名"
+

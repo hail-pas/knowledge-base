@@ -1,0 +1,43 @@
+extensions:
+  rdb_user_center:
+    url: "mysql+aiomysql://username:pwd@host:port/user_center?charset=utf8mb4"
+  rdb_second:
+    url: "mysql+aiomysql://username:pwd@host:port/second?charset=utf8mb4"
+
+  redis:
+    url: "rediss://username:pwd@host:port/db?ssl_cert_reqs=required&ssl_ca_certs=path/to/file.pem"
+    max_connections: 5
+
+  oss:
+    provider: "aliyun"
+    access_key_id:
+    access_key_secret:
+    endpoint:
+    bucket_name: ossgaiappnpd
+
+# 服务相关
+server:
+  # 服务监听地址
+  address: "http://0.0.0.0:8000"
+  # 跨域配置
+  cors:
+    allow_origin: ["*"]
+    allow_credential: true
+    allow_methods: ["*"]
+    allow_headers: ["*"]
+    expose_headers: []
+  # 接口响应profile配置
+  profiling:
+    secret: ""
+
+  docs_uri: "/docs"
+  redoc_uri: "/redoc"
+  openapi_uri: "/openapi.json"
+
+# 项目相关
+project:
+  unique_code: parse
+  # debug开关
+  debug: True
+  # sentry
+  sentry_dsn: null

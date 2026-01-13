@@ -1,0 +1,231 @@
+[project]
+name = "fastapi-starter"
+description = "FastApi Start Kit"
+authors = [
+    { name = "phoenix", email = "hypofiasco@gmail.co" },
+]
+requires-python = ">=3.13.0"
+version = "0.1.0"
+dependencies = [
+    "fastapi==0.115.12",
+    "python-multipart==0.0.20",
+    "starlette-context==0.4.0",
+    "pydantic-settings==2.9.1",
+    "orjson==3.10.18",
+    "httpx==0.28.1",
+    "pycryptodomex==3.23.0",
+    "passlib==1.7.4",
+    "bcrypt==4.3.0",
+    "gunicorn==23.0.0",
+    "uvicorn[standard]==0.34.2",
+    "uvloop==0.21.0; sys_platform == 'linux'",  # uvicorn
+    "httptools>=0.6.4",    # uvicorn
+    # sqlmodel
+    # "sqlmodel==0.0.24",
+    # "alembic=1.15.2",
+    # tortoise
+    "tortoise-orm[aiomysql]==0.25.0",
+    "aerich[toml]==0.9.0",
+    # >>>>>>>
+    "python-jose[cryptography]==3.4.0",
+    "redis==6.1.0",
+    "cachetools==5.5.2",
+    "loguru==0.7.3",
+    "python-ulid==3.0.0",
+    "captcha==0.6.0",
+    "pyinstrument==5.0.0",
+    "boto3>=1.35.0",
+    "networkx>=3.0",
+    "numpy>=2.4.0",
+    "pyyaml>=6.0",
+    "temporalio>=1.21.1",
+    "pydantic-ai>=0.7.2",
+    "elasticsearch[async,orjson]>=8.0.0,<9.0.0",
+    "pymilvus>=2.6.6",
+]
+
+[project.optional-dependencies]
+ali-oss = [
+    "oss2==2.19.1",
+]
+ipython = [
+    "ipython==8.15.0",
+]
+sentry-sdk = [
+    "sentry-sdk[fastapi]==2.26.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "black",
+    "isort",
+    "ruff",
+    "freezegun",
+    "httpretty",
+    "factory-boy",
+    "hypothesis",
+    "mimesis",
+    "mypy",
+]
+
+[tool.isort]
+atomic = true
+profile = "black"
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.black]
+line-length = 118
+target-version = [
+    "py313",
+]
+
+[tool.ruff]
+select = [
+    "E",
+    "W",
+    "F",
+    "UP",
+    "B",
+    "ANN",
+    "ASYNC",
+    "COM",
+    "C4",
+    "DTZ",
+    "T10",
+    "EXE",
+    "ISC",
+    "ICN",
+    "G",
+    "PIE",
+    "Q",
+    "RSE",
+    "RET",
+    "SIM",
+    "TID",
+    "TD",
+    "PD",
+    "PLC",
+    "PLE",
+    "PLW",
+    "FLY",
+    "NPY",
+]
+ignore = [
+    "B008",
+    "ANN101",
+    "ANN102",
+    "ANN002",
+    "ANN003",
+    "F401",
+]
+fixable = [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "I",
+    "N",
+    "Q",
+    "S",
+    "T",
+    "W",
+    "ANN",
+    "ARG",
+    "BLE",
+    "COM",
+    "DJ",
+    "DTZ",
+    "EM",
+    "ERA",
+    "EXE",
+    "FBT",
+    "ICN",
+    "INP",
+    "ISC",
+    "NPY",
+    "PD",
+    "PGH",
+    "PIE",
+    "PL",
+    "PT",
+    "PTH",
+    "PYI",
+    "RET",
+    "RSE",
+    "RUF",
+    "SIM",
+    "SLF",
+    "TCH",
+    "TID",
+    "TRY",
+    "UP",
+    "YTT",
+]
+unfixable = []
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "tests",
+]
+line-length = 120
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+target-version = "py311"
+
+[tool.ruff.per-file-ignores]
+
+[tool.ruff.mccabe]
+max-complexity = 10
+
+[tool.mypy]
+python_version = "3.11"
+platform = "darwin"
+plugins = [
+    "pydantic.mypy",
+]
+warn_return_any = true
+warn_unused_configs = true
+exclude = [
+    "static",
+    "tests",
+]
+follow_imports = "silent"
+warn_redundant_casts = true
+check_untyped_defs = true
+no_implicit_reexport = true
+ignore_missing_imports = true
+show_absolute_path = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.aerich]
+tortoise_orm = "ext.ext_tortoise.migrate.env.TORTOISE_ORM_CONFIG"
+location = "ext/ext_tortoise/migrate"
+src_folder = "./."

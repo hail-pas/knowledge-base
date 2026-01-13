@@ -1,0 +1,22 @@
+{
+    "cSpell.words": [
+        "aerich",
+        "aiomysql",
+        "asgi",
+        "autoawait",
+        "epydantic",
+        "etype",
+        "fastaapi",
+        "fastapi",
+        "gaierror",
+        "glogging",
+        "huaweiyun",
+        "jsonable",
+        "levelname",
+        "levelno",
+        "ondelete",
+        "sessionmaker",
+        "sqlmodel",
+        "trustedhost"
+    ]
+}
