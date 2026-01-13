@@ -252,6 +252,7 @@ class MilvusProvider(BaseProvider):
             self._client.create_collection(
                 collection_name=collection_name,
                 schema=schema,
+                # properties={"partitionkey.isolation": True}
             )
 
             # 为向量字段创建索引
@@ -333,9 +334,6 @@ class MilvusProvider(BaseProvider):
             # 插入数据
             self._client.insert(collection_name=collection_name, data=[data])
 
-            # 刷新 collection
-            self._client.flush(collection_name=collection_name)
-
             return True
 
         except MilvusException as e:
@@ -364,9 +362,6 @@ class MilvusProvider(BaseProvider):
 
             # Upsert 数据
             self._client.upsert(collection_name=collection_name, data=[data])
-
-            # 刷新 collection
-            self._client.flush(collection_name=collection_name)
 
             return True
 
@@ -399,9 +394,6 @@ class MilvusProvider(BaseProvider):
 
                 self._client.insert(collection_name=collection_name, data=batch)
                 success_count += len(batch)
-
-            # 刷新 collection
-            self._client.flush(collection_name=collection_name)
 
             return success_count
 
@@ -446,9 +438,6 @@ class MilvusProvider(BaseProvider):
 
                 self._client.upsert(collection_name=collection_name, data=batch)
                 success_count += len(batch)
-
-            # 刷新 collection
-            self._client.flush(collection_name=collection_name)
 
             return success_count
 
@@ -502,9 +491,12 @@ class MilvusProvider(BaseProvider):
         collection_name = model_class.get_index_name()
 
         try:
+            # 获取字段定义
+            field_defs = model_class.get_field_definitions()
+
             results = self._client.get(
                 collection_name=collection_name,
-                ids=[doc_id]
+                ids=[doc_id],
             )
 
             if not results or len(results) == 0:
@@ -525,6 +517,28 @@ class MilvusProvider(BaseProvider):
         except Exception as e:
             raise IndexingQueryError(f"Failed to get document from '{collection_name}': {str(e)}") from e
 
+    async def flush(self, model_class: Type[BaseIndexModel]) -> bool:
+        """手动刷新数据到磁盘
+
+        Milvus 会自动持久化数据，通常不需要手动调用。
+        仅在测试或需要立即确保数据持久化时使用。
+
+        Args:
+            model_class: 索引模型类
+
+        Returns:
+            是否成功刷新
+        """
+        collection_name = model_class.get_index_name()
+
+        try:
+            self._client.flush(collection_name=collection_name)
+            return True
+        except MilvusException as e:
+            raise IndexingIndexError(f"Failed to flush collection '{collection_name}': {str(e)}") from e
+        except Exception as e:
+            raise IndexingIndexError(f"Failed to flush collection '{collection_name}': {str(e)}") from e
+
     # =========================================================================
     # 搜索操作
     # =========================================================================
@@ -544,15 +558,26 @@ class MilvusProvider(BaseProvider):
             vector_fields = self._get_vector_fields(model_class)
             vector_field = vector_fields[0] if vector_fields else "embedding"
 
+            # 获取 partition key 字段列表
+            field_defs = model_class.get_field_definitions()
+            partition_key_fields = [field.name for field in field_defs if field.is_partition_key]
+
             # 执行搜索
             search_params = {
                 "collection_name": collection_name,
                 "limit": query.limit,
+                "output_fields": [f.name for f in field_defs],  # 包含所有字段，包括 JSON 字段
             }
 
             # 支持分区检索
             if query.partition_name:
                 search_params["partition_names"] = [query.partition_name]
+                # 如果有 partition key，警告用户不应同时使用
+                if partition_key_fields:
+                    logger.warning(
+                        f"Searching in specific partition '{query.partition_name}' while collection has partition key(s): "
+                        f"{partition_key_fields}. Partition key filtering may be more efficient."
+                    )
 
             # 处理 offset
             if query.offset > 0:
@@ -712,7 +737,11 @@ class MilvusProvider(BaseProvider):
         # 主键配置
         if field_def.name == "id":
             field_params["is_primary"] = True
-            field_params["auto_id"] = False  # 默认不自增
+            field_params["auto_id"] = field_def.auto_id  # 使用字段定义中的 auto_id 设置
+
+        # Partition key 配置
+        if field_def.is_partition_key:
+            field_params["is_partition_key"] = True
 
         return FieldSchema(**field_params)
 
@@ -840,6 +869,16 @@ class MilvusProvider(BaseProvider):
         data = document.model_dump(exclude_none=True)
         # 移除内部字段
         data.pop("_provider", None)
+
+        # 转换 datetime 字段为 timestamp（Milvus 使用 int64 存储 datetime）
+        field_defs = document.get_field_definitions()
+        for field_def in field_defs:
+            if field_def.type in [FieldType.datetime, FieldType.date]:
+                field_name = field_def.name
+                if field_name in data and data[field_name] is not None:
+                    if isinstance(data[field_name], datetime):
+                        data[field_name] = int(data[field_name].timestamp())
+
         return data
 
     def _dict_to_model(

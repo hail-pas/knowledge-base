@@ -65,6 +65,7 @@ class ElasticsearchProvider(BaseProvider):
         FieldType.datetime: "date",
         FieldType.dense_vector: "dense_vector",
         FieldType.sparse_vector: "sparse_vector",
+        FieldType.json: "object",  # 用于识别，但不会在 mapping 中创建
     }
 
     # 默认配置
@@ -157,13 +158,19 @@ class ElasticsearchProvider(BaseProvider):
             self._client = AsyncElasticsearch(**client_params)
 
             # 测试连接
-            await self._client.ping()
+            ping_result = await self._client.ping()
+            if not ping_result:
+                # 如果 ping() 返回 False 而不是抛出异常，手动抛出连接错误
+                self._client = None
+                raise IndexingBackendError(f"Failed to connect to Elasticsearch: ping returned False for {self.url}")
 
             logger.info(f"Elasticsearch provider connected: {self.url}")
 
         except ESConnectionError as e:
+            self._client = None
             raise IndexingBackendError(f"Failed to connect to Elasticsearch: {str(e)}") from e
         except Exception as e:
+            self._client = None
             raise IndexingBackendError(f"Unexpected error connecting to Elasticsearch: {str(e)}") from e
 
     async def disconnect(self) -> None:
@@ -171,7 +178,30 @@ class ElasticsearchProvider(BaseProvider):
         if self._client is not None:
             await self._client.close()
             self._client = None
-            logger.info("Elasticsearch provider disconnected")
+        logger.info("Elasticsearch provider disconnected")
+
+    async def flush(self, model_class: Type[BaseIndexModel]) -> bool:
+        """
+        手动刷新索引以使文档立即可搜索
+
+        Elasticsearch 默认每秒刷新一次索引。
+        此方法可以立即触发索引刷新，使新插入/更新的文档立即可搜索。
+        仅在测试或需要立即搜索新数据时使用。
+
+        Args:
+            model_class: 索引模型类
+
+        Returns:
+            是否成功刷新
+        """
+        index_name = model_class.get_index_name()
+
+        try:
+            await self._client.indices.refresh(index=index_name)
+            logger.info(f"Refreshed index '{index_name}'")
+            return True
+        except Exception as e:
+            raise IndexingIndexError(f"Failed to refresh index '{index_name}': {str(e)}") from e
 
     async def ping(self) -> bool:
         """检查连接是否正常"""
@@ -266,7 +296,7 @@ class ElasticsearchProvider(BaseProvider):
             return True
 
         except Exception as e:
-            raise IndexingDocumentError(f"Failed to insert document into '{index_name}': {str(e)}") from e
+            raise IndexingDocumentError(f"Failed to insert document into '{index_name}': {repr(e)}") from e
 
     async def update(self, document: BaseIndexModel, doc_id: Optional[str] = None) -> bool:
         """更新文档"""
@@ -277,10 +307,39 @@ class ElasticsearchProvider(BaseProvider):
             raise IndexingDocumentError("Document ID is required for update operation")
 
         try:
+            # Get the old document to handle extras properly
+            old_doc = await self._client.get(
+                index=index_name,
+                id=doc_id,
+            )
+            old_data = old_doc['_source']
+
+            # Get field definitions to identify JSON/extras field
+            field_defs = document.get_field_definitions()
+            json_field_def = next((f for f in field_defs if f.type == FieldType.json), None)
+
+            # Prepare the update document
+            update_doc = self._model_to_dict(document)
+
+            # If there's a JSON/extras field, handle removal of old extras fields
+            if json_field_def is not None:
+                json_field_name = json_field_def.name
+                new_extras = getattr(document, json_field_name, {})
+
+                # Find all fields in old data that are not defined in field definitions
+                # These would be old extras fields that were expanded
+                defined_field_names = {f.name for f in field_defs}
+                old_extras_fields = set(old_data.keys()) - defined_field_names
+
+                # For old extras fields that are not in new extras, set them to null
+                for old_extra_field in old_extras_fields:
+                    if old_extra_field not in new_extras:
+                        update_doc[old_extra_field] = None
+
             await self._client.update(
                 index=index_name,
                 id=doc_id,
-                doc=self._model_to_dict(document),
+                doc=update_doc,
             )
             return True
 
@@ -375,11 +434,37 @@ class ElasticsearchProvider(BaseProvider):
         index_name = model_class.get_index_name()
         batch_size = batch_size or self.batch_size
 
+        # 获取字段定义以识别 JSON/extras 字段
+        field_defs = model_class.get_field_definitions()
+        json_field_def = next((f for f in field_defs if f.type == FieldType.json), None)
+        defined_field_names = {f.name for f in field_defs}
+
         success_count = 0
 
         # 分批处理
         for i in range(0, len(documents), batch_size):
             batch = documents[i:i + batch_size]
+
+            # 获取旧文档以正确处理 extras
+            doc_ids = [self._get_document_id(doc) for doc in batch]
+            doc_ids = [doc_id for doc_id in doc_ids if doc_id is not None]
+
+            if not doc_ids:
+                logger.warning("No valid document IDs in bulk update batch")
+                continue
+
+            # 批量获取旧文档
+            old_docs_map = {}
+            try:
+                old_docs_response = await self._client.mget(
+                    index=index_name,
+                    ids=doc_ids,
+                )
+                for doc in old_docs_response.get("docs", []):
+                    if doc.get("found"):
+                        old_docs_map[doc["_id"]] = doc["_source"]
+            except Exception as e:
+                logger.warning(f"Failed to fetch old documents for bulk update: {str(e)}")
 
             # 构建 bulk 操作
             operations = []
@@ -388,8 +473,27 @@ class ElasticsearchProvider(BaseProvider):
                 if doc_id is None:
                     logger.warning("Skipping document without ID in bulk update")
                     continue
+
+                # 准备更新文档
+                update_doc = self._model_to_dict(doc)
+
+                # 如果存在 JSON/extras 字段且能获取到旧文档，处理移除旧的 extras 字段
+                if json_field_def is not None and doc_id in old_docs_map:
+                    json_field_name = json_field_def.name
+                    new_extras = getattr(doc, json_field_name, {})
+                    old_data = old_docs_map[doc_id]
+
+                    # 查找旧数据中所有不在字段定义中的字段
+                    # 这些是被扩展的旧 extras 字段
+                    old_extras_fields = set(old_data.keys()) - defined_field_names
+
+                    # 对于不在新 extras 中的旧 extras 字段，将其设置为 null
+                    for old_extra_field in old_extras_fields:
+                        if old_extra_field not in new_extras:
+                            update_doc[old_extra_field] = None
+
                 operations.append({"update": {"_index": index_name, "_id": doc_id}})
-                operations.append({"doc": self._model_to_dict(doc)})
+                operations.append({"doc": update_doc})
 
             try:
                 # 添加 refresh 参数使文档立即可见
@@ -503,6 +607,11 @@ class ElasticsearchProvider(BaseProvider):
                 raise IndexingDocumentError(f"Failed to delete documents from '{index_name}': {str(e)}") from e
 
         raise IndexingDocumentError("Either doc_id or query must be provided for delete operation")
+
+
+    async def flush(self, model_class: Type[BaseIndexModel]) -> bool:
+        raise NotImplementedError("Elasticsearch does not support manual flushing")
+
 
     async def get_by_id(
         self,
@@ -686,11 +795,19 @@ class ElasticsearchProvider(BaseProvider):
         mapping = {"properties": {}}
 
         for field_def in field_defs:
+            # 跳过 JSON 类型字段，ES 不支持显式 JSON 类型
+            # JSON 字段的内容将作为动态字段存储
+            if field_def.type == FieldType.json:
+                continue
+
             field_mapping = self._field_to_mapping(field_def)
             mapping["properties"][field_def.name] = field_mapping
 
         # 添加动态映射配置
-        dynamic = index_config.get("dynamic", "strict")
+        if any([field_def.type == FieldType.json for field_def in field_defs]):
+            dynamic = index_config.get("dynamic", "true")
+        else:
+            dynamic = index_config.get("dynamic", "strict")
         mapping["dynamic"] = dynamic
 
         return mapping
@@ -721,7 +838,7 @@ class ElasticsearchProvider(BaseProvider):
             mapping["index"] = field_def.index
 
         # 通用字段配置
-        else:
+        elif field_def.type != FieldType.json:  # JSON 字段不添加 index/store 配置
             mapping["store"] = field_def.store
             mapping["index"] = field_def.index
 
@@ -886,10 +1003,29 @@ class ElasticsearchProvider(BaseProvider):
         return str(doc_id)
 
     def _model_to_dict(self, document: BaseIndexModel) -> Dict[str, Any]:
-        """将模型转换为字典"""
-        data = document.model_dump(exclude_none=True)
-        # 移除内部字段
-        data.pop("_provider", None)
+        """将模型转换为字典，处理 JSON 字段展开"""
+
+        # 获取字段定义
+        field_defs = document.get_field_definitions()
+
+        # 构建数据字典，从模型实例中获取字段值
+
+        data = document.model_dump(include=[i.name for i in field_defs])
+
+        logger.info(f"initial data: {data}")
+
+        json_field_def = next((f for f in field_defs if f.type == FieldType.json), None)
+
+        if json_field_def and json_field_def.name in data:
+            json_data = data.pop(json_field_def.name, None)
+            for field, value in json_data.items():
+                if field in data:
+                    # raise ValueError(f"Duplicate JSON field: {field}")
+                    continue
+                data[field] = value
+
+        logger.info(f"final data: {data}")
+
         return data
 
     def _dict_to_model(
@@ -906,17 +1042,22 @@ class ElasticsearchProvider(BaseProvider):
         # 创建字段名到定义的映射
         field_type_map = {f.name: f.type for f in field_defs}
 
+        # 查找 JSON 字段定义
+        json_field_def = next((f for f in field_defs if f.type == FieldType.json), None)
+
         # 检查是否为子模型（部分字段模型）
         # 通过比较 get_field_definitions 返回的字段数量和 model_fields 数量
 
         # 处理每个字段，根据其定义进行类型转换
         processed_data = {}
+        undefined_fields = {}  # 用于存储未定义的字段，后续放入 JSON 字段
+
         for key, value in data.items():
             field_type = field_type_map.get(key)
 
-            # 如果没有字段定义，直接使用原始值
+            # 如果没有字段定义，收集到 undefined_fields
             if field_type is None:
-                processed_data[key] = value
+                undefined_fields[key] = value
                 continue
 
             # 根据字段类型进行转换
@@ -976,4 +1117,8 @@ class ElasticsearchProvider(BaseProvider):
         if doc_id is not None:
             processed_data["id"] = doc_id
 
-        return model_class.model_validate(processed_data, strict=False)
+        # 将未定义的字段放入 JSON 字段
+        if json_field_def is not None and undefined_fields:
+            processed_data[json_field_def.name] = undefined_fields
+
+        return model_class.parse_obj(processed_data)

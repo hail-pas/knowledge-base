@@ -156,7 +156,7 @@ class VectorSearchParam(BaseModel):
     metric_type: str = "L2"
     """距离度量类型：L2, IP, COSINE"""
 
-    filter: Optional[Dict[str, Any]] = None
+    filter: Optional[Union[Dict[str, Any], BoolQuery]] = None
     """过滤条件（可选）"""
 
 
@@ -338,6 +338,29 @@ class FieldDefinition(BaseModel):
 
     description: Optional[str] = None
     """字段描述"""
+
+    is_partition_key: bool = False
+    """是否为分区键（仅 Milvus 支持，用于自动分区隔离）"""
+
+    auto_id: bool = True
+    """是否自动生成 ID（仅主键字段有效，默认为 True）"""
+
+    @model_validator(mode="after")
+    def validate_partition_key(self) -> Self:
+        """验证分区键字段"""
+        if self.is_partition_key:
+            # Partition key 字段类型限制
+            if self.type not in [FieldType.keyword, FieldType.text, FieldType.integer, FieldType.long]:
+                raise ValueError(
+                    f"Partition key field '{self.name}' must be of type keyword, text, integer, or long"
+                )
+            # Partition key 不能是主键
+            if self.name == "id":
+                raise ValueError(f"Partition key field '{self.name}' cannot be the primary key")
+            # Partition key 不能有索引
+            if self.index:
+                raise ValueError(f"Partition key field '{self.name}' cannot have an index")
+        return self
 
     @model_validator(mode="after")
     def validate_vector_field(self) -> Self:
@@ -626,6 +649,15 @@ class BaseIndexModel(BaseModel):
             文档数量
         """
         return await provider.count(cls, query=query)
+
+    @classmethod
+    async def flush(cls, provider: "BaseProvider"):
+        """显式 flush 确保数据持久化
+
+        Args:
+            provider: Provider 实例
+        """
+        await provider.flush(cls)
 
 
 class DenseIndexModel(BaseIndexModel):
@@ -940,6 +972,23 @@ class BaseProvider(ABC):
             文档数量
         """
         pass
+
+    async def flush(self, model_class: Type[BaseIndexModel]) -> bool:
+        """
+        手动刷新数据到磁盘（可选操作）
+
+        某些后端（如 Milvus）支持手动刷新数据以确保持久化。
+        大多数情况下，后端会自动持久化数据，不需要显式调用。
+        仅在测试或需要立即确保数据持久化时使用。
+
+        Args:
+            model_class: 索引模型类
+
+        Returns:
+            是否成功刷新（默认返回 True）
+        """
+        # 默认实现：不执行任何操作
+        return True
 
     async def __aenter__(self):
         """异步上下文管理器入口"""
