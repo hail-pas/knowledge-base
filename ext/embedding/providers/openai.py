@@ -9,7 +9,6 @@ from core.logger import logger
 from ext.embedding.base import EmbeddingModel
 from ext.embedding.exceptions import (
     EmbeddingAPIError,
-    EmbeddingConfigError,
     EmbeddingTimeoutError,
 )
 
