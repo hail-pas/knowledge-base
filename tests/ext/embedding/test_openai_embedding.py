@@ -8,6 +8,9 @@ import numpy as np
 from ext.embedding.providers.openai import OpenAIEmbedding
 from ext.embedding.base import EmbeddingResult
 from ext.embedding.exceptions import EmbeddingConfigError, EmbeddingAPIError
+from ext.embedding.factory import EmbeddingModelFactory
+from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
+from ext.ext_tortoise.enums import EmbeddingModelTypeEnum
 
 
 @pytest.fixture
@@ -280,4 +283,53 @@ class TestOpenAIEmbedding:
         # 相似文本的相似度应该高于不相似的文本
         assert sim_similar > sim_dissimilar
 
+        await model.close()
+
+    async def test_factory_create_from_config_and_embed(self, embedding_config, model_params):
+        """测试使用工厂方法从 EmbeddingModelConfig 创建实例并嵌入文本"""
+        config_data = embedding_config.copy()
+        if not config_data["api_key"]:
+            pytest.skip("OPENAI_EMBEDDING_API_KEY not set")
+        config_data = {k: v for k, v in config_data.items() if v is not None}
+
+        # 创建一个 EmbeddingModelConfig 对象（临时对象，未保存到数据库）
+        embedding_model_config = EmbeddingModelConfig(
+            name="test_openai_config",
+            type=EmbeddingModelTypeEnum.openai,
+            model_name_or_path=model_params["model_name_or_path"],
+            dimension=model_params["dimension"],
+            max_batch_size=model_params["max_batch_size"],
+            max_token_per_request=model_params["max_batch_size"] * model_params["max_token_per_text"],
+            max_token_per_text=model_params["max_token_per_text"],
+            config=config_data,
+            is_enabled=True,
+            is_default=False,
+            description="Test config for OpenAI embedding"
+        )
+
+        # 使用工厂创建 OpenAIEmbedding 实例
+        model = await EmbeddingModelFactory.create(embedding_model_config, use_cache=False)
+
+        # 验证模型类型
+        assert isinstance(model, OpenAIEmbedding)
+        assert model.model_name_or_path == model_params["model_name_or_path"]
+        assert model.dimension == model_params["dimension"]
+
+        # 测试嵌入一条文本
+        text = "Testing factory method with EmbeddingModelConfig."
+        result = await model.embed(text)
+
+        # 验证返回结果类型
+        assert isinstance(result, EmbeddingResult)
+        assert result.text == text
+        assert result.index == 0
+        assert len(result.embedding) == model_params["dimension"]
+
+        # 验证向量归一化
+        import numpy as np
+        embedding_array = np.array(result.embedding)
+        norm = np.linalg.norm(embedding_array)
+        assert 0.9 < norm < 1.1, f"Embedding norm {norm} is not close to 1"
+
+        # 关闭客户端连接
         await model.close()
