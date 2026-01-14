@@ -6,7 +6,7 @@ DeepSeek 使用 OpenAI 兼容的 API 接口。
 """
 
 from typing import Any, Dict
-import logging
+from loguru import logger
 
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.deepseek import DeepSeekProvider
@@ -14,8 +14,6 @@ from pydantic_ai.models.openai import OpenAIModel
 
 from ext.llm.base import LLMModel, ModelCapabilities
 from ext.llm.exceptions import LLMConfigError
-
-logger = logging.getLogger(__name__)
 
 
 class DeepSeekModelWrapper(LLMModel):

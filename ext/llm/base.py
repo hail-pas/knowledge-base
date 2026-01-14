@@ -6,13 +6,7 @@ LLM 模型抽象基类
 
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict, List, Union, TYPE_CHECKING
-import logging
-
-logger = logging.getLogger(__name__)
-
-# TYPE_CHECKING 用于类型提示时导入，避免运行时导入问题
-if TYPE_CHECKING:
-    from pydantic_ai.models import KnownModel
+from loguru import logger
 
 
 class ModelCapabilities:

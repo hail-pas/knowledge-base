@@ -7,14 +7,12 @@ from typing import Any, Dict, List, Optional, Type, TypeVar, Union, Generic
 from typing_extensions import Self
 from pydantic import BaseModel, Field, model_validator
 from enum import Enum
-import logging
+from loguru import logger
 
 from ext.ext_tortoise.enums import IndexingBackendTypeEnum, IndexingTypeEnum
 
 # 定义类型变量
 T = TypeVar('T')
-
-logger = logging.getLogger(__name__)
 
 
 # =============================================================================

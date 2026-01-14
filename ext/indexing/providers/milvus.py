@@ -7,7 +7,7 @@ Milvus Provider 实现
 
 from typing import Any, Dict, List, Optional, Type, Union
 from datetime import datetime
-import logging
+from loguru import logger
 
 from pymilvus import (
     MilvusClient,
@@ -40,8 +40,6 @@ from ext.indexing.exceptions import (
     IndexingConfigError,
 )
 from ext.ext_tortoise.enums import IndexingTypeEnum
-
-logger = logging.getLogger(__name__)
 
 
 class MilvusProvider(BaseProvider):

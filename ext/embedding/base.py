@@ -2,9 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 from pydantic import BaseModel
 import numpy as np
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class EmbeddingResult(BaseModel):

@@ -7,7 +7,7 @@ Elasticsearch Provider 实现
 
 from typing import Any, Dict, List, Optional, Type, Union
 from datetime import datetime
-import logging
+from loguru import logger
 
 from enhance.epydantic import create_sub_fields_model
 
@@ -40,7 +40,6 @@ from ext.indexing.exceptions import (
 )
 from ext.ext_tortoise.enums import IndexingTypeEnum
 
-logger = logging.getLogger(__name__)
 
 
 class ElasticsearchProvider(BaseProvider):

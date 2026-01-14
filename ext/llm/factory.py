@@ -7,6 +7,7 @@ LLM 模型工厂类
 
 import asyncio
 from typing import Dict, Type, Optional, Any
+from loguru import logger
 
 from ext.llm.base import LLMModel, ModelCapabilities
 from ext.llm.exceptions import (
@@ -398,8 +399,6 @@ class LLMModelFactory:
                 await model.close()
             except Exception as e:
                 # 记录错误但继续清理其他模型
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"关闭模型实例时出错: {e}", exc_info=True)
 
         cls.clear_cache()
