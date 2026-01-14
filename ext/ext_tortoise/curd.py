@@ -116,7 +116,7 @@ async def kwargs_clean(
             model = field.related_model  # type: ignore
             for related_id in data[key]:
                 if isinstance(related_id, Model):
-                    m2m_fields_data[key].append(obj)
+                    m2m_fields_data[key].append(obj) # type: ignore
                     continue
                 obj = await model.get_or_none(
                     **{model._meta.pk_attr: related_id},
@@ -145,7 +145,11 @@ async def create_obj(
     try:
         obj = await db_model.create(**data)
     except IntegrityError as e:
-        msg = e.args[0].args[1]
+        # 安全地提取错误消息
+        msg = str(e)
+        if len(e.args) > 0 and hasattr(e.args[0], 'args') and len(e.args[0].args) > 1:
+            msg = e.args[0].args[1]
+
         if "Duplicate" in msg:
             msg_keys = unique_error_msg_key_regex.findall(msg)
             if (
