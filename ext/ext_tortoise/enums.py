@@ -134,18 +134,7 @@ class LLMModelTypeEnum(StrEnum):
 
     openai = ("openai", "OpenAI")
     azure_openai = ("azure_openai", "Azure OpenAI")
-    anthropic = ("anthropic", "Anthropic")
-    gemini = ("gemini", "Google Gemini")
-    ollama = ("ollama", "Ollama")
-    huggingface = ("huggingface", "HuggingFace")
-    cohere = ("cohere", "Cohere")
-    mistral = ("mistral", "Mistral AI")
     deepseek = ("deepseek", "DeepSeek")
-    zhipu = ("zhipu", "智谱 AI")
-    qwen = ("qwen", "通义千问")
-    baichuan = ("baichuan", "百川")
-    moonshot = ("moonshot", "月之暗面 Kimi")
-    custom = ("custom", "自定义接口")
 
 
 class IndexingBackendTypeEnum(StrEnum):

@@ -273,10 +273,10 @@ class LLMModelConfig(BaseModel):
 
     存储各类大语言模型的配置信息，支持动态切换不同的 LLM 服务和模型能力
     """
-    name = fields.CharField(max_length=100, description="模型配置名称")
+    name = fields.CharField(max_length=100, description="模型配置名称，不唯一")
     type = fields.CharEnumField(
         LLMModelTypeEnum,
-        description="模型类型（openai/azure_openai/anthropic/gemini/ollama/custom等）"
+        description="模型类型（openai/azure_openai/deepseek等）"
     )
     model_name = fields.CharField(
         max_length=255,
@@ -314,7 +314,7 @@ class LLMModelConfig(BaseModel):
         table = "llm_model_config"
         table_description = "LLM 模型配置表"
         app = _KBConnectionName
-        unique_together = [("name", "deleted_at")]
+        unique_together = [("model_name", "deleted_at")]
         indexes = [
             ("type",),
             ("is_enabled",),
