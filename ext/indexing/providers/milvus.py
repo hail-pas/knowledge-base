@@ -148,7 +148,7 @@ class MilvusProvider(BaseProvider):
                 # 使用 alias 参数而不是 uri，以使用已建立的连接
                 self._client = MilvusClient(
                     self.alias,
-                    token=None,
+                    token="",
                     timeout=self.timeout,
                 )
 
@@ -186,7 +186,7 @@ class MilvusProvider(BaseProvider):
 
         try:
             # 尝试列出 collection
-            self._client.list_collections()
+            self._client.list_collections() # type: ignore
             return True
         except Exception as e:
             logger.warning(f"Milvus ping failed: {str(e)}")
@@ -247,7 +247,7 @@ class MilvusProvider(BaseProvider):
 
         try:
             # 创建 collection
-            self._client.create_collection(
+            self._client.create_collection( # type: ignore
                 collection_name=collection_name,
                 schema=schema,
                 # properties={"partitionkey.isolation": True}
@@ -270,7 +270,7 @@ class MilvusProvider(BaseProvider):
                     index_name=index_name,
                 )
 
-                self._client.create_index(
+                self._client.create_index( # type: ignore
                     collection_name=collection_name,
                     index_params=index_params_obj,
                 )
@@ -278,7 +278,7 @@ class MilvusProvider(BaseProvider):
                 logger.info(f"Created index '{index_name}' on field '{field_def.name}'")
 
             # 加载 collection 到内存
-            self._client.load_collection(collection_name=collection_name)
+            self._client.load_collection(collection_name=collection_name) # type: ignore
 
             logger.info(f"Created collection '{collection_name}'")
             return True
@@ -294,7 +294,7 @@ class MilvusProvider(BaseProvider):
 
         try:
             # 使用 drop_collection 而不是 delete，这样更彻底
-            self._client.drop_collection(collection_name=collection_name)
+            self._client.drop_collection(collection_name=collection_name) # type: ignore
             logger.info(f"Dropped collection '{collection_name}'")
             return True
 
@@ -312,7 +312,7 @@ class MilvusProvider(BaseProvider):
         collection_name = model_class.get_index_name()
 
         try:
-            return self._client.has_collection(collection_name=collection_name)
+            return self._client.has_collection(collection_name=collection_name) # type: ignore
         except Exception as e:
             logger.warning(f"Failed to check collection existence for '{collection_name}': {str(e)}")
             return False
@@ -330,7 +330,7 @@ class MilvusProvider(BaseProvider):
             data = self._model_to_dict(document)
 
             # 插入数据
-            self._client.insert(collection_name=collection_name, data=[data])
+            self._client.insert(collection_name=collection_name, data=[data]) # type: ignore
 
             return True
 
@@ -359,7 +359,7 @@ class MilvusProvider(BaseProvider):
                 data["id"] = doc_id
 
             # Upsert 数据
-            self._client.upsert(collection_name=collection_name, data=[data])
+            self._client.upsert(collection_name=collection_name, data=[data]) # type: ignore
 
             return True
 
@@ -387,10 +387,10 @@ class MilvusProvider(BaseProvider):
         try:
             # 分批插入
             success_count = 0
-            for i in range(0, len(data_list), batch_size):
-                batch = data_list[i:i + batch_size]
+            for i in range(0, len(data_list), batch_size): # type: ignore
+                batch = data_list[i:i + batch_size] # type: ignore
 
-                self._client.insert(collection_name=collection_name, data=batch)
+                self._client.insert(collection_name=collection_name, data=batch) # type: ignore
                 success_count += len(batch)
 
             return success_count
@@ -431,10 +431,10 @@ class MilvusProvider(BaseProvider):
         try:
             # 分批 upsert
             success_count = 0
-            for i in range(0, len(data_list), batch_size):
-                batch = data_list[i:i + batch_size]
+            for i in range(0, len(data_list), batch_size): # type: ignore
+                batch = data_list[i:i + batch_size] # type: ignore
 
-                self._client.upsert(collection_name=collection_name, data=batch)
+                self._client.upsert(collection_name=collection_name, data=batch) # type: ignore
                 success_count += len(batch)
 
             return success_count
@@ -456,7 +456,7 @@ class MilvusProvider(BaseProvider):
         try:
             # 删除单个文档
             if doc_id is not None:
-                self._client.delete(
+                self._client.delete( # type: ignore
                     collection_name=collection_name,
                     ids=[doc_id]
                 )
@@ -466,7 +466,7 @@ class MilvusProvider(BaseProvider):
             if query is not None:
                 # 将 BoolQuery 转换为 Milvus expression
                 expression = self._build_expression(query)
-                self._client.delete(
+                self._client.delete( # type: ignore
                     collection_name=collection_name,
                     filter=expression
                 )
@@ -492,7 +492,7 @@ class MilvusProvider(BaseProvider):
             # 获取字段定义
             field_defs = model_class.get_field_definitions()
 
-            results = self._client.get(
+            results = self._client.get( # type: ignore
                 collection_name=collection_name,
                 ids=[doc_id],
             )
@@ -530,7 +530,7 @@ class MilvusProvider(BaseProvider):
         collection_name = model_class.get_index_name()
 
         try:
-            self._client.flush(collection_name=collection_name)
+            self._client.flush(collection_name=collection_name) # type: ignore
             return True
         except MilvusException as e:
             raise IndexingIndexError(f"Failed to flush collection '{collection_name}': {str(e)}") from e
@@ -602,7 +602,7 @@ class MilvusProvider(BaseProvider):
 
                 if query.vector_param.filter:
                     # 合并 filter 表达式
-                    vector_filter_expr = self._build_expression(query.vector_param.filter, model_class)
+                    vector_filter_expr = self._build_expression(query.vector_param.filter, model_class) # type: ignore
                     if filter_expr:
                         filter_expr = f"({filter_expr}) and ({vector_filter_expr})"
                     else:
@@ -611,25 +611,25 @@ class MilvusProvider(BaseProvider):
                 if filter_expr:
                     search_params["filter"] = filter_expr
 
-                results = self._client.search(**search_params)
+                results = self._client.search(**search_params) # type: ignore
 
             elif query.hybrid_param:
                 # 混合检索（Milvus 本身不支持混合，这里只使用向量检索）
                 vector_param = query.hybrid_param.vector_param
-                search_params["data"] = [vector_param.vector]
+                search_params["data"] = [vector_param.vector] # type: ignore
                 search_params["anns_field"] = vector_field
                 search_params["search_params"] = {
-                    "metric_type": vector_param.metric_type,
+                    "metric_type": vector_param.metric_type, # type: ignore
                     "params": {"nprobe": 10},
                 }
-                if vector_param.k:
-                    search_params["limit"] = vector_param.k
+                if vector_param.k: # type: ignore
+                    search_params["limit"] = vector_param.k # type: ignore
 
                 if query.hybrid_param.sparse_query:
                     filter_expr = self._build_expression(query.hybrid_param.sparse_query, model_class)
                     search_params["filter"] = filter_expr
 
-                results = self._client.search(**search_params)
+                results = self._client.search(**search_params) # type: ignore
 
             elif query.query:
                 # 文本查询：使用向量检索（需要先 embedding）
@@ -683,13 +683,13 @@ class MilvusProvider(BaseProvider):
         try:
             if query is None:
                 # 统计所有文档
-                stats = self._client.get_collection_stats(collection_name=collection_name)
+                stats = self._client.get_collection_stats(collection_name=collection_name) # type: ignore
                 return stats.get("row_count", 0)
             else:
                 # 根据查询条件统计
                 # Milvus 没有直接支持，需要先查询后统计
                 filter_expr = self._build_expression(query)
-                results = self._client.query(
+                results = self._client.query( # type: ignore
                     collection_name=collection_name,
                     filter=filter_expr,
                     output_fields=["id"],
@@ -808,10 +808,10 @@ class MilvusProvider(BaseProvider):
         elif condition.match_type == MatchType.terms:
             # Milvus JSON 字段的 terms 查询需要特殊处理
             if is_json_access:
-                values_str = ", ".join([f'"{v}"' if isinstance(v, str) else str(v) for v in condition.values])
+                values_str = ", ".join([f'"{v}"' if isinstance(v, str) else str(v) for v in condition.values]) # type: ignore
                 return f"{field} in [{values_str}]"
             else:
-                values_str = ", ".join([f'"{v}"' if isinstance(v, str) else str(v) for v in condition.values])
+                values_str = ", ".join([f'"{v}"' if isinstance(v, str) else str(v) for v in condition.values]) # type: ignore
                 return f"{field} in [{values_str}]"
 
         elif condition.match_type == MatchType.range:

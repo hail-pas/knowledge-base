@@ -7,7 +7,7 @@ LLM 模型抽象基类
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Dict, List, Union, TYPE_CHECKING
 from loguru import logger
-
+from pydantic_ai.models import Model
 
 class ModelCapabilities:
     """模型能力配置
@@ -168,12 +168,12 @@ class LLMModel(ABC):
         self._model: Optional[Any] = None
 
     @abstractmethod
-    def _create_pydantic_model(self) -> "KnownModel":
+    def _create_pydantic_model(self) -> Model:
         """
         创建 pydantic_ai Model 实例（由子类实现）
 
         Returns:
-            pydantic_ai.models.KnownModel 实例
+            pydantic_ai.models.Model 实例
 
         Raises:
             LLMConfigError: 配置错误
@@ -182,18 +182,18 @@ class LLMModel(ABC):
         pass
 
     @property
-    def model(self) -> "KnownModel":
+    def model(self) -> Model:
         """
         获取 pydantic_ai Model 实例（懒加载）
 
         Returns:
-            pydantic_ai.models.KnownModel 实例
+            pydantic_ai.models.Model 实例
         """
         if self._model is None:
             self._model = self._create_pydantic_model()
         return self._model
 
-    def get_model_for_agent(self, **agent_kwargs) -> "KnownModel":
+    def get_model_for_agent(self, **agent_kwargs) -> Model:
         """
         获取用于创建 Agent 的 Model 实例
 
@@ -204,7 +204,7 @@ class LLMModel(ABC):
                            这些参数会与模型的默认配置合并，agent_kwargs 的优先级更高。
 
         Returns:
-            pydantic_ai.models.KnownModel 实例
+            pydantic_ai.models.Model 实例
 
         Example:
             >>> llm_model = await LLMModelFactory.create(config)

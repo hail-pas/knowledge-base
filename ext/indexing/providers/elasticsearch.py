@@ -1,10 +1,3 @@
-"""
-Elasticsearch Provider 实现
-
-提供 Elasticsearch 后端的索引操作和 CRUD 功能。
-支持稀疏索引、稠密索引和混合索引。
-"""
-
 from typing import Any, Dict, List, Optional, Type, Union
 from datetime import datetime
 from loguru import logger
@@ -109,7 +102,7 @@ class ElasticsearchProvider(BaseProvider):
         self.url = f"{scheme}://{self.host}:{self.port}"
 
         # 客户端实例
-        self._client: Optional[AsyncElasticsearch] = None
+        self._client: AsyncElasticsearch = None  # type: ignore
 
     async def connect(self) -> None:
         """建立 Elasticsearch 连接"""
@@ -160,26 +153,26 @@ class ElasticsearchProvider(BaseProvider):
             ping_result = await self._client.ping()
             if not ping_result:
                 # 如果 ping() 返回 False 而不是抛出异常，手动抛出连接错误
-                self._client = None
+                self._client = None  # type: ignore
                 raise IndexingBackendError(f"Failed to connect to Elasticsearch: ping returned False for {self.url}")
 
             logger.info(f"Elasticsearch provider connected: {self.url}")
 
         except ESConnectionError as e:
-            self._client = None
+            self._client = None  # type: ignore
             raise IndexingBackendError(f"Failed to connect to Elasticsearch: {str(e)}") from e
         except Exception as e:
-            self._client = None
+            self._client = None  # type: ignore
             raise IndexingBackendError(f"Unexpected error connecting to Elasticsearch: {str(e)}") from e
 
     async def disconnect(self) -> None:
         """断开 Elasticsearch 连接"""
         if self._client is not None:
             await self._client.close()
-            self._client = None
+            self._client = None  # type: ignore
         logger.info("Elasticsearch provider disconnected")
 
-    async def flush(self, model_class: Type[BaseIndexModel]) -> bool:
+    async def flush(self, model_class: Type[BaseIndexModel]) -> bool: # type: ignore
         """
         手动刷新索引以使文档立即可搜索
 
@@ -196,7 +189,7 @@ class ElasticsearchProvider(BaseProvider):
         index_name = model_class.get_index_name()
 
         try:
-            await self._client.indices.refresh(index=index_name)
+            await self._client.indices.refresh(index=index_name) # type: ignore
             logger.info(f"Refreshed index '{index_name}'")
             return True
         except Exception as e:
@@ -233,7 +226,7 @@ class ElasticsearchProvider(BaseProvider):
         settings = self._generate_settings(model_class)
 
         try:
-            await self._client.indices.create(
+            await self._client.indices.create( # type: ignore
                 index=index_name,
                 mappings=mapping,
                 settings=settings,
@@ -383,8 +376,8 @@ class ElasticsearchProvider(BaseProvider):
         success_count = 0
 
         # 分批处理
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i:i + batch_size]
+        for i in range(0, len(documents), batch_size):  # type: ignore
+            batch = documents[i:i + batch_size]  # type: ignore
 
             # 构建 bulk 操作
             operations = []
@@ -441,8 +434,8 @@ class ElasticsearchProvider(BaseProvider):
         success_count = 0
 
         # 分批处理
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i:i + batch_size]
+        for i in range(0, len(documents), batch_size):  # type: ignore
+            batch = documents[i:i + batch_size]  # type: ignore
 
             # 获取旧文档以正确处理 extras
             doc_ids = [self._get_document_id(doc) for doc in batch]
@@ -535,8 +528,8 @@ class ElasticsearchProvider(BaseProvider):
         success_count = 0
 
         # 分批处理
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i:i + batch_size]
+        for i in range(0, len(documents), batch_size):  # type: ignore
+            batch = documents[i:i + batch_size]  # type: ignore
 
             # 构建 bulk 操作（使用 index 操作实现 upsert）
             operations = []
@@ -740,7 +733,7 @@ class ElasticsearchProvider(BaseProvider):
                 else:
                     result_model = model_class
 
-                doc = self._dict_to_model(result_model, hit["_source"], doc_id=hit["_id"])
+                doc = self._dict_to_model(result_model, hit["_source"], doc_id=hit["_id"])  # type: ignore
                 documents.append(doc)
                 if query.include_scores:
                     # 处理分数：排序时 _score 可能为 None
@@ -823,23 +816,23 @@ class ElasticsearchProvider(BaseProvider):
         # 向量字段配置
         if field_def.type in [FieldType.dense_vector, FieldType.sparse_vector]:
             if field_def.dimension:
-                mapping["dims"] = field_def.dimension
+                mapping["dims"] = field_def.dimension  # type: ignore
             if field_def.metric_type:
-                mapping["index"] = True
+                mapping["index"] = True # type: ignore
                 mapping["similarity"] = field_def.metric_type.lower()
             else:
-                mapping["index"] = field_def.index
+                mapping["index"] = field_def.index # type: ignore
 
         # 文本字段配置
         elif field_def.type == FieldType.text:
             if field_def.analyzer:
                 mapping["analyzer"] = field_def.analyzer
-            mapping["index"] = field_def.index
+            mapping["index"] = field_def.index # type: ignore
 
         # 通用字段配置
         elif field_def.type != FieldType.json:  # JSON 字段不添加 index/store 配置
-            mapping["store"] = field_def.store
-            mapping["index"] = field_def.index
+            mapping["store"] = field_def.store # type: ignore
+            mapping["index"] = field_def.index # type: ignore
 
         return mapping
 
@@ -1009,7 +1002,7 @@ class ElasticsearchProvider(BaseProvider):
 
         # 构建数据字典，从模型实例中获取字段值
 
-        data = document.model_dump(include=[i.name for i in field_defs])
+        data = document.model_dump(include=[i.name for i in field_defs])  # type: ignore
 
         logger.info(f"initial data: {data}")
 
