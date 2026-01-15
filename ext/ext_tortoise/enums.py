@@ -96,16 +96,19 @@ class WorkflowStatusEnum(StrEnum):
     """工作流状态"""
 
     pending = ("pending", "待处理")
-    queued = ("queued", "排队中")
     running = ("running", "运行中")
     completed = ("completed", "已完成")
     failed = ("failed", "失败")
+    canceled = ("canceled", "已取消")
 
 
 class ActivityStatusEnum(StrEnum):
-    running = ("started", "运行中")
+    pending = ("pending", "待执行")
+    running = ("running", "运行中")
     completed = ("completed", "已完成")
     failed = ("failed", "失败")
+    canceled = ("canceled", "已取消")
+    retrying = ("retrying", "重试中")
 
 
 # =============================================================================

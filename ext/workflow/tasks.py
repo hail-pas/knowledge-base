@@ -50,32 +50,27 @@ def run_async(coro):
             loop.close()
 
 
-def _ensure_sync_result(result):
-    """
-    确保返回值是同步的
-
-    如果结果是协程或 Task，等待其完成
-    """
-    if inspect.iscoroutine(result):
-        return asyncio.run(result)
-    elif isinstance(result, asyncio.Task):
-        return asyncio.run(result)
-    return result
-
-
 async def _schedule_workflow_start_async(
     config: Dict[str, Any],
     config_format: str = "dict",
     initial_inputs: Dict[str, Any] = None,
+    use_async: bool = True,
 ) -> str:
-    """一类调度任务的异步实现"""
+    """一类调度任务的异步实现
+
+    Args:
+        config: 工作流配置
+        config_format: 配置格式
+        initial_inputs: 初始输入
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
+    """
     from .manager import WorkflowManager
 
     # 1. 创建工作流和所有活动记录
     workflow = await WorkflowManager.create_workflow(
         config, config_format, initial_inputs
     )
-    logger.info(f"Created workflow: {workflow.uid}")
+    logger.info(f"Created workflow: {workflow.uid}, use_async={use_async}")
 
     # 2. 构建 DAG 图
     graph = WorkflowManager.build_graph(workflow)
@@ -94,7 +89,7 @@ async def _schedule_workflow_start_async(
     )
     logger.info(f"Ready activities: {[act.name for act in ready_activities]}")
 
-    # 5. 启动第一批活动的 celery 任务
+    # 5. 启动第一批活动的任务
     for activity in ready_activities:
         task_name = activity.execute_params.get("task_name")
         if not task_name:
@@ -107,17 +102,26 @@ async def _schedule_workflow_start_async(
             logger.error(f"Task not found: {task_name}")
             continue
 
-        # 使用 apply_async 启动任务（异步）
-        celery_task_result = task.apply_async(args=[str(activity.uid)])
-        await WorkflowManager.update_activity_status(
-            str(activity.uid),
-            ActivityStatusEnum.pending,
-            celery_task_id=celery_task_result.id,
-        )
-        logger.info(
-            f"Started task {task_name} for activity {activity.name}, "
-            f"task_id: {celery_task_result.id}"
-        )
+        if use_async:
+            # 使用 apply_async 启动任务（异步）
+            celery_task_result = task.apply_async(args=[str(activity.uid)])
+            await WorkflowManager.update_activity_status(
+                str(activity.uid),
+                ActivityStatusEnum.pending,
+                celery_task_id=celery_task_result.id,
+            )
+            logger.info(
+                f"Started task {task_name} for activity {activity.name} (async), "
+                f"task_id: {celery_task_result.id}"
+            )
+        else:
+            # 直接调用任务（同步，用于本地调试）
+            # 直接调用不会返回 celery_task_id
+            logger.info(f"Starting task {task_name} for activity {activity.name} (direct call)")
+            await task.async_call(str(activity.uid), use_async)
+            logger.info(
+                f"Completed task {task_name} for activity {activity.name} (direct call)"
+            )
 
     return str(workflow.uid)
 
@@ -126,6 +130,7 @@ async def schedule_workflow_start(
     config: Dict[str, Any],
     config_format: str = "dict",
     initial_inputs: Dict[str, Any] = None,
+    use_async: bool = True,
 ) -> str:
     """
     一类调度任务（重头执行入口）- 异步版本
@@ -137,17 +142,19 @@ async def schedule_workflow_start(
         config: 工作流配置（DAG 结构）
         config_format: 配置格式（yaml/json/dict）
         initial_inputs: 初始输入数据
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
 
     Returns:
         Workflow UID
     """
-    return await _schedule_workflow_start_async(config, config_format, initial_inputs)
+    return await _schedule_workflow_start_async(config, config_format, initial_inputs, use_async)
 
 
 def schedule_workflow_start_sync(
     config: Dict[str, Any],
     config_format: str = "dict",
     initial_inputs: Dict[str, Any] = None,
+    use_async: bool = True,
 ) -> str:
     """
     一类调度任务（重头执行入口）- 同步版本
@@ -159,17 +166,23 @@ def schedule_workflow_start_sync(
         config: 工作流配置（DAG 结构）
         config_format: 配置格式（yaml/json/dict）
         initial_inputs: 初始输入数据
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
 
     Returns:
         Workflow UID
     """
     return run_async(
-        _schedule_workflow_start_async(config, config_format, initial_inputs)
+        _schedule_workflow_start_async(config, config_format, initial_inputs, use_async)
     )
 
 
-async def _schedule_workflow_resume_async(workflow_uid: str) -> str:
-    """二类调度任务的异步实现"""
+async def _schedule_workflow_resume_async(workflow_uid: str, use_async: bool = True) -> str:
+    """二类调度任务的异步实现
+
+    Args:
+        workflow_uid: 工作流 UID
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
+    """
     from .manager import WorkflowManager
 
     # 1. 获取工作流
@@ -177,7 +190,7 @@ async def _schedule_workflow_resume_async(workflow_uid: str) -> str:
     if not workflow:
         raise ValueError(f"Workflow not found: {workflow_uid}")
 
-    logger.info(f"Resuming workflow: {workflow_uid}, current status: {workflow.status}")
+    logger.info(f"Resuming workflow: {workflow_uid}, current status: {workflow.status}, use_async={use_async}")
 
     # 2. 检查工作流状态
     if workflow.status in [
@@ -218,22 +231,30 @@ async def _schedule_workflow_resume_async(workflow_uid: str) -> str:
             logger.error(f"Task not found: {task_name}")
             continue
 
-        # 使用 apply_async 启动任务
-        celery_task_result = task.apply_async(args=[str(activity.uid)])
-        await WorkflowManager.update_activity_status(
-            str(activity.uid),
-            ActivityStatusEnum.pending,
-            celery_task_id=celery_task_result.id,
-        )
-        logger.info(
-            f"Started task {task_name} for activity {activity.name}, "
-            f"task_id: {celery_task_result.id}"
-        )
+        if use_async:
+            # 使用 apply_async 启动任务
+            celery_task_result = task.apply_async(args=[str(activity.uid)])
+            await WorkflowManager.update_activity_status(
+                str(activity.uid),
+                ActivityStatusEnum.pending,
+                celery_task_id=celery_task_result.id,
+            )
+            logger.info(
+                f"Started task {task_name} for activity {activity.name} (async), "
+                f"task_id: {celery_task_result.id}"
+            )
+        else:
+            # 直接调用任务（同步，用于本地调试）
+            logger.info(f"Starting task {task_name} for activity {activity.name} (direct call)")
+            await task.async_call(str(activity.uid), use_async)
+            logger.info(
+                f"Completed task {task_name} for activity {activity.name} (direct call)"
+            )
 
     return workflow_uid
 
 
-async def schedule_workflow_resume(workflow_uid: str) -> str:
+async def schedule_workflow_resume(workflow_uid: str, use_async: bool = True) -> str:
     """
     二类调度任务（断点继续执行入口）- 异步版本
 
@@ -241,14 +262,15 @@ async def schedule_workflow_resume(workflow_uid: str) -> str:
 
     Args:
         workflow_uid: 工作流 UID
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
 
     Returns:
         Workflow UID
     """
-    return await _schedule_workflow_resume_async(workflow_uid)
+    return await _schedule_workflow_resume_async(workflow_uid, use_async)
 
 
-def schedule_workflow_resume_sync(workflow_uid: str) -> str:
+def schedule_workflow_resume_sync(workflow_uid: str, use_async: bool = True) -> str:
     """
     二类调度任务（断点继续执行入口）- 同步版本
 
@@ -256,15 +278,21 @@ def schedule_workflow_resume_sync(workflow_uid: str) -> str:
 
     Args:
         workflow_uid: 工作流 UID
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
 
     Returns:
         Workflow UID
     """
-    return run_async(_schedule_workflow_resume_async(workflow_uid))
+    return run_async(_schedule_workflow_resume_async(workflow_uid, use_async))
 
 
-async def _schedule_activity_handoff_async(activity_uid: str) -> str:
-    """三类调度任务的异步实现"""
+async def _schedule_activity_handoff_async(activity_uid: str, use_async: bool = True) -> str:
+    """三类调度任务的异步实现
+
+    Args:
+        activity_uid: Activity UID
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
+    """
     from .manager import WorkflowManager
 
     # 1. 加载 Activity 记录
@@ -274,7 +302,7 @@ async def _schedule_activity_handoff_async(activity_uid: str) -> str:
 
     logger.info(
         f"Activity handoff: {activity.name} (status: {activity.status}), "
-        f"workflow: {activity.workflow_uid}"
+        f"workflow: {activity.workflow_uid}, use_async={use_async}"
     )
 
     # 2. 检查工作流是否已经失败或取消
@@ -328,17 +356,27 @@ async def _schedule_activity_handoff_async(activity_uid: str) -> str:
             logger.error(f"Task not found: {task_name}")
             continue
 
-        # 使用 apply_async 启动任务
-        celery_task_result = task.apply_async(args=[str(ready_activity.uid)])
-        await WorkflowManager.update_activity_status(
-            str(ready_activity.uid),
-            ActivityStatusEnum.pending,
-            celery_task_id=celery_task_result.id,
-        )
-        logger.info(
-            f"Started task {task_name} for downstream activity {ready_activity.name}, "
-            f"task_id: {celery_task_result.id}"
-        )
+        if use_async:
+            # 使用 apply_async 启动任务
+            celery_task_result = task.apply_async(args=[str(ready_activity.uid)])
+            await WorkflowManager.update_activity_status(
+                str(ready_activity.uid),
+                ActivityStatusEnum.pending,
+                celery_task_id=celery_task_result.id,
+            )
+            logger.info(
+                f"Started task {task_name} for downstream activity {ready_activity.name} (async), "
+                f"task_id: {celery_task_result.id}"
+            )
+        else:
+            # 直接调用任务（同步，用于本地调试）
+            logger.info(
+                f"Starting task {task_name} for downstream activity {ready_activity.name} (direct call)"
+            )
+            await task.async_call(str(ready_activity.uid), use_async)
+            logger.info(
+                f"Completed task {task_name} for downstream activity {ready_activity.name} (direct call)"
+            )
 
     # 7. 检查工作流是否完成
     is_completed = await WorkflowManager.check_workflow_completion(
@@ -350,7 +388,7 @@ async def _schedule_activity_handoff_async(activity_uid: str) -> str:
     return activity_uid
 
 
-async def schedule_activity_handoff(activity_uid: str) -> str:
+async def schedule_activity_handoff(activity_uid: str, use_async: bool = True) -> str:
     """
     三类调度任务（activity handoff）- 异步版本
 
@@ -362,14 +400,15 @@ async def schedule_activity_handoff(activity_uid: str) -> str:
 
     Args:
         activity_uid: 完成的 Activity UID
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
 
     Returns:
         Activity UID
     """
-    return await _schedule_activity_handoff_async(activity_uid)
+    return await _schedule_activity_handoff_async(activity_uid, use_async)
 
 
-def schedule_activity_handoff_sync(activity_uid: str) -> str:
+def schedule_activity_handoff_sync(activity_uid: str, use_async: bool = True) -> str:
     """
     三类调度任务（activity handoff）- 同步版本
 
@@ -381,11 +420,12 @@ def schedule_activity_handoff_sync(activity_uid: str) -> str:
 
     Args:
         activity_uid: 完成的 Activity UID
+        use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
 
     Returns:
         Activity UID
     """
-    return run_async(_schedule_activity_handoff_async(activity_uid))
+    return run_async(_schedule_activity_handoff_async(activity_uid, use_async))
 
 
 # Celery Task 装饰器包装
@@ -403,9 +443,10 @@ def _schedule_workflow_start_celery(
     config: Dict[str, Any],
     config_format: str = "dict",
     initial_inputs: Dict[str, Any] = None,
+    use_async: bool = True,
 ) -> str:
     """Celery 版本的一类调度任务"""
-    return schedule_workflow_start_sync(config, config_format, initial_inputs)
+    return schedule_workflow_start_sync(config, config_format, initial_inputs, use_async)
 
 
 @celery_app.task(
@@ -417,9 +458,10 @@ def _schedule_workflow_start_celery(
 def _schedule_workflow_resume_celery(
     celery_task: CeleryTask,
     workflow_uid: str,
+    use_async: bool = True,
 ) -> str:
     """Celery 版本的二类调度任务"""
-    return schedule_workflow_resume_sync(workflow_uid)
+    return schedule_workflow_resume_sync(workflow_uid, use_async)
 
 
 @celery_app.task(
@@ -431,9 +473,10 @@ def _schedule_workflow_resume_celery(
 def _schedule_activity_handoff_celery(
     celery_task: CeleryTask,
     activity_uid: str,
+    use_async: bool = True,
 ) -> str:
     """Celery 版本的三类调度任务"""
-    return schedule_activity_handoff_sync(activity_uid)
+    return schedule_activity_handoff_sync(activity_uid, use_async)
 
 
 # 导出同步版本的任务函数（用于直接调用）

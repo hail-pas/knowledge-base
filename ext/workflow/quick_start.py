@@ -96,7 +96,8 @@ The system will process this file through multiple tasks:
         workflow_uid = await schedule_workflow_start(
             config=workflow_config,
             config_format="dict",
-            initial_inputs={}
+            initial_inputs={},
+            use_async=False
         )
         logger.success(f"✓ Workflow started: {workflow_uid}")
     except Exception as e:

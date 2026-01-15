@@ -3,7 +3,6 @@ from functools import cached_property
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
-from fastapi import FastAPI
 from pydantic import RedisDsn
 from redis.retry import Retry
 from redis.asyncio import Redis, ConnectionPool

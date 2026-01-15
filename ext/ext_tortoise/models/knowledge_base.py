@@ -7,8 +7,6 @@ from ext.ext_tortoise.enums import (
     EmbeddingModelTypeEnum,
     FileSourceTypeEnum,
     IndexingBackendTypeEnum,
-    IndexingStatusEnum,
-    IndexingTypeEnum,
     WorkflowConfigFormatEnum,
     WorkflowStatusEnum,
     LLMModelTypeEnum
@@ -99,6 +97,7 @@ class Document(BaseModel):
     long_summary = fields.TextField(description="文件详细摘要", null=True)
     workflow_version = fields.SmallIntField(default=1, description="工作流版本")
     status = fields.CharEnumField(DocumentStatusEnum, description="文件状态")
+    current_workflow_uid = fields.UUIDField(null=True, description="当前关联的最新工作流UID")
 
     class Meta: # type: ignore
         table = "document"
@@ -125,13 +124,7 @@ class Workflow(BaseModel):
 
     存储工作流的定义和配置，支持通过YAML/JSON自定义node执行graph
     """
-    document = fields.ForeignKeyField(
-        f"{_KBConnectionName}.Document",
-        related_name="workflows",
-        on_delete=fields.CASCADE
-    )
-    uid = fields.UUIDField(unique=True)
-    version = fields.SmallIntField(default=1, description="工作流版本")
+    uid = fields.UUIDField(unique=True, description="幂等性唯一标识")
     config = fields.JSONField(description="工作流配置（DAG图结构，支持YAML/JSON格式）, {content: vv}", default=dict)
     config_format = fields.CharEnumField(
         WorkflowConfigFormatEnum,
@@ -143,16 +136,20 @@ class Workflow(BaseModel):
         default=WorkflowStatusEnum.pending.value,
         description="工作流状态"
     )
+    started_at = fields.DatetimeField(null=True, description="开始执行时间")
+    completed_at = fields.DatetimeField(null=True, description="完成时间")
+    canceled_at = fields.DatetimeField(null=True, description="是否被取消")
+
+    schedule_celery_task_id = fields.CharField(max_length=255, null=True, description="schedule 任务ID")
 
     class Meta: # type: ignore
         table = "workflow"
         table_description = "工作流定义表"
         app = _KBConnectionName
-        unique_together = [("document_id", "version")]
         ordering = ["-id"]
 
     def __str__(self):
-        return f"{self.document} (v{self.version})"
+        return f"Workflow({self.uid})"
 
 
 class Activity(CreateOnlyModel):
@@ -166,18 +163,38 @@ class Activity(CreateOnlyModel):
     input = fields.JSONField(description="输入参数", default=dict)
     output = fields.JSONField(description="输出参数", default=dict)
     retry_count = fields.IntField(default=0, description="失败重试次数")
-    execute_params = fields.JSONField(description="temporal 执行参数", default=dict)
-    status = fields.CharField(max_length=20, description="状态", default=ActivityStatusEnum.running.value)
+    execute_params = fields.JSONField(description="Celery 执行参数", default=dict)
+    status = fields.CharEnumField(
+        ActivityStatusEnum,
+        default=ActivityStatusEnum.pending.value,
+        description="状态"
+    )
+
+    # 监测支持
+    started_at = fields.DatetimeField(null=True, description="开始执行时间")
+    completed_at = fields.DatetimeField(null=True, description="完成时间")
+    error_message = fields.TextField(null=True, description="错误信息")
+    stack_trace = fields.TextField(null=True, description="错误堆栈跟踪")
+
+    canceled_at = fields.DatetimeField(null=True, description="取消时间")
+
+    # 幂等性支持
+    celery_task_id = fields.CharField(max_length=255, null=True, description="Celery 任务ID")
 
     class Meta: # type: ignore
         table = "activity"
         table_description = "工作流活动表"
         app = _KBConnectionName
         unique_together = [("workflow_uid", "name")]
+        indexes = [
+            ("workflow_uid",),
+            ("status",),
+            ("celery_task_id",),
+        ]
         ordering = ["-id"]
 
     def __str__(self):
-        return f"{self.workflow_id}: {self.name}" # type: ignore
+        return f"{self.workflow_uid}: {self.name} ({self.status})" # type: ignore
 
 
 class EmbeddingModelConfig(BaseModel):

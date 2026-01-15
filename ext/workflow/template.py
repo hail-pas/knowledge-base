@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 from celery import Task as CeleryTask
 from celery.exceptions import Retry
 
+from core.context import ctx
 from ext.ext_celery.app import get_celery_app
 from ext.workflow.tasks import schedule_activity_handoff_sync
 from ext.ext_tortoise.enums import ActivityStatusEnum
@@ -28,28 +29,32 @@ def run_async(coro):
     """
     运行异步协程，自动检测环境
 
-    如果已有事件循环在运行，在其中运行协程
+    如果已有事件循环在运行，使用 run_coroutine_threadsafe 在其中运行协程并等待结果
     否则创建新的事件循环运行
     """
+
+    async def ctx_wrapper():
+        async with ctx():
+            return await coro
+
     try:
         # 尝试获取当前运行的事件循环
         loop = asyncio.get_running_loop()
-        # 如果已有循环在运行，创建任务并等待
+        # 如果已有循环在运行，使用 run_coroutine_threadsafe 并等待结果
         if loop.is_running():
-            # 创建一个新任务
-            task = asyncio.create_task(coro)
-            return task
+            future = asyncio.run_coroutine_threadsafe(ctx_wrapper(), loop)
+            # 等待协程完成并返回结果
+            return future.result()
         else:
             # 循环存在但未运行，直接运行
-            return loop.run_until_complete(coro)
+            return loop.run_until_complete(ctx_wrapper())
     except RuntimeError:
         # 没有运行的事件循环，创建一个新的
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
+        return loop.run_until_complete(ctx_wrapper())
+        # Don't close the loop - let Celery manage the loop lifecycle
+        # Closing the loop causes issues with database connection pool cleanup
 
 
 class ActivityTaskTemplate(ABC):
@@ -68,15 +73,17 @@ class ActivityTaskTemplate(ABC):
     8. 无论成功还是失败都需要启动一个三类调度任务
     """
 
-    def __init__(self, celery_task: Optional[CeleryTask], activity_uid: str):
+    def __init__(self, celery_task: Optional[CeleryTask], activity_uid: str, use_async: bool = True):
         """初始化任务模板
 
         Args:
             celery_task: Celery 任务实例（可能为 None，直接调用时）
             activity_uid: Activity UID
+            use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
         """
         self.celery_task = celery_task
         self.activity_uid = activity_uid
+        self.use_async = use_async
         self.activity: Optional[Activity] = None
         self.workflow: Optional[Workflow] = None
         self.graph: Optional[GraphUtil] = None
@@ -158,11 +165,18 @@ class ActivityTaskTemplate(ABC):
         Args:
             exception: 异常对象
         """
-        if not self.activity:
-            raise ValueError("Activity not loaded")
-
         error_message = str(exception)
         stack_trace = traceback.format_exc()
+
+        logger.error(f">>>>>>>{error_message}\n{stack_trace}")
+
+        # 如果 activity 未加载，需要先加载它
+        if not self.activity:
+            self.activity = await Activity.filter(uid=self.activity_uid).first()
+            if not self.activity:
+                # 如果 activity 记录不存在，无法更新状态，只能记录错误
+                logger.error(f"Activity not found: {self.activity_uid}, error: {error_message}")
+                return
 
         # 获取重试配置
         max_retries = self.activity.execute_params.get("max_retries", 3)
@@ -193,11 +207,18 @@ class ActivityTaskTemplate(ABC):
         if not self.activity:
             raise ValueError("Activity not loaded")
 
-        # 使用 celery_app 获取 Celery 任务并使用 apply_async 启动
+        # 使用 celery_app 获取 Celery 任务
         celery_app = get_celery_app()
         handoff_task = celery_app.tasks.get("workflow.activity_handoff")
         if handoff_task:
-            handoff_task.apply_async(args=[str(self.activity.uid)], countdown=0)
+            if self.use_async:
+                # 使用 apply_async 启动
+                handoff_task.apply_async(args=[str(self.activity.uid), self.use_async], countdown=0)
+            else:
+                # 直接调用（同步，用于本地调试）
+                # 手动创建任务实例并调用，避免通过 sync_wrapper 导致死锁
+                from .tasks import _schedule_activity_handoff_async
+                await _schedule_activity_handoff_async(str(self.activity.uid), self.use_async)
 
     @abstractmethod
     async def execute(self) -> Dict[str, Any]:
@@ -304,29 +325,50 @@ def activity_task(template_class: type):
         bind=True,
         max_retries=3,
     )
-    def _celery_task_wrapper(celery_task: CeleryTask, activity_uid: str) -> Dict[str, Any]:
+    def _celery_task_wrapper(celery_task: CeleryTask, activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
         """Celery 任务包装器（同步）"""
         # 创建任务模板实例
-        task_instance = template_class(celery_task, activity_uid)
+        task_instance = template_class(celery_task, activity_uid, use_async)
 
         # 使用 run_async 执行异步任务
         # 在 Celery worker 环境中，不会有已有的事件循环
         return run_async(task_instance._call_async())
 
-    # 定义可以直接调用的同步函数
-    def _sync_wrapper(activity_uid: str) -> Dict[str, Any]:
-        """同步包装器，用于直接调用"""
+    # 定义异步包装器函数
+    async def _async_wrapper_function(activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
+        """异步包装器函数"""
         # 创建任务模板实例（celery_task=None）
-        task_instance = template_class(None, activity_uid)
+        task_instance = template_class(None, activity_uid, use_async)
+        # 直接 await 执行异步任务
+        return await task_instance._call_async()
+
+    # 给 _celery_task_wrapper 添加 async_call 方法
+    _celery_task_wrapper.async_call = _async_wrapper_function
+
+    # 定义可以直接调用的同步函数
+    def _sync_wrapper(activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
+        """同步包装器，用于直接调用（在非 async 上下文中使用）"""
+        # 创建任务模板实例（celery_task=None）
+        task_instance = template_class(None, activity_uid, use_async)
 
         # 使用 run_async 执行异步任务
         return run_async(task_instance._call_async())
 
+    # 定义异步包装器，用于在已有事件循环中直接 await 调用
+    async def _async_wrapper(activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
+        """异步包装器，用于在 async 上下文中直接 await 调用"""
+        # 创建任务模板实例（celery_task=None）
+        task_instance = template_class(None, activity_uid, use_async)
+
+        # 直接 await 执行异步任务
+        return await task_instance._call_async()
+
     # 给任务对象添加一些属性，使其看起来像一个 Celery 任务
     _sync_wrapper.name = task_name
     _sync_wrapper.apply_async = _celery_task_wrapper.apply_async
+    _sync_wrapper.async_call = _async_wrapper  # 添加异步调用方法
 
-    # 返回同步包装器，支持直接调用和 apply_async
+    # 返回同步包装器，支持直接调用、async_call 和 apply_async
     return _sync_wrapper
 
 
