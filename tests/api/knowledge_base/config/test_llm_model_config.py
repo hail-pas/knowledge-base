@@ -27,11 +27,11 @@ class TestLLMModelConfigCRUD:
         data = response.json()
         assert data["code"] == 0
         assert "data" in data
-        assert "records" in data["data"]
-        assert len(data["data"]["records"]) >= 1
+        assert "items" in data["data"]
+        assert len(data["data"]["items"]) >= 1
 
         # 验证创建的记录在列表中
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_list_llm"), None)
         assert created_item is not None
         assert created_item["type"] == "openai"
@@ -45,7 +45,7 @@ class TestLLMModelConfigCRUD:
         # 从列表中获取刚创建的记录
         response = await client.get("/v1/config/llm-model")
         data = response.json()
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_get_detail_llm"), None)
         assert created_item is not None
         pk = created_item["id"]
@@ -68,7 +68,7 @@ class TestLLMModelConfigCRUD:
         # 从列表中获取刚创建的记录
         response = await client.get("/v1/config/llm-model")
         data = response.json()
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_update_llm"), None)
         assert created_item is not None
         pk = created_item["id"]
@@ -100,7 +100,7 @@ class TestLLMModelConfigCRUD:
         # 从列表中获取刚创建的记录
         response = await client.get("/v1/config/llm-model")
         data = response.json()
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_delete_llm"), None)
         assert created_item is not None
         pk = created_item["id"]
@@ -137,7 +137,7 @@ class TestLLMModelConfigCRUD:
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 0
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         assert all(item["type"] == "openai" for item in items)
 
         # 过滤 model_name
@@ -145,7 +145,7 @@ class TestLLMModelConfigCRUD:
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 0
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         assert any("gpt" in item["model_name"] for item in items)
 
         # 过滤 is_enabled
@@ -158,7 +158,7 @@ class TestLLMModelConfigCRUD:
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 0
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         assert any(item["is_enabled"] is False for item in items)
 
     async def test_full_crud_flow(self, client, llm_model_config_data):
@@ -174,7 +174,7 @@ class TestLLMModelConfigCRUD:
         assert list_response.status_code == 200
         list_data = list_response.json()
         assert list_data["code"] == 0
-        items = list_data["data"]["records"]
+        items = list_data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_full_flow_llm"), None)
         assert created_item is not None
         pk = created_item["id"]

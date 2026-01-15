@@ -230,7 +230,7 @@ async def list_view(
         **filter.model_dump(exclude_unset=True, exclude_none=True),
     )
     return Resp(
-        data=PageData.create(records=data, total_count=total, pager=pager),  # type: ignore
+        data=PageData.create(items=data, total_count=total, pager=pager),  # type: ignore
     )
 
 

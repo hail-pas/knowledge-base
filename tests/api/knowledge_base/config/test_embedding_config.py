@@ -27,11 +27,11 @@ class TestEmbeddingModelConfigCRUD:
         data = response.json()
         assert data["code"] == 0
         assert "data" in data
-        assert "records" in data["data"]
-        assert len(data["data"]["records"]) >= 1
+        assert "items" in data["data"]
+        assert len(data["data"]["items"]) >= 1
 
         # 验证创建的记录在列表中
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_list_embeddings"), None)
         assert created_item is not None
         assert created_item["type"] == "openai"
@@ -45,7 +45,7 @@ class TestEmbeddingModelConfigCRUD:
         # 从列表中获取刚创建的记录
         response = await client.get("/v1/config/embedding")
         data = response.json()
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_get_detail"), None)
         assert created_item is not None
         pk = created_item["id"]
@@ -67,7 +67,7 @@ class TestEmbeddingModelConfigCRUD:
         # 从列表中获取刚创建的记录
         response = await client.get("/v1/config/embedding")
         data = response.json()
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_update"), None)
         assert created_item is not None
         pk = created_item["id"]
@@ -97,7 +97,7 @@ class TestEmbeddingModelConfigCRUD:
         # 从列表中获取刚创建的记录
         response = await client.get("/v1/config/embedding")
         data = response.json()
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_delete"), None)
         assert created_item is not None
         pk = created_item["id"]
@@ -132,7 +132,7 @@ class TestEmbeddingModelConfigCRUD:
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 0
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         assert all(item["type"] == "openai" for item in items)
 
         # 过滤 name
@@ -140,7 +140,7 @@ class TestEmbeddingModelConfigCRUD:
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 0
-        items = data["data"]["records"]
+        items = data["data"]["items"]
         assert any("openai" in item["name"] for item in items)
 
     async def test_full_crud_flow(self, client, embedding_config_data):
@@ -156,7 +156,7 @@ class TestEmbeddingModelConfigCRUD:
         assert list_response.status_code == 200
         list_data = list_response.json()
         assert list_data["code"] == 0
-        items = list_data["data"]["records"]
+        items = list_data["data"]["items"]
         created_item = next((item for item in items if item["name"] == "test_full_flow"), None)
         assert created_item is not None
         pk = created_item["id"]

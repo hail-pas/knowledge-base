@@ -133,19 +133,19 @@ class PageInfo(BaseModel):
 
 class PageData(BaseModel, Generic[DataT]):
     page_info: PageInfo
-    records: Sequence[DataT]
+    items: Sequence[DataT]
 
     @classmethod
     def create(
         cls,
-        records: Sequence[DataT],
+        items: Sequence[DataT],
         total_count: int,
         pager: Pager | CRUDPager,
         page_info: PageInfo | None = None,
     ) -> "PageData[DataT]":
         if page_info is None:
             page_info = generate_page_info(total_count, pager)
-        return cls(page_info=page_info, records=records)
+        return cls(page_info=page_info, items=items)
 
 
 def generate_page_info(total_count: int, pager: Pager | CRUDPager) -> PageInfo:

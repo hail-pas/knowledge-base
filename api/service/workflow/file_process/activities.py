@@ -1,6 +1,6 @@
 import asyncio
 from temporalio import activity
-from typing import Dict, Any
+from typing import Dict
 from pydantic import BaseModel
 
 class FileInput(BaseModel):
