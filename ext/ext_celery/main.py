@@ -141,8 +141,6 @@ class CeleryConfig(InstanceExtensionConfig[Celery]):
                 'queue': 'default',
             },
         }
-        
-        print(">>>>>" * 20, self.broker_url.query)
 
         _CELERY_APP.conf.update(
             # 序列化配置

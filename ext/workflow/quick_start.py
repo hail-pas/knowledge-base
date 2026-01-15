@@ -16,7 +16,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.context import ctx
 from ext.workflow import WorkflowManager
-from ext.workflow.tasks import schedule_workflow_start, schedule_workflow_start_celery
+from ext.workflow.tasks import schedule_workflow_start, schedule_workflow_resume
+from ext.ext_tortoise.models.knowledge_base import Workflow
+from ext.ext_tortoise.enums import WorkflowStatusEnum
 from loguru import logger
 
 
@@ -93,22 +95,27 @@ The system will process this file through multiple tasks:
     logger.info("If workflow stalls, check if worker is running:")
     logger.info("  uv run celery -A ext.ext_celery.worker worker -l info\n")
     try:
-        # workflow_uid = await schedule_workflow_start(
+        workflow_uid = await schedule_workflow_start(
+            config=workflow_config,
+            config_format="dict",
+            initial_inputs={},
+            use_async=False
+        )
+
+        # import uuid
+        # workflow_uid = "c9f11a7d-c260-40e4-bbc8-6e0298904c1c"
+
+        # 创建工作流记录
+        # workflow = await Workflow.create(
+        #     uid=workflow_uid,
         #     config=workflow_config,
         #     config_format="dict",
-        #     initial_inputs={},
-        #     use_async=False
+        #     status=WorkflowStatusEnum.pending.value,
         # )
 
-        task_id = schedule_workflow_start_celery.apply_async(
-            args=[
-                workflow_config,
-                "dict",
-                {},
-                False
-            ]
-        )
-        logger.success(f"✓ Workflow started: {task_id}")
+        logger.success(f"✓ Workflow started: {workflow_uid}")
+
+        workflow_uid = await schedule_workflow_resume(workflow_uid, use_async=False)
     except Exception as e:
         logger.error(f"\n✗ Failed to start workflow: {e}")
         logger.error("\n" + "=" * 60)

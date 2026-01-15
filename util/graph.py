@@ -82,11 +82,6 @@ class GraphUtil:
         self._build_graph()
         self._build_node_infos()
 
-        print("================================")
-        for i in self.get_layers():
-            print(">>>>>>> ", i)
-        print("================================")
-
 
     def _parse_config(
         self,

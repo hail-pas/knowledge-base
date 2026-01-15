@@ -10,6 +10,7 @@
 1. 直接调用（同步方式）
 2. Celery apply_async 调用（异步方式）
 """
+import uuid
 import asyncio
 from loguru import logger
 from datetime import datetime
@@ -166,7 +167,7 @@ def schedule_workflow_start_sync(
     )
 
 
-async def _schedule_workflow_resume_async(workflow_uid: str, use_async: bool = True) -> str:
+async def _schedule_workflow_resume_async(workflow_uid: uuid.UUID, use_async: bool = True) -> str:
     """二类调度任务的异步实现
 
     Args:
@@ -244,7 +245,7 @@ async def _schedule_workflow_resume_async(workflow_uid: str, use_async: bool = T
     return workflow_uid
 
 
-async def schedule_workflow_resume(workflow_uid: str, use_async: bool = True) -> str:
+async def schedule_workflow_resume(workflow_uid: uuid.UUID, use_async: bool = True) -> str:
     """
     二类调度任务（断点继续执行入口）- 异步版本
 
@@ -260,7 +261,7 @@ async def schedule_workflow_resume(workflow_uid: str, use_async: bool = True) ->
     return await _schedule_workflow_resume_async(workflow_uid, use_async)
 
 
-def schedule_workflow_resume_sync(workflow_uid: str, use_async: bool = True) -> str:
+def schedule_workflow_resume_sync(workflow_uid: uuid.UUID, use_async: bool = True) -> str:
     """
     二类调度任务（断点继续执行入口）- 同步版本
 
@@ -451,7 +452,7 @@ def schedule_workflow_start_celery(
 )
 def schedule_workflow_resume_celery(
     celery_task: CeleryTask,
-    workflow_uid: str,
+    workflow_uid: uuid.UUID,
     use_async: bool = True,
 ) -> str:
     """Celery 版本的二类调度任务

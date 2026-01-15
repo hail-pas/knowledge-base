@@ -95,7 +95,6 @@ class Document(BaseModel):
     source_meta = fields.JSONField(description="文件源元数据（JSON格式）", null=True)
     short_summary = fields.CharField(max_length=255, description="文件摘要", null=True)
     long_summary = fields.TextField(description="文件详细摘要", null=True)
-    workflow_version = fields.SmallIntField(default=1, description="工作流版本")
     status = fields.CharEnumField(DocumentStatusEnum, description="文件状态")
     current_workflow_uid = fields.UUIDField(null=True, description="当前关联的最新工作流UID")
 

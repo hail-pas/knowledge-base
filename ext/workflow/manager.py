@@ -7,6 +7,7 @@
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
+from loguru import logger
 
 from ext.ext_tortoise.enums import (
     ActivityStatusEnum,
@@ -50,6 +51,38 @@ class WorkflowManager:
         graph = GraphUtil(config=config, config_format=config_format)
 
         # 创建所有活动记录
+
+        await WorkflowManager.create_activities_for_workflow(
+            workflow_uid,
+            config,
+            config_format,
+            initial_inputs
+        )
+
+        return workflow
+
+    @staticmethod
+    async def create_activities_for_workflow(
+        workflow_uid: uuid.UUID,
+        config: Dict[str, Any],
+        config_format: str = "dict",
+        initial_inputs: Optional[Dict[str, Any]] = None,
+    ) -> List[Activity]:
+        """为已存在的工作流创建所有活动记录
+
+        Args:
+            workflow_uid: 已存在的 workflow UID
+            config: 工作流配置（DAG 结构）
+            config_format: 配置格式（yaml/json/dict）
+            initial_inputs: 初始输入数据
+
+        Returns:
+            创建的 Activity 列表
+        """
+        # 解析 DAG 配置
+        graph = GraphUtil(config=config, config_format=config_format)
+
+        # 创建所有活动记录
         activities = []
         for node_name, node_config in graph.config.items():
             node_info = graph.get_node_info(node_name)
@@ -72,7 +105,7 @@ class WorkflowManager:
             )
             activities.append(activity)
 
-        return workflow
+        return activities
 
     @staticmethod
     async def get_workflow_by_uid(workflow_uid: str) -> Optional[Workflow]:
@@ -87,8 +120,10 @@ class WorkflowManager:
         return await Workflow.filter(uid=workflow_uid).first()
 
     @staticmethod
-    async def get_activities_by_workflow(workflow_uid: str) -> List[Activity]:
+    async def get_activities_by_workflow(workflow_uid: uuid.UUID) -> List[Activity]:
         """获取工作流的所有活动
+
+        如果活动不存在，会自动根据 workflow 的配置创建所有活动
 
         Args:
             workflow_uid: 工作流 UID
@@ -96,24 +131,31 @@ class WorkflowManager:
         Returns:
             活动列表
         """
-        return await Activity.filter(workflow_uid=workflow_uid)
+        # 获取所有活动
+        activities = await Activity.filter(workflow_uid=workflow_uid)
 
-    @staticmethod
-    async def get_activity_by_name(
-        workflow_uid: str, activity_name: str
-    ) -> Optional[Activity]:
-        """根据名称获取活动
+        # 如果活动不存在，则自动创建
+        if not activities:
+            # 获取 workflow 信息
+            workflow = await WorkflowManager.get_workflow_by_uid(workflow_uid)
+            if workflow:
+                logger.info(f"No activities found for workflow {workflow_uid}, creating activities...")
+                config = workflow.config
+                config_format = workflow.config_format or "dict"
 
-        Args:
-            workflow_uid: 工作流 UID
-            activity_name: 活动名称
+                # 创建所有活动
+                await WorkflowManager.create_activities_for_workflow(
+                    workflow_uid=workflow_uid,
+                    config=config,
+                    config_format=config_format,
+                    initial_inputs=None,
+                )
 
-        Returns:
-            Activity 实例，如果不存在则返回 None
-        """
-        return await Activity.filter(
-            workflow_uid=workflow_uid, name=activity_name
-        ).first()
+                # 重新获取活动列表
+                activities = await Activity.filter(workflow_uid=workflow_uid)
+                logger.info(f"Created {len(activities)} activities for workflow {workflow_uid}")
+
+        return activities
 
     @staticmethod
     async def update_workflow_status(
@@ -228,7 +270,7 @@ class WorkflowManager:
         pending_activities = [
             act
             for act in all_activities
-            if act.status == ActivityStatusEnum.pending.value
+            if act.status in [ActivityStatusEnum.pending, ActivityStatusEnum.failed, ActivityStatusEnum.canceled]
         ]
 
         # 检查哪些待执行的活动可以执行
@@ -236,6 +278,8 @@ class WorkflowManager:
         for activity in pending_activities:
             if graph.is_node_ready(activity.name, completed_activities):
                 ready_activities.append(activity)
+        
+        
 
         return ready_activities
 
