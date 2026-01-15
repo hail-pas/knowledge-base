@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.context import ctx
 from ext.workflow import WorkflowManager
-from ext.workflow.tasks import schedule_workflow_start
+from ext.workflow.tasks import schedule_workflow_start, schedule_workflow_start_celery
 from loguru import logger
 
 
@@ -93,13 +93,22 @@ The system will process this file through multiple tasks:
     logger.info("If workflow stalls, check if worker is running:")
     logger.info("  uv run celery -A ext.ext_celery.worker worker -l info\n")
     try:
-        workflow_uid = await schedule_workflow_start(
-            config=workflow_config,
-            config_format="dict",
-            initial_inputs={},
-            use_async=False
+        # workflow_uid = await schedule_workflow_start(
+        #     config=workflow_config,
+        #     config_format="dict",
+        #     initial_inputs={},
+        #     use_async=False
+        # )
+
+        task_id = schedule_workflow_start_celery.apply_async(
+            args=[
+                workflow_config,
+                "dict",
+                {},
+                False
+            ]
         )
-        logger.success(f"✓ Workflow started: {workflow_uid}")
+        logger.success(f"✓ Workflow started: {task_id}")
     except Exception as e:
         logger.error(f"\n✗ Failed to start workflow: {e}")
         logger.error("\n" + "=" * 60)

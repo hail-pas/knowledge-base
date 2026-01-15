@@ -11,7 +11,6 @@
 2. Celery apply_async 调用（异步方式）
 """
 import asyncio
-import inspect
 from loguru import logger
 from datetime import datetime
 from typing import Any, Dict
@@ -26,28 +25,19 @@ def run_async(coro):
     """
     运行异步协程，自动检测环境
 
-    如果已有事件循环在运行，使用 run_coroutine_threadsafe 在其中运行协程并等待结果
-    否则创建新的事件循环运行
+    在 Celery worker 环境中，复用 worker 的事件循环（不创建新循环）
+    在非 worker 环境（测试、脚本）中，创建新的事件循环运行
     """
-    try:
-        # 尝试获取当前运行的事件循环
-        loop = asyncio.get_running_loop()
-        # 如果已有循环在运行，使用 run_coroutine_threadsafe 并等待结果
-        if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(coro, loop)
-            # 等待协程完成并返回结果
-            return future.result()
-        else:
-            # 循环存在但未运行，直接运行
-            return loop.run_until_complete(coro)
-    except RuntimeError:
-        # 没有运行的事件循环，创建一个新的
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
+    # 尝试获取当前运行的事件循环
+    loop = asyncio.get_event_loop()
+    # 如果已有循环在运行，使用 run_coroutine_threadsafe 并等待结果
+    if loop.is_running():
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        # 等待协程完成并返回结果
+        return future.result()
+    else:
+        # 循环存在但未运行，直接运行
+        return loop.run_until_complete(coro)
 
 
 async def _schedule_workflow_start_async(
@@ -438,14 +428,17 @@ def schedule_activity_handoff_sync(activity_uid: str, use_async: bool = True) ->
     max_retries=3,
     default_retry_delay=60,
 )
-def _schedule_workflow_start_celery(
+def schedule_workflow_start_celery(
     celery_task: CeleryTask,
     config: Dict[str, Any],
     config_format: str = "dict",
     initial_inputs: Dict[str, Any] = None,
     use_async: bool = True,
+    queyue="workflow_entry"
 ) -> str:
-    """Celery 版本的一类调度任务"""
+    """Celery 版本的一类调度任务
+    uv run celery -A ext.ext_celery.worker worker -l info -Q workflow_entry -c 1 -n activity_entry_worker@%%h
+    """
     return schedule_workflow_start_sync(config, config_format, initial_inputs, use_async)
 
 
@@ -454,13 +447,16 @@ def _schedule_workflow_start_celery(
     bind=True,
     max_retries=3,
     default_retry_delay=60,
+    queyue="workflow_entry"
 )
-def _schedule_workflow_resume_celery(
+def schedule_workflow_resume_celery(
     celery_task: CeleryTask,
     workflow_uid: str,
     use_async: bool = True,
 ) -> str:
-    """Celery 版本的二类调度任务"""
+    """Celery 版本的二类调度任务
+    uv run celery -A ext.ext_celery.worker worker -l info -Q workflow_entry -c 1 -n activity_entry_worker@%%h
+    """
     return schedule_workflow_resume_sync(workflow_uid, use_async)
 
 
@@ -469,13 +465,19 @@ def _schedule_workflow_resume_celery(
     bind=True,
     max_retries=3,
     default_retry_delay=60,
+    queue="workflow_activity_handoff",
 )
 def _schedule_activity_handoff_celery(
     celery_task: CeleryTask,
     activity_uid: str,
     use_async: bool = True,
 ) -> str:
-    """Celery 版本的三类调度任务"""
+    """Celery 版本的三类调度任务
+
+    注意：此任务必须使用单独的 worker 执行，并发数为 1，确保顺序执行
+    启动命令：
+        uv run celery -A ext.ext_celery.worker worker -l info -Q workflow_activity_handoff -c 1 -n activity_handoff_worker@%%h
+    """
     return schedule_activity_handoff_sync(activity_uid, use_async)
 
 

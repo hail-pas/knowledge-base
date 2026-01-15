@@ -126,6 +126,24 @@ class CeleryConfig(InstanceExtensionConfig[Celery]):
 
         celery_config = get_celery_config()
 
+        # 定义任务路由（Redis broker 不需要 routing_key）
+        task_routes = {
+            'workflow.activity_handoff': {
+                'queue': 'workflow_activity_handoff',
+            },
+            "workflow.schedule_start": {
+                "queue": "workflow_entry"
+            },
+            "workflow.schedule_resume": {
+                "queue": "workflow_entry"
+            },
+            'workflow.*': {
+                'queue': 'default',
+            },
+        }
+        
+        print(">>>>>" * 20, self.broker_url.query)
+
         _CELERY_APP.conf.update(
             # 序列化配置
             task_serializer=celery_config.task_serializer,
@@ -140,7 +158,7 @@ class CeleryConfig(InstanceExtensionConfig[Celery]):
             result_expires=celery_config.result_expires,
 
             # 任务路由
-            # task_routes=celery_config.task_routes,
+            task_routes=task_routes,
             task_default_queue=celery_config.task_default_queue,
             task_default_priority=celery_config.task_default_priority,
             task_default_routing_key=celery_config.task_default_routing_key,
@@ -160,6 +178,20 @@ class CeleryConfig(InstanceExtensionConfig[Celery]):
             task_retry_backoff_max=celery_config.task_retry_backoff_max,
             task_retry_jitter=celery_config.task_retry_jitter,
             task_default_max_retries=celery_config.task_default_max_retries,
+
+            # Broker 连接重试配置（Celery 6.0+）
+            broker_connection_retry_on_startup=True,
+
+            # SSL 配置（用于 Redis 连接）
+            broker_use_ssl={
+                # 'ssl_cert_reqs': 0,  # 0 = ssl.CERT_NONE, 不验证证书
+                #
+                'ssl_cert_reqs': 2,  # 2 = ssl.CERT_REQUIRED
+                'ssl_ca_certs': self.broker_url.query,
+            },
+            # result_backend_use_ssl={
+            #     'ssl_cert_reqs': 0,
+            # },
 
             # 结果后端配置
             result_backend_transport_options=celery_config.result_backend_transport_options,
