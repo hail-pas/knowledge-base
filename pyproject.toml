@@ -29,6 +29,7 @@ dependencies = [
     # >>>>>>>
     "python-jose[cryptography]==3.4.0",
     "redis==6.1.0",
+    "celery==5.4.0",
     "cachetools==5.5.2",
     "loguru==0.7.3",
     "python-ulid==3.0.0",
