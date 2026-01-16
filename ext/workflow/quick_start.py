@@ -95,27 +95,29 @@ The system will process this file through multiple tasks:
     logger.info("If workflow stalls, check if worker is running:")
     logger.info("  uv run celery -A ext.ext_celery.worker worker -l info\n")
     try:
-        workflow_uid = await schedule_workflow_start(
+
+        import uuid
+        workflow_uid = uuid.uuid4()
+
+        # 创建工作流记录
+        workflow = await Workflow.create(
+            uid=workflow_uid,
+            config=workflow_config,
+            config_format="dict",
+            status=WorkflowStatusEnum.pending.value,
+        )
+
+        await schedule_workflow_start(
+            workflow_uid=workflow_uid,
             config=workflow_config,
             config_format="dict",
             initial_inputs={},
             use_async=False
         )
 
-        # import uuid
-        # workflow_uid = "c9f11a7d-c260-40e4-bbc8-6e0298904c1c"
-
-        # 创建工作流记录
-        # workflow = await Workflow.create(
-        #     uid=workflow_uid,
-        #     config=workflow_config,
-        #     config_format="dict",
-        #     status=WorkflowStatusEnum.pending.value,
-        # )
-
         logger.success(f"✓ Workflow started: {workflow_uid}")
 
-        workflow_uid = await schedule_workflow_resume(workflow_uid, use_async=False)
+        # workflow_uid = await schedule_workflow_resume(workflow_uid, use_async=False)
     except Exception as e:
         logger.error(f"\n✗ Failed to start workflow: {e}")
         logger.error("\n" + "=" * 60)

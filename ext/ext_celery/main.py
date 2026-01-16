@@ -128,15 +128,15 @@ class CeleryConfig(InstanceExtensionConfig[Celery]):
 
         # 定义任务路由（Redis broker 不需要 routing_key）
         task_routes = {
-            'workflow.activity_handoff': {
-                'queue': 'workflow_activity_handoff',
-            },
-            "workflow.schedule_start": {
-                "queue": "workflow_entry"
-            },
-            "workflow.schedule_resume": {
-                "queue": "workflow_entry"
-            },
+            # 'workflow.activity_handoff': {
+            #     'queue': 'workflow_activity_handoff',
+            # },
+            # "workflow.schedule_start": {
+            #     "queue": "workflow_entry"
+            # },
+            # "workflow.schedule_resume": {
+            #     "queue": "workflow_entry"
+            # },
             'workflow.*': {
                 'queue': 'default',
             },

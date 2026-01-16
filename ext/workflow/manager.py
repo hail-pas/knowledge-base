@@ -108,7 +108,7 @@ class WorkflowManager:
         return activities
 
     @staticmethod
-    async def get_workflow_by_uid(workflow_uid: str) -> Optional[Workflow]:
+    async def get_workflow_by_uid(workflow_uid: uuid.UUID) -> Optional[Workflow]:
         """根据 UID 获取工作流
 
         Args:
@@ -159,7 +159,7 @@ class WorkflowManager:
 
     @staticmethod
     async def update_workflow_status(
-        workflow_uid: str,
+        workflow_uid: uuid.UUID,
         status: WorkflowStatusEnum,
         started_at: Optional[datetime] = None,
         completed_at: Optional[datetime] = None,
@@ -245,7 +245,7 @@ class WorkflowManager:
 
     @staticmethod
     async def get_ready_activities(
-        workflow_uid: str, graph: GraphUtil
+        workflow_uid: uuid.UUID, graph: GraphUtil
     ) -> List[Activity]:
         """获取准备执行的活动
 
@@ -278,13 +278,13 @@ class WorkflowManager:
         for activity in pending_activities:
             if graph.is_node_ready(activity.name, completed_activities):
                 ready_activities.append(activity)
-        
-        
+
+
 
         return ready_activities
 
     @staticmethod
-    async def check_workflow_completion(workflow_uid: str) -> bool:
+    async def check_workflow_completion(workflow_uid: uuid.UUID) -> bool:
         """检查工作流是否完成
 
         Args:
@@ -331,7 +331,7 @@ class WorkflowManager:
         return True
 
     @staticmethod
-    async def mark_workflow_failed(workflow_uid: str, reason: str) -> None:
+    async def mark_workflow_failed(workflow_uid: uuid.UUID, reason: str) -> None:
         """标记工作流为失败状态
 
         Args:

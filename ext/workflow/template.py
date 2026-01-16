@@ -7,6 +7,7 @@
 1. 直接调用（同步方式）
 2. Celery apply_async 调用（异步方式）
 """
+import uuid
 import asyncio
 import traceback
 from abc import ABC, abstractmethod
@@ -33,26 +34,22 @@ def run_async(coro):
     否则创建新的事件循环运行
     """
 
-    async def ctx_wrapper():
-        async with ctx():
-            return await coro
-
     try:
         # 尝试获取当前运行的事件循环
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
         # 如果已有循环在运行，使用 run_coroutine_threadsafe 并等待结果
         if loop.is_running():
-            future = asyncio.run_coroutine_threadsafe(ctx_wrapper(), loop)
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
             # 等待协程完成并返回结果
             return future.result()
         else:
             # 循环存在但未运行，直接运行
-            return loop.run_until_complete(ctx_wrapper())
+            return loop.run_until_complete(coro)
     except RuntimeError:
         # 没有运行的事件循环，创建一个新的
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        return loop.run_until_complete(ctx_wrapper())
+        return loop.run_until_complete(coro)
         # Don't close the loop - let Celery manage the loop lifecycle
         # Closing the loop causes issues with database connection pool cleanup
 
@@ -82,7 +79,7 @@ class ActivityTaskTemplate(ABC):
             use_async: 是否使用 Celery apply_async，False 表示直接调用（用于本地调试）
         """
         self.celery_task = celery_task
-        self.activity_uid = activity_uid
+        self.activity_uid = uuid.UUID(activity_uid)
         self.use_async = use_async
         self.activity: Optional[Activity] = None
         self.workflow: Optional[Workflow] = None
@@ -90,28 +87,30 @@ class ActivityTaskTemplate(ABC):
 
     async def _call_async(self) -> Dict[str, Any]:
         """异步执行任务的完整流程"""
-        try:
-            # 1. 加载 Activity 记录
-            await self._load_activity()
+        # 先加载 activity 以获取 workflow_uid
+        await self._load_activity()
 
-            # 2. 更新状态为运行中
-            await self._update_status_to_running()
+        # 使用 workflow_uid 作为 trace_id
+        with logger.contextualize(trace_id=self.activity.workflow_uid, activity_uid=self.activity.uid): # type: ignore
+            try:
+                # 2. 更新状态为运行中
+                await self._update_status_to_running()
 
-            # 3. 执行用户自定义的业务逻辑
-            output = await self.execute()
+                # 3. 执行用户自定义的业务逻辑
+                output = await self.execute()
 
-            # 4. 保存输出并更新状态为完成
-            await self._update_status_to_completed(output)
+                # 4. 保存输出并更新状态为完成
+                await self._update_status_to_completed(output)
 
-            return output
+                return output
 
-        except Retry:
-            # Celery 重试异常，不更新状态，直接抛出
-            raise
-        except Exception as e:
-            # 5. 处理异常，更新状态
-            await self._handle_exception(e)
-            raise
+            except Retry:
+                # Celery 重试异常，不更新状态，直接抛出
+                raise
+            except Exception as e:
+                # 5. 处理异常，更新状态
+                await self._handle_exception(e)
+                raise
 
     async def _load_activity(self) -> None:
         """加载 Activity 和 Workflow 记录"""
@@ -128,7 +127,7 @@ class ActivityTaskTemplate(ABC):
         # 构建 DAG 图
         self.graph = GraphUtil(
             config=self.workflow.config,
-            config_format=self.workflow.config_format.value,
+            config_format=self.workflow.config_format.value, # type: ignore
         )
 
     async def _update_status_to_running(self) -> None:
@@ -218,7 +217,7 @@ class ActivityTaskTemplate(ABC):
                 # 直接调用（同步，用于本地调试）
                 # 手动创建任务实例并调用，避免通过 sync_wrapper 导致死锁
                 from .tasks import _schedule_activity_handoff_async
-                await _schedule_activity_handoff_async(str(self.activity.uid), self.use_async)
+                await _schedule_activity_handoff_async(self.activity.uid, self.use_async)
 
     @abstractmethod
     async def execute(self) -> Dict[str, Any]:
