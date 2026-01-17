@@ -15,7 +15,7 @@ class ConnectionNameEnum(str, enum.Enum):
     """数据库连接名称"""
 
     # default = "default"  # "默认连接"
-    # user_center = "user_center"  # "用户中心连接"
+    user_center = "user_center"  # "用户中心连接"
     knowledge_base = "knowledge_base"
 
 

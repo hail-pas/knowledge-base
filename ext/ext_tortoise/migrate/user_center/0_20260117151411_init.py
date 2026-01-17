@@ -3,13 +3,7 @@ from tortoise import BaseDBAsyncClient
 
 async def upgrade(db: BaseDBAsyncClient) -> str:
     return """
-        CREATE TABLE IF NOT EXISTS `aerich` (
-    `id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-    `version` VARCHAR(255) NOT NULL,
-    `app` VARCHAR(100) NOT NULL,
-    `content` JSON NOT NULL
-) CHARACTER SET utf8mb4;
-CREATE TABLE IF NOT EXISTS `config` (
+        CREATE TABLE IF NOT EXISTS `config` (
     `id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
     `key` VARCHAR(128) NOT NULL UNIQUE COMMENT '配置项key',
     `value` JSON NOT NULL COMMENT '配置项值',
@@ -25,7 +19,6 @@ CREATE TABLE IF NOT EXISTS `resource` (
     `id` BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
     `created_at` DATETIME(6) NOT NULL COMMENT '创建时间' DEFAULT CURRENT_TIMESTAMP(6),
     `code` VARCHAR(32) NOT NULL COMMENT '资源编码{parent}:{current}',
-    `icon_path` VARCHAR(256) COMMENT '图标',
     `label` VARCHAR(64) NOT NULL COMMENT '资源名称',
     `front_route` VARCHAR(128) COMMENT '前端路由',
     `resource_type` VARCHAR(16) NOT NULL COMMENT '资源类型, menu: 菜单, button: 按钮, api: 接口',
@@ -74,6 +67,12 @@ CREATE TABLE IF NOT EXISTS `account` (
     KEY `idx_account_created_028865` (`created_at`),
     KEY `idx_account_deleted_c0aa6b` (`deleted_at`)
 ) CHARACTER SET utf8mb4 COMMENT='用户';
+CREATE TABLE IF NOT EXISTS `aerich` (
+    `id` INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    `version` VARCHAR(255) NOT NULL,
+    `app` VARCHAR(100) NOT NULL,
+    `content` JSON NOT NULL
+) CHARACTER SET utf8mb4;
 CREATE TABLE IF NOT EXISTS `resource_role` (
     `resource_id` BIGINT NOT NULL,
     `role_id` BIGINT NOT NULL,

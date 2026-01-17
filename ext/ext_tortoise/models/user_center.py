@@ -7,7 +7,6 @@ from constant.regex import EMAIL_REGEX, PHONE_REGEX_CN, ACCOUNT_USERNAME_REGEX
 from ext.ext_tortoise import enums
 from ext.ext_redis.keys import UserCenterKey
 from ext.ext_tortoise.main import ConnectionNameEnum
-from ext.ext_tortoise.base.fields import FileField
 from ext.ext_tortoise.base.models import (
     BaseModel,
     CreateOnlyModel,
@@ -103,7 +102,7 @@ class Account(BaseModel):
         """
         if not self.last_login_at:
             return None
-        return (local_configs.extensions.relation.datetime_now - self.last_login_at).days
+        return (local_configs.extensions.rdb_user_center.datetime_now - self.last_login_at).days
 
     async def has_permission(
         self,
@@ -186,7 +185,7 @@ class Account(BaseModel):
 
         return await cls.filter(**filter_, deleted_at=0).first()
 
-    class Meta:
+    class Meta: # type: ignore
         table_description = "用户"
         app = UserCenterConnection
         ordering = ["-id"]
@@ -211,7 +210,7 @@ class Role(BaseModel):
     accounts: fields.ReverseRelation[Account]
     resources: fields.ManyToManyRelation["Resource"]
 
-    class Meta:
+    class Meta: # type: ignore
         table_description = "角色"
         ordering = ["-id"]
         app = UserCenterConnection
@@ -231,7 +230,7 @@ class Permission(models.Model):
     # reversed relations
     resources: fields.ManyToManyRelation["Resource"]
 
-    class Meta:
+    class Meta: # type: ignore
         table_description = "权限"
         ordering = ["-code"]
         app = UserCenterConnection
@@ -243,12 +242,12 @@ class Resource(BigIntegerIDPrimaryKeyModel, CreateOnlyModel):
         description="资源编码{parent}:{current}",
         index=True,
     )
-    icon_path = FileField(
-        max_length=256,
-        description="图标",
-        null=True,
-        storage=local_configs.extensions.file_source.instance,
-    )
+    # icon_path = FileField(
+    #     max_length=256,
+    #     description="图标",
+    #     null=True,
+    #     storage=local_configs.extensions.file_source.instance,
+    # )
     label = fields.CharField(max_length=64, description="资源名称", index=True)
     front_route = fields.CharField(
         max_length=128,
@@ -299,7 +298,7 @@ class Resource(BigIntegerIDPrimaryKeyModel, CreateOnlyModel):
     def scene_display(self) -> str:
         return self.scene.label
 
-    class Meta:
+    class Meta: # type: ignore
         table_description = "系统资源"
         ordering = ["order_num"]
         unique_together = (("code", "parent", "scene"),)
@@ -311,7 +310,7 @@ class Config(models.Model):
     value = fields.JSONField(default=dict, description="配置项值")
     description = fields.CharField(max_length=255, description="配置项描述")
 
-    class Meta:
+    class Meta: # type: ignore
         table_description = "系统配置"
         ordering = ["-id"]
         app = UserCenterConnection

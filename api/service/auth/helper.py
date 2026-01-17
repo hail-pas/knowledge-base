@@ -19,6 +19,7 @@ from ext.ext_tortoise.models.user_center import Account
 
 async def login_cache_redis(account: Account, scene: enums.TokenSceneTypeEnum) -> str:
     token = uuid.uuid4().hex
+    return token
     # account_info = AccountRedisInfo.model_validate(account).model_dump()
     perms = await account.get_permission_codes()
     async with local_configs.extensions.redis.instance as r:

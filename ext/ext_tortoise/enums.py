@@ -144,12 +144,7 @@ class IndexingBackendTypeEnum(StrEnum):
     """Indexing 后端类型"""
 
     elasticsearch = ("elasticsearch", "Elasticsearch")
-    opensearch = ("opensearch", "OpenSearch")
     milvus = ("milvus", "Milvus")
-    qdrant = ("qdrant", "Qdrant")
-    weaviate = ("weaviate", "Weaviate")
-    pgvector = ("pgvector", "PGVector")
-    chroma = ("chroma", "Chroma")
 
 
 class IndexingTypeEnum(StrEnum):

@@ -255,7 +255,7 @@ class IndexingBackendConfig(BaseModel):
     name = fields.CharField(max_length=100, description="配置名称")
     type = fields.CharEnumField(
         IndexingBackendTypeEnum,
-        description="后端类型（elasticsearch/milvus/qdrant等）"
+        description="后端类型（elasticsearch/milvus等）"
     )
     host = fields.CharField(max_length=255, description="主机地址")
     port = fields.IntField(description="端口", null=True)

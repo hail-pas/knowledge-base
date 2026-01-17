@@ -14,7 +14,7 @@ description = """
 <br><br>
 User-Center: <a href="/user/docs/">用户中心服务接口文档</a>
 <br><br>
-Knowledge-Base: <a href="/second/docs/">第二服務接口文档</a>
+Knowledge-Base: <a href="/knowledge/docs/">知识管理接口文档</a>
 <br><br>
 """
 
@@ -33,7 +33,7 @@ service_api.mount(
     "用户中心",
 )
 service_api.mount(
-    "/second",
+    "/knowledge",
     knowledge_api,
-    "第二服务中心",
+    "RAG知识管理中心",
 )

@@ -41,7 +41,7 @@ async def login_with_pwd(request: Request, login_data: PasswordLoginSchema) -> R
         data=LoginResponse(
             account=AccountList.model_validate(account),
             token=token,
-            expired_at=local_configs.extensions.relation.datetime_now
+            expired_at=local_configs.extensions.rdb_user_center.datetime_now
             + timedelta(seconds=local_configs.server.token_expire_seconds),
         ),
     )
@@ -60,7 +60,7 @@ async def login_with_code(request: Request, login_data: CodeLoginSchema) -> Resp
         data=LoginResponse(
             account=AccountList.model_validate(account),
             token=token,
-            expired_at=local_configs.extensions.relation.datetime_now
+            expired_at=local_configs.extensions.rdb_user_center.datetime_now
             + timedelta(seconds=local_configs.server.token_expire_seconds),
         ),
     )
@@ -76,7 +76,7 @@ async def logout(
     scene: enums.TokenSceneTypeEnum,
     account: Account = Depends(token_required),
 ) -> Resp:
-    await logout_cache_redis(account, scene)
+    # await logout_cache_redis(account, scene)
     return Resp()
 
 

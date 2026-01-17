@@ -13,10 +13,12 @@ from ext.ext_tortoise.models.user_center import Account
 class AccountCreate(
     pydantic_model_creator(Account, name="AccountCreate", exclude=("last_login_at", "status"), exclude_readonly=True)
 ):
+    role_id: int
+
     @field_validator("password")
     def encrypt_pwd(cls, v: str) -> str:
-        if not PASSWORD_REGEX.match(v):
-            raise ApiException("密码格式错误")
+        # if not PASSWORD_REGEX.match(v):
+        #     raise ApiException("密码格式错误")
         return PasswordUtil.get_password_hash(v)
 
 
