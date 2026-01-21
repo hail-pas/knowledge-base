@@ -13,6 +13,7 @@ from config.main import local_configs
 from util.encrypt import HashUtil
 from core.response import ResponseCodeEnum
 from ext.ext_tortoise.models.user_center import Account
+from ext.ext_redis import keys
 
 
 class TheBearer(HTTPBearer):
