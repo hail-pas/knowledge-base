@@ -226,7 +226,7 @@ async def create_document_by_uri(request: Request, schema: DocumentCreateByUri) 
     # 提取文件信息
     file_name = schema.file_name
     display_name = schema.display_name or file_name
-    extension = schema.extension or (file_name.rsplit(".", 1)[-1] if "." in file_name else "")
+    extension = (file_name.rsplit(".", 1)[-1] if "." in file_name else "")
 
     # 准备文档数据
     document_data = {
@@ -236,13 +236,13 @@ async def create_document_by_uri(request: Request, schema: DocumentCreateByUri) 
         "file_name": file_name,
         "display_name": display_name,
         "extension": extension,
-        "file_size": schema.file_size or file_size,
+        "file_size": file_size,
         "source_last_modified": schema.source_last_modified or source_last_modified,
         "source_version_key": schema.source_version_key,
-        "short_summary": schema.short_summary,
-        "long_summary": schema.long_summary,
+        "short_summary": "",
+        "long_summary": "",
         "source_meta": schema.source_meta or source_meta,
-        "status": schema.status,
+        "status": DocumentStatusEnum.pending
     }
 
     await create_obj(Document, document_data)

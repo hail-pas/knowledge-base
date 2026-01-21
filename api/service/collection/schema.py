@@ -46,7 +46,7 @@ class CollectionUpdate(
         Collection,
         name="CollectionUpdate",
         exclude_readonly=True,
-        include=("name", "description", )
+        include=("name", "description", "is_public")
     )
 ): ...
 

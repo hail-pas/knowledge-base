@@ -100,7 +100,7 @@ async def validation_exception_handler(
         content=Resp(
             code=ResponseCodeEnum.failed,
             message=f"{field_name}: {message}",
-            data=exc.errors(),  # {"data": exc.body, "errors": error_list},
+            data=repr(exc.errors()),  # {"data": exc.body, "errors": error_list},
         ).model_dump_json(),
         status_code=422,
     )

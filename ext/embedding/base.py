@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 from pydantic import BaseModel
-import numpy as np
 from loguru import logger
 
 

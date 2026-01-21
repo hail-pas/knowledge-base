@@ -41,10 +41,7 @@ class DocumentCreateByUpload(BaseModel):
     """通过上传文件创建文档"""
     collection_id: int = Field(..., description="关联集合ID")
     display_name: str | None = Field(None, description="显示名称，默认使用文件名")
-    short_summary: str | None = Field(None, description="文件摘要")
-    long_summary: str | None = Field(None, description="文件详细摘要")
     file_source_id: int | None = Field(None, description="关联文件源ID（可选，不传则使用默认）")
-    status: DocumentStatusEnum = Field(DocumentStatusEnum.pending, description="文件状态")
 
 
 class DocumentCreateByUri(BaseModel):
@@ -54,21 +51,16 @@ class DocumentCreateByUri(BaseModel):
     uri: str = Field(..., description="文件唯一标识")
     file_name: str = Field(..., description="文件名")
     display_name: str | None = Field(None, description="显示名称，默认使用file_name")
-    extension: str | None = Field(None, description="文件扩展名，默认从file_name提取")
-    file_size: int | None = Field(None, description="文件大小(字节)，从文件源获取")
     source_last_modified: str | None = Field(None, description="文件源最后修改时间")
     source_version_key: str | None = Field(None, description="文件源版本标识")
-    short_summary: str | None = Field(None, description="文件摘要")
-    long_summary: str | None = Field(None, description="文件详细摘要")
     source_meta: dict | None = Field(None, description="文件源元数据")
-    status: DocumentStatusEnum = Field(DocumentStatusEnum.pending, description="文件状态")
 
 
 class DocumentUpdate(BaseModel):
     file_name: str = Field(..., description="文件名")
     display_name: str | None = Field(None, description="显示名称，默认使用file_name")
-    short_summary: str | None = Field(None, description="文件摘要")
-    long_summary: str | None = Field(None, description="文件详细摘要")
+    # short_summary: str | None = Field(None, description="文件摘要")
+    # long_summary: str | None = Field(None, description="文件详细摘要")
 
 
 @as_query
