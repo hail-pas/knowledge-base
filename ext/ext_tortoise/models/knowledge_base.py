@@ -1,4 +1,5 @@
 from tortoise import fields
+from config import default
 from ext.ext_tortoise.base.models import BaseModel, CreateOnlyModel
 from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import (
@@ -27,6 +28,50 @@ class Collection(BaseModel):
     role_id = fields.UUIDField(description="角色ID", null=True)
     is_public = fields.BooleanField(default=False, description="是否公开")
     is_temp = fields.BooleanField(default=False, description="是否临时")
+    workflow_template = fields.JSONField(default=dict, description="默认DAG工作流模版")
+    extra_config = fields.JSONField(default=dict,  description="额外配置：gen_faq: bool, use_mineru: bool 等，可继续扩展")
+    # workflow template 默认值为：
+    # {
+    #     "fetch_file": {
+    #         "input": {"file_path": file_path},
+    #         "execute_params": {"task_name": "workflow_activity.FetchFileTask"},
+    #         "depends_on": []
+    #     },
+    #     "load_file": {
+    #         "execute_params": {"task_name": "workflow_activity.LoadFileTask"},
+    #         "depends_on": ["fetch_file"]
+    #     },
+    #     "replace_content": {
+    #         "execute_params": {"task_name": "workflow_activity.ReplaceContentTask"},
+    #         "depends_on": ["load_file"],
+    #         "input": {"replace_rules": []}
+    #     },
+    #     "summary": {
+    #         "execute_params": {"task_name": "workflow_activity.SummaryTask"},
+    #         "depends_on": ["replace_content"],
+    #         "input": {"max_length": 100}
+    #     },
+    #     "split_text": {
+    #         "execute_params": {"task_name": "workflow_activity.SplitTask"},
+    #         "depends_on": ["replace_content"],
+    #         "input": {"split_policy": "markdown"}
+    #     },
+    #     "index_to_milvus": {
+    #         "execute_params": {"task_name": "workflow_activity.IndexMilvusTask"},
+    #         "depends_on": ["split_text"],
+    #         "input": {}
+    #     },
+    #     "index_to_es": {
+    #         "execute_params": {"task_name": "workflow_activity.IndexEsTask"},
+    #         "depends_on": ["replace_content"],
+    #         "input": {}
+    #     },
+    #     "generate_tag": {
+    #         "execute_params": {"task_name": "workflow_activity.GenTagTask"},
+    #         "depends_on": ["replace_content"],
+    #         "input": {}
+    #     }
+    # }
 
     class Meta: # type: ignore
         table = "collection"
@@ -91,7 +136,7 @@ class Document(BaseModel):
     file_size = fields.BigIntField(description="文件大小(字节)", null=True)
     source_last_modified = fields.DatetimeField(description="文件源最后修改时间", null=True)
     source_version_key = fields.CharField(max_length=100, description="文件源版本标识", null=True)
-    is_deleted_in_source = fields.BooleanField(description="文件是否在源中被删除")
+    is_deleted_in_source = fields.BooleanField(default=False, description="文件是否在源中被删除")
     source_meta = fields.JSONField(description="文件源元数据（JSON格式）", null=True)
     short_summary = fields.CharField(max_length=255, description="文件摘要", null=True)
     long_summary = fields.TextField(description="文件详细摘要", null=True)
@@ -340,3 +385,8 @@ class LLMModelConfig(BaseModel):
 
     def __str__(self):
         return f"{self.name} ({self.type}/{self.model_name})"
+
+
+class ChatSkill(BaseModel):
+    """聊天的skill注册列表"""
+    ...

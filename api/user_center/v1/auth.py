@@ -74,7 +74,7 @@ async def login_with_code(request: Request, login_data: CodeLoginSchema) -> Resp
 async def logout(
     request: Request,
     scene: enums.TokenSceneTypeEnum,
-    account: Account = Depends(token_required),
+    # account: Account = Depends(token_required),
 ) -> Resp:
     # await logout_cache_redis(account, scene)
     return Resp()

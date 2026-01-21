@@ -152,6 +152,9 @@ class OpenAIModelWrapper(LLMModel):
             "o1-mini": 128000,
         }
 
+        if self.model_name not in model_limits:
+            return
+
         # 获取模型的上下文限制
         context_limit = model_limits.get(
             self.model_name,

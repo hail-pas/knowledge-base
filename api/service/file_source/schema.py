@@ -13,6 +13,15 @@ class OverridePydanticMeta:
 
 # ============ FileSource Schemas ============
 
+class FileSourceSimpleList(
+    pydantic_model_creator(  # type: ignore
+        FileSource,
+        name="FileSourceList",
+        meta_override=OverridePydanticMeta,
+        include=("id", "name", "type")
+    )
+): ...
+
 
 class FileSourceList(
     pydantic_model_creator(  # type: ignore

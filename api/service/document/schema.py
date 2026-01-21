@@ -1,16 +1,10 @@
 from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
+from api.service.file_source.schema import FileSourceSimpleList
 from enhance.epydantic import as_query, optional
-from ext.ext_tortoise.enums import (
-    DocumentStatusEnum,
-    FileSourceTypeEnum,
-)
-from ext.ext_tortoise.models.knowledge_base import (
-    Collection,
-    Document,
-    FileSource,
-)
+from ext.ext_tortoise.enums import DocumentStatusEnum
+from ext.ext_tortoise.models.knowledge_base import Document
 
 
 class OverridePydanticMeta:
@@ -23,7 +17,10 @@ class DocumentList(
         name="DocumentList",
         meta_override=OverridePydanticMeta
     )
-): ...
+):
+    collection_id: int
+    file_source: FileSourceSimpleList
+    file_source_id: int
 
 
 class DocumentDetail(

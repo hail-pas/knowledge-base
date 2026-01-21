@@ -89,8 +89,6 @@ async def create_document_by_upload(
     file: UploadFile = File(..., description="上传的文件"),
     collection_id: int = Form(..., description="关联集合ID"),
     display_name: str | None = Form(None, description="显示名称，默认使用文件名"),
-    short_summary: str | None = Form(None, description="文件摘要"),
-    long_summary: str | None = Form(None, description="文件详细摘要"),
     file_source_id: int | None = Form(None, description="关联文件源ID（可选，不传则使用默认）"),
     status: str = Form(DocumentStatusEnum.pending.value, description="文件状态"),
 ) -> Resp:
@@ -128,7 +126,9 @@ async def create_document_by_upload(
     file_size = len(file_content)
 
     # 提取文件信息
-    file_name = file.filename or "unknown"
+    file_name = file.filename
+    if not file_name:
+        raise ApiException("文件名不能为空")
     display_name = display_name or file_name
     extension = file_name.rsplit(".", 1)[-1] if "." in file_name else ""
     # 获取文件源适配器并上传文件
@@ -165,9 +165,9 @@ async def create_document_by_upload(
         "file_size": file_size,
         "source_last_modified": source_last_modified,
         "source_version_key": source_version_key,
-        "short_summary": short_summary,
-        "long_summary": long_summary,
-        "status": status,
+        "short_summary": "",
+        "long_summary": "",
+        "status": status
     }
 
     await create_obj(Document, document_data)

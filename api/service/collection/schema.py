@@ -34,7 +34,8 @@ class CollectionCreate(
     pydantic_model_creator(  # type: ignore
         Collection,
         name="CollectionCreate",
-        exclude_readonly=True
+        exclude_readonly=True,
+        exclude=("is_temp", )
     )
 ): ...
 
@@ -44,7 +45,8 @@ class CollectionUpdate(
     pydantic_model_creator(  # type: ignore
         Collection,
         name="CollectionUpdate",
-        exclude_readonly=True
+        exclude_readonly=True,
+        include=("name", "description", )
     )
 ): ...
 
