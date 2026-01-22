@@ -1,6 +1,7 @@
 import uuid
 import datetime
 
+from typing import Iterable
 from ulid import ULID
 from tortoise import fields, manager
 from tortoise.models import Model
@@ -22,14 +23,14 @@ class UUIDPrimaryKeyModel(Model):
         default=lambda: ULID().to_uuid(),
     )
 
-    class Meta:
+    class Meta: # type: ignore
         abstract = True
 
 
 class BigIntegerIDPrimaryKeyModel(Model):
     id = fields.BigIntField(description="主键", pk=True)
 
-    class Meta:
+    class Meta: # type: ignore
         abstract = True
 
 
@@ -47,18 +48,18 @@ class TimeStampModel(Model):
 
     all_objects = manager.Manager()
 
-    class Meta:
+    class Meta: # type: ignore
         abstract = True
 
     async def save(
         self,
         using_db: BaseDBAsyncClient | None = None,
-        update_fields: list[str] | None = None,  # type: ignore
+        update_fields: Iterable[str] | None = None,
         force_create: bool = False,
         force_update: bool = False,
     ) -> None:
         if update_fields:
-            update_fields.append("updated_at")
+            update_fields = list(update_fields) + ["updated_at", ]
         await super().save(using_db, update_fields, force_create, force_update)
 
     async def real_delete(
@@ -91,7 +92,7 @@ class TimeStampModel(Model):
 
 
 class BaseModel(BigIntegerIDPrimaryKeyModel, TimeStampModel):
-    class Meta:
+    class Meta: # type: ignore
         abstract = True
 
 
@@ -102,5 +103,5 @@ class CreateOnlyModel(Model):
         index=True,
     )
 
-    class Meta:
+    class Meta: # type: ignore
         abstract = True

@@ -10,7 +10,7 @@ from ext.ext_tortoise.enums import (
     IndexingBackendTypeEnum,
     WorkflowConfigFormatEnum,
     WorkflowStatusEnum,
-    LLMModelTypeEnum
+    LLMModelTypeEnum,
 )
 
 _KBConnectionName = ConnectionNameEnum.knowledge_base.value
@@ -21,6 +21,7 @@ class Collection(BaseModel):
 
     用于文件分组管理和用户权限隔离
     """
+
     name = fields.CharField(max_length=100, description="集合名称")
     description = fields.TextField(description="描述", null=True)
     user_id = fields.UUIDField(description="用户ID", null=True)
@@ -29,7 +30,9 @@ class Collection(BaseModel):
     is_public = fields.BooleanField(default=False, description="是否公开")
     is_temp = fields.BooleanField(default=False, description="是否临时")
     workflow_template = fields.JSONField(default=dict, description="默认DAG工作流模版")
-    extra_config = fields.JSONField(default=dict,  description="额外配置：gen_faq: bool, use_mineru: bool 等，可继续扩展")
+    extra_config = fields.JSONField(
+        default=dict, description="额外配置：gen_faq: bool, use_mineru: bool 等，可继续扩展"
+    )
     # workflow template 默认值为：
     # {
     #     "fetch_file": {
@@ -73,7 +76,7 @@ class Collection(BaseModel):
     #     }
     # }
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table = "collection"
         table_description = "文件集合表"
         app = _KBConnectionName
@@ -90,6 +93,7 @@ class FileSource(BaseModel):
 
     存储各类文件源的连接配置信息，支持多种文件源类型
     """
+
     name = fields.CharField(max_length=100, description="文件源名称")
     type = fields.CharEnumField(FileSourceTypeEnum, description="文件源类型")
     config = fields.JSONField(description="连接配置（JSON格式）", default=dict)
@@ -97,7 +101,7 @@ class FileSource(BaseModel):
     is_default = fields.BooleanField(default=False, description="是否默认")
     description = fields.TextField(description="描述信息", default="")
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table = "file_source"
         table_description = "文件源配置表"
         app = _KBConnectionName
@@ -117,17 +121,12 @@ class Document(BaseModel):
         - /abs/path
         - site+driveid+itemid
     """
+
     collection = fields.ForeignKeyField(
-        f"{_KBConnectionName}.Collection",
-        related_name="documents",
-        on_delete=fields.CASCADE,
-        description="关联集合"
+        f"{_KBConnectionName}.Collection", related_name="documents", on_delete=fields.CASCADE, description="关联集合"
     )
     file_source = fields.ForeignKeyField(
-        f"{_KBConnectionName}.FileSource",
-        related_name="documents",
-        on_delete=fields.RESTRICT,
-        description="关联文件源"
+        f"{_KBConnectionName}.FileSource", related_name="documents", on_delete=fields.RESTRICT, description="关联文件源"
     )
     uri = fields.CharField(max_length=1000, description="文件唯一标识（本地为绝对路径）")
     file_name = fields.CharField(max_length=255, description="文件名")
@@ -143,16 +142,13 @@ class Document(BaseModel):
     status = fields.CharEnumField(DocumentStatusEnum, description="文件状态")
     current_workflow_uid = fields.UUIDField(null=True, description="当前关联的最新工作流UID")
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table = "document"
         table_description = "文件记录表"
         app = _KBConnectionName
-        unique_together = [
-            ("collection_id", "uri", "deleted_at"),
-            ("collection_id", "file_name", "deleted_at")
-        ]
+        unique_together = [("collection_id", "uri", "deleted_at"), ("collection_id", "file_name", "deleted_at")]
         indexes = [
-            ("collection_id", ),
+            ("collection_id",),
             ("collection_id", "status"),
             ("collection_id", "extension"),
             ("file_source_id",),
@@ -168,17 +164,16 @@ class Workflow(BaseModel):
 
     存储工作流的定义和配置，支持通过YAML/JSON自定义node执行graph
     """
+
     uid = fields.UUIDField(unique=True, description="幂等性唯一标识")
     config = fields.JSONField(description="工作流配置（DAG图结构，支持YAML/JSON格式）, {content: vv}", default=dict)
     config_format = fields.CharEnumField(
         WorkflowConfigFormatEnum,
         default=WorkflowConfigFormatEnum.yaml.value,
-        description="配置格式（yaml/json/python）"
+        description="配置格式（yaml/json/python）",
     )
     status = fields.CharEnumField(
-        WorkflowStatusEnum,
-        default=WorkflowStatusEnum.pending.value,
-        description="工作流状态"
+        WorkflowStatusEnum, default=WorkflowStatusEnum.pending.value, description="工作流状态"
     )
     started_at = fields.DatetimeField(null=True, description="开始执行时间")
     completed_at = fields.DatetimeField(null=True, description="完成时间")
@@ -186,7 +181,7 @@ class Workflow(BaseModel):
 
     schedule_celery_task_id = fields.CharField(max_length=255, null=True, description="schedule 任务ID")
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table = "workflow"
         table_description = "工作流定义表"
         app = _KBConnectionName
@@ -201,6 +196,7 @@ class Activity(CreateOnlyModel):
 
     存储工作流中的节点定义和配置
     """
+
     workflow_uid = fields.UUIDField(description="工作流UID")
     uid = fields.UUIDField(unique=True)
     name = fields.CharField(max_length=200, description="名称")
@@ -208,11 +204,7 @@ class Activity(CreateOnlyModel):
     output = fields.JSONField(description="输出参数", default=dict)
     retry_count = fields.IntField(default=0, description="失败重试次数")
     execute_params = fields.JSONField(description="Celery 执行参数", default=dict)
-    status = fields.CharEnumField(
-        ActivityStatusEnum,
-        default=ActivityStatusEnum.pending.value,
-        description="状态"
-    )
+    status = fields.CharEnumField(ActivityStatusEnum, default=ActivityStatusEnum.pending.value, description="状态")
 
     # 监测支持
     started_at = fields.DatetimeField(null=True, description="开始执行时间")
@@ -225,7 +217,7 @@ class Activity(CreateOnlyModel):
     # 幂等性支持
     celery_task_id = fields.CharField(max_length=255, null=True, description="Celery 任务ID")
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table = "activity"
         table_description = "工作流活动表"
         app = _KBConnectionName
@@ -238,7 +230,7 @@ class Activity(CreateOnlyModel):
         ordering = ["-id"]
 
     def __str__(self):
-        return f"{self.workflow_uid}: {self.name} ({self.status})" # type: ignore
+        return f"{self.workflow_uid}: {self.name} ({self.status})"  # type: ignore
 
 
 class EmbeddingModelConfig(BaseModel):
@@ -246,50 +238,44 @@ class EmbeddingModelConfig(BaseModel):
 
     存储各类 embedding 模型的配置信息，支持动态切换不同的 embedding 服务
     """
-    name = fields.CharField(max_length=100, description="模型配置名称")
-    type = fields.CharEnumField(
-        EmbeddingModelTypeEnum,
-        description="模型类型（openai/sentence_transformers等）"
-    )
-    model_name_or_path = fields.CharField(
-        max_length=255,
-        description="模型标识符或路径（如 text-embedding-3-small, sentence-transformers/...）"
-    )
-    config = fields.JSONField(
-        description="模型配置参数（JSON格式，如 api_key、endpoint 等）",
-        default=dict
-    )
-    dimension = fields.IntField(description="向量维度", null=True)
-    max_batch_size = fields.IntField(
-        default=32,
-        description="最大批处理大小，避免文本过大导致服务端无法处理"
-    )
-    max_token_per_request = fields.IntField(
-        default=8191,
-        description="单次请求最大 token 数"
-    )
-    max_token_per_text = fields.IntField(
-        default=512,
-        description="单个文本的最大 token 长度"
-    )
+
+    # 基本配置
+    name = fields.CharField(max_length=100, unique=True, description="配置名称")
+    type = fields.CharEnumField(EmbeddingModelTypeEnum, description="模型类型")
+    model_name = fields.CharField(max_length=255, description="模型标识符")
+
+    # API配置（必填）
+    api_key = fields.CharField(max_length=500, null=True, description="API密钥")
+    base_url = fields.CharField(max_length=500, null=True, description="API基础URL")
+
+    # 模型配置（必填）
+    dimension = fields.IntField(null=False, description="向量维度")
+    max_chunk_length = fields.IntField(default=8192, description="单条chunk最大长度")
+
+    # 批处理配置
+    batch_size = fields.IntField(default=100, description="批处理大小")
+    max_retries = fields.IntField(default=3, description="最大重试次数")
+    timeout = fields.IntField(default=60, description="请求超时时间(秒)")
+    rate_limit = fields.IntField(default=60, description="每分钟最大请求数(0=无限制)")
+
+    # 扩展配置（provider特定配置）
+    extra_config = fields.JSONField(default=dict, description="provider特定扩展配置")
+
+    # 状态配置
     is_enabled = fields.BooleanField(default=True, description="是否启用")
-    is_default = fields.BooleanField(default=False, description="是否默认模型")
+    is_default = fields.BooleanField(default=False, description="是否默认配置")
     description = fields.TextField(description="描述信息", default="")
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table = "embedding_model_config"
-        table_description = "Embedding 模型配置表"
+        table_description = "Embedding模型配置表"
         app = _KBConnectionName
-        unique_together = [("model_name_or_path", "deleted_at")]
         indexes = [
-            ("type",),
             ("is_enabled",),
             ("is_default",),
+            ("type",),
         ]
         ordering = ["-id"]
-
-    def __str__(self):
-        return f"{self.name} ({self.type})"
 
 
 class IndexingBackendConfig(BaseModel):
@@ -297,36 +283,6 @@ class IndexingBackendConfig(BaseModel):
 
     存储各类索引后端服务（如Elasticsearch、Milvus等）的连接配置信息
     """
-    name = fields.CharField(max_length=100, description="配置名称")
-    type = fields.CharEnumField(
-        IndexingBackendTypeEnum,
-        description="后端类型（elasticsearch/milvus等）"
-    )
-    host = fields.CharField(max_length=255, description="主机地址")
-    port = fields.IntField(description="端口", null=True)
-    username = fields.CharField(max_length=100, description="用户名", null=True)
-    password = fields.CharField(max_length=255, description="密码", null=True)
-    api_key = fields.CharField(max_length=255, description="API密钥", null=True)
-    secure = fields.BooleanField(default=False, description="是否使用HTTPS/SSL")
-    config = fields.JSONField(description="额外配置参数（JSON格式）", default=dict)
-    is_enabled = fields.BooleanField(default=True, description="是否启用")
-    is_default = fields.BooleanField(default=False, description="是否默认配置")
-    description = fields.TextField(description="描述信息", default="")
-
-    class Meta: # type: ignore
-        table = "indexing_backend_config"
-        table_description = "索引后端配置表"
-        app = _KBConnectionName
-        unique_together = [("name", "deleted_at")]
-        indexes = [
-            ("type",),
-            ("is_enabled",),
-            ("is_default",),
-        ]
-        ordering = ["-id"]
-
-    def __str__(self):
-        return f"{self.name} ({self.type})"
 
 
 class LLMModelConfig(BaseModel):
@@ -334,59 +290,9 @@ class LLMModelConfig(BaseModel):
 
     存储各类大语言模型的配置信息，支持动态切换不同的 LLM 服务和模型能力
     """
-    name = fields.CharField(max_length=100, description="模型配置名称，不唯一")
-    type = fields.CharEnumField(
-        LLMModelTypeEnum,
-        description="模型类型（openai/azure_openai/deepseek等）"
-    )
-    model_name = fields.CharField(
-        max_length=255,
-        description="模型标识符（如 gpt-4o, claude-3-opus, gemini-pro 等）"
-    )
-    config = fields.JSONField(
-        description="模型配置参数（JSON格式，如 api_key、base_url、temperature 等）",
-        default=dict
-    )
-
-    # 能力配置（JSON格式）
-    capabilities = fields.JSONField(
-        description="模型能力配置（JSON格式），包含：function_calling, json_output, multimodal, streaming, vision, audio_input, audio_output 等",
-        default=dict
-    )
-
-    # 模型限制参数
-    max_tokens = fields.IntField(
-        default=4096,
-        description="模型最大输出 token 数"
-    )
-    max_retries = fields.IntField(default=3, description="最大重试次数")
-    timeout = fields.IntField(default=60, description="请求超时时间（秒）")
-    rate_limit = fields.IntField(
-        default=60,
-        description="每分钟最大请求次数（0表示无限制）"
-    )
-
-    # 状态标记
-    is_enabled = fields.BooleanField(default=True, description="是否启用")
-    is_default = fields.BooleanField(default=False, description="是否默认模型")
-    description = fields.TextField(description="描述信息", default="")
-
-    class Meta:  # type: ignore
-        table = "llm_model_config"
-        table_description = "LLM 模型配置表"
-        app = _KBConnectionName
-        unique_together = [("model_name", "deleted_at")]
-        indexes = [
-            ("type",),
-            ("is_enabled",),
-            ("is_default",),
-        ]
-        ordering = ["-id"]
-
-    def __str__(self):
-        return f"{self.name} ({self.type}/{self.model_name})"
 
 
 class ChatSkill(BaseModel):
     """聊天的skill注册列表"""
+
     ...
