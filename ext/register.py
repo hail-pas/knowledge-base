@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from ext.ext_redis.main import RedisConfig
 from ext.ext_tortoise.main import TortoiseConfig
 from ext.ext_celery.main import CeleryConfig
+from ext.ext_httpx.main import HttpxConfig
 
 
 class ExtensionRegistry(BaseModel):
@@ -15,3 +16,4 @@ class ExtensionRegistry(BaseModel):
     rdb_user_center: TortoiseConfig
     rdb_knowledge_base: TortoiseConfig
     celery: CeleryConfig
+    httpx: HttpxConfig = HttpxConfig()
