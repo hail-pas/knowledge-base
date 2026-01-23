@@ -3,6 +3,7 @@ Anthropic LLM Provider
 
 使用官方 Anthropic SDK 实现
 """
+
 import orjson
 from typing import AsyncIterator, Any
 from loguru import logger
@@ -20,6 +21,7 @@ from ext.llm.types import (
     TokenUsage,
     ToolCall,
 )
+from util.general import truncate_content
 
 
 class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
@@ -35,6 +37,9 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        logger.debug(
+            f"Initializing Anthropic client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}"
+        )
         self._client = AsyncAnthropic(
             api_key=self.api_key,
             base_url=self.base_url,
@@ -92,7 +97,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                                 },
                             }
                         )
-                converted_msg["content"] = content_blocks # type: ignore
+                converted_msg["content"] = content_blocks  # type: ignore
             else:
                 # 纯文本
                 converted_msg["content"] = msg.content
@@ -158,6 +163,14 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
         Returns:
             LLM 响应
         """
+        logger.debug(
+            f"Anthropic chat request - model: {request.model or self.model_name}, "
+            f"messages: {len(request.messages)}, "
+            f"temperature: {request.temperature or self.default_temperature}, "
+            f"max_tokens: {request.max_tokens or self.max_tokens}, "
+            f"tools: {len(request.tools) if request.tools else 0}"
+        )
+
         try:
             messages, system_prompt = self._convert_messages(request.messages)
 
@@ -183,7 +196,14 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
 
             response = await self._client.messages.create(**kwargs)
 
-            return self._parse_response(response)
+            parsed_response = self._parse_response(response)
+
+            logger.debug(
+                f"Anthropic chat response - content: {truncate_content(parsed_response.content)}, "
+                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}"
+            )
+
+            return parsed_response
 
         except anthropic.APIError as e:
             logger.error(f"Anthropic API error: {e}")
@@ -240,7 +260,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
             model=response.model,
         )
 
-    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]: # type: ignore
+    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]:  # type: ignore
         """
         发起对话请求（流式）
 
@@ -250,6 +270,11 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
         Yields:
             流式响应块
         """
+        logger.debug(
+            f"Anthropic chat stream request - model: {request.model or self.model_name}, "
+            f"messages: {len(request.messages)}"
+        )
+
         try:
             messages, system_prompt = self._convert_messages(request.messages)
 
@@ -278,6 +303,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
             current_delta = {}
             final_usage = None
             final_stop_reason = None
+            chunk_count = 0
 
             async for event in stream:
                 if event.type == "content_block_start":
@@ -289,6 +315,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                     # 内容增量
                     if event.delta.type == "text_delta":
                         current_delta["content"] = event.delta.text
+                        chunk_count += 1
                         yield StreamChunk(delta=current_delta.copy())
 
                 elif event.type == "message_stop":
@@ -299,9 +326,9 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                     # 消息级别的增量（使用统计）
                     if hasattr(event, "usage"):
                         final_usage = TokenUsage(
-                            prompt_tokens=event.usage.input_tokens, # type: ignore
+                            prompt_tokens=event.usage.input_tokens,  # type: ignore
                             completion_tokens=event.usage.output_tokens,
-                            total_tokens=event.usage.input_tokens + event.usage.output_tokens, # type: ignore
+                            total_tokens=event.usage.input_tokens + event.usage.output_tokens,  # type: ignore
                         )
 
             # 发送最终的 usage 和 finish_reason
@@ -311,6 +338,8 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                     usage=final_usage,
                     finish_reason=final_stop_reason,
                 )
+
+            logger.debug(f"Anthropic stream completed - total chunks: {chunk_count}")
 
         except anthropic.APIError as e:
             logger.error(f"Anthropic API error in stream: {e}")

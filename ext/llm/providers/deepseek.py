@@ -19,6 +19,7 @@ from ext.llm.types import (
     TokenUsage,
     ToolCall,
 )
+from util.general import truncate_content
 
 
 class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
@@ -101,6 +102,12 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
         Returns:
             LLM 响应
         """
+        logger.debug(
+            f"DeepSeek chat request - model: {request.model or self.model_name}, "
+            f"messages: {len(request.messages)}, "
+            f"temperature: {request.temperature or self.default_temperature}"
+        )
+
         client = self.get_httpx_client()
         url = self.build_endpoint_url()
         headers = self.build_request_headers()
@@ -112,7 +119,16 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
 
                 if response.status_code == 200:
                     response_data = response.json()
-                    return self._parse_response(response_data)
+                    parsed_response = self._parse_response(response_data)
+
+                    logger.debug(
+                        f"DeepSeek chat response - status: 200, "
+                        f"content: {truncate_content(parsed_response.content)}, "
+                        f"tokens: {parsed_response.usage.total_tokens}, "
+                        f"finish_reason: {parsed_response.finish_reason}"
+                    )
+
+                    return parsed_response
                 else:
                     error_data = response.json()
                     error_message = self._extract_error_message(error_data) or "Unknown error"
@@ -253,7 +269,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
             return str(error)
         return ""
 
-    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]: # type: ignore
+    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]:  # type: ignore
         """
         发起对话请求（流式）
 
@@ -263,6 +279,11 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
         Yields:
             流式响应块
         """
+        logger.debug(
+            f"DeepSeek chat stream request - model: {request.model or self.model_name}, "
+            f"messages: {len(request.messages)}"
+        )
+
         client = self.get_httpx_client()
         url = self.build_endpoint_url()
         headers = self.build_request_headers()
@@ -276,6 +297,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
                     error_message = self._extract_error_message(error_data) or "Unknown error"
                     raise RuntimeError(f"DeepSeek API error: {error_message} (状态码: {response.status_code})")
 
+                chunk_count = 0
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data = line[6:]  # Remove "data: " prefix
@@ -285,9 +307,12 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
 
                         try:
                             chunk_data = json.loads(data)
+                            chunk_count += 1
                             yield self._parse_stream_chunk(chunk_data)
                         except json.JSONDecodeError:
                             continue
+
+                logger.debug(f"DeepSeek stream completed - total chunks: {chunk_count}")
 
         except httpx.TimeoutException as e:
             raise RuntimeError(f"DeepSeek 流式请求超时: {str(e)}")

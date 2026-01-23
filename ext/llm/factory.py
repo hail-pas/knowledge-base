@@ -4,7 +4,7 @@ LLM Model Factory
 提供 LLM 模型的创建、缓存和注册功能
 """
 
-from typing import Dict, Type
+from typing import Dict, Type, Any
 import asyncio
 from loguru import logger
 
@@ -45,6 +45,8 @@ class LLMModelFactory:
             import warnings
 
             warnings.warn(f"模型类型 {model_type.value} 已注册，将被覆盖", stacklevel=2)
+            logger.warning(f"Overriding existing LLM provider: {model_type.value}")
+
         cls._providers[model_type] = provider_class
         logger.info(f"Registered LLM provider: {model_type.value} -> {provider_class.__name__}")
 
@@ -68,18 +70,26 @@ class LLMModelFactory:
             >>> config = await LLMModelConfig.filter(name="gpt-4").first()
             >>> model = await LLMModelFactory.create(config)
         """
+        logger.debug(
+            f"Creating LLM model - name: {config.name}, type: {config.type.value}, id: {config.id}, use_cache: {use_cache}"
+        )
+
         if not config.is_enabled:
+            logger.error(f"LLM model config is disabled: {config.name} (id={config.id})")
             raise ValueError(f"LLM model config is disabled: {config.name} (id={config.id})")
 
         provider_cls = cls._providers.get(config.type)
         if not provider_cls:
             available_types = ", ".join([t.value for t in cls._providers.keys()])
+            logger.error(f"Unsupported model type: {config.type.value}, available: {available_types}")
             raise ValueError(f"Unsupported model type: {config.type.value}, available: {available_types}")
 
         if not use_cache or not config._saved_in_db:
+            logger.debug(f"Creating new instance (no cache) for {config.name}")
             return cls._create_instance(provider_cls, config)
 
         if config.id in cls._instances:
+            logger.info(f"Returning cached instance for {config.name} (id={config.id})")
             return cls._instances[config.id]
 
         if config.id not in cls._locks:
@@ -87,8 +97,10 @@ class LLMModelFactory:
 
         async with cls._locks[config.id]:
             if config.id in cls._instances:
+                logger.info(f"Returning cached instance for {config.name} (id={config.id}) - found in lock")
                 return cls._instances[config.id]
 
+            logger.debug(f"Creating new instance for {config.name} (id={config.id})")
             model = cls._create_instance(provider_cls, config)
             cls._instances[config.id] = model
 
@@ -112,6 +124,8 @@ class LLMModelFactory:
         Returns:
             BaseLLMModel 实例
         """
+        logger.debug(f"_create_instance - provider: {provider_cls.__name__}, config: {config.name}")
+
         return provider_cls(
             model_name=config.model_name,
             model_type=config.type.value,
@@ -143,9 +157,11 @@ class LLMModelFactory:
             >>> LLMModelFactory.clear_cache()
         """
         if config_id is None:
+            logger.info(f"Clearing all LLM model caches - instances: {len(cls._instances)}, locks: {len(cls._locks)}")
             cls._instances.clear()
             cls._locks.clear()
         else:
+            logger.info(f"Clearing cache for config_id: {config_id}")
             cls._instances.pop(config_id, None)
             cls._locks.pop(config_id, None)
 
@@ -199,8 +215,10 @@ class LLMModelFactory:
         Example:
             >>> model = await LLMModelFactory.create_by_name("gpt-4")
         """
+        logger.debug(f"Creating LLM model by name: {name}")
         config = await LLMModelConfig.filter(name=name, is_enabled=True).first()
         if not config:
+            logger.error(f"Enabled LLM config not found for name: {name}")
             raise ValueError(f"未找到名称为 '{name}' 的已启用 LLM 配置")
 
         return await cls.create(config, use_cache=use_cache)
@@ -222,18 +240,22 @@ class LLMModelFactory:
         Example:
             >>> model = await LLMModelFactory.create_default()
         """
+        logger.debug("Creating default LLM model")
         config = await LLMModelConfig.filter(is_enabled=True, is_default=True).first()
 
         if not config:
+            logger.debug("No default model found, falling back to first enabled model")
             config = await LLMModelConfig.filter(is_enabled=True).first()
 
         if not config:
+            logger.error("No available LLM model configuration found")
             raise ValueError("未找到可用的 LLM 模型配置")
 
+        logger.info(f"Using LLM model: {config.name} (id={config.id})")
         return await cls.create(config, use_cache=use_cache)
 
     @classmethod
-    def get_cache_info(cls) -> Dict[str, any]:
+    def get_cache_info(cls) -> Dict[str, Any]:
         """
         获取缓存信息
 
@@ -250,3 +272,15 @@ class LLMModelFactory:
             "cached_ids": list(cls._instances.keys()),
             "registered_models": [t.value for t in cls._providers.keys()],
         }
+
+
+from ext.llm.providers.openai import OpenAILLMModel
+from ext.llm.providers.azure_openai import AzureOpenAILLMModel
+from ext.llm.providers.deepseek import DeepSeekLLMModel
+from ext.llm.providers.anthropic import AnthropicLLMModel
+from ext.ext_tortoise.enums import LLMModelTypeEnum
+
+LLMModelFactory.register(LLMModelTypeEnum.openai, OpenAILLMModel)
+LLMModelFactory.register(LLMModelTypeEnum.azure_openai, AzureOpenAILLMModel)
+LLMModelFactory.register(LLMModelTypeEnum.deepseek, DeepSeekLLMModel)
+LLMModelFactory.register(LLMModelTypeEnum.anthropic, AnthropicLLMModel)

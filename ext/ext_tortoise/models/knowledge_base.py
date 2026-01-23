@@ -322,13 +322,88 @@ class IndexingBackendConfig(BaseModel):
 class LLMModelConfig(BaseModel):
     """LLM 模型配置表
 
-    存储各类大语言模型的配置信息，支持动态切换不同的 LLM 服务和模型能力
-    采用明确字段设计，避免使用 JSON 存储，便于维护和查询
+    存储各类 LLM 模型的配置信息，支持动态切换不同的 LLM 服务
     """
 
+    # 基础信息
+    name = fields.CharField(max_length=100, unique=True, description="配置名称")
+    type = fields.CharEnumField(LLMModelTypeEnum, description="模型类型")
+    model_name = fields.CharField(max_length=255, description="模型标识符")
+
+    # API配置
+    api_key = fields.CharField(max_length=500, null=True, description="API密钥（加密）")
+    base_url = fields.CharField(max_length=500, null=True, description="API基础URL")
+
+    # 模型能力标识
+    max_tokens = fields.IntField(default=4096, description="最大token数（输入+输出）")
+    supports_chat = fields.BooleanField(default=True, description="支持对话模式")
+    supports_completion = fields.BooleanField(default=False, description="支持补全模式")
+    supports_streaming = fields.BooleanField(default=True, description="支持流式输出")
+    supports_function_calling = fields.BooleanField(default=False, description="支持函数调用")
+    supports_vision = fields.BooleanField(default=False, description="支持视觉/图像")
+
+    # 默认参数配置
+    default_temperature = fields.FloatField(default=0.7, description="默认温度参数")
+    default_top_p = fields.FloatField(default=1.0, description="默认top_p")
+    max_retries = fields.IntField(default=3, description="最大重试次数")
+    timeout = fields.IntField(default=60, description="请求超时时间(秒)")
+
+    # Provider特定配置
+    extra_config = fields.JSONField(default=dict, description="provider特定扩展配置")
+
+    # 状态配置
+    is_enabled = fields.BooleanField(default=True, description="是否启用")
+    is_default = fields.BooleanField(default=False, description="是否默认配置")
+    description = fields.TextField(description="描述信息", default="")
+
+    class Meta:  # type: ignore
+        table = "llm_model_config"
+        table_description = "LLM模型配置表"
+        app = _KBConnectionName
+        indexes = [
+            ("is_enabled",),
+            ("is_default",),
+            ("type",),
+        ]
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"{self.name} ({self.type.value})"
 
 
-class ChatSkill(BaseModel):
-    """聊天的skill注册列表"""
+class ConversationMemory(BaseModel):
+    """对话记忆表
 
-    ...
+    用于持久化存储 Agent 的对话历史
+    """
+
+    uid = fields.UUIDField(unique=True, description="会话唯一标识")
+    session_id = fields.CharField(max_length=255, description="会话ID")
+    user_id = fields.UUIDField(null=True, description="用户ID")
+    agent_type = fields.CharField(max_length=50, description="Agent类型")
+
+    # 对话历史（存储为 JSON 数组）
+    messages = fields.JSONField(default=list, description="对话历史消息列表")
+
+    # 元数据
+    agent_config = fields.JSONField(default=dict, description="Agent配置")
+    tags = fields.JSONField(default=list, description="标签列表")
+    metadata = fields.JSONField(default=dict, description="其他元数据")
+
+    # 时间戳
+    last_updated = fields.DatetimeField(auto_now=True, description="最后更新时间")
+
+    class Meta:  # type: ignore
+        table = "conversation_memory"
+        table_description = "对话记忆表"
+        app = _KBConnectionName
+        indexes = [
+            ("session_id",),
+            ("user_id",),
+            ("agent_type",),
+            ("last_updated",),
+        ]
+        ordering = ["-last_updated"]
+
+    def __str__(self):
+        return f"ConversationMemory({self.session_id})"

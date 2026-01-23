@@ -6,9 +6,9 @@ LLM 模型泛型基类
 
 from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, AsyncIterator, Dict, Any, Optional, Type
-import asyncio
 import httpx
 from loguru import logger
+from util.general import truncate_content
 
 from ext.llm.types import (
     BaseExtraConfig,
@@ -100,13 +100,19 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
 
         self._validate_config()
 
+        logger.info(f"Initialized LLM model: {self.model_type}/{self.model_name}, max_tokens={self.max_tokens}")
+
     def _validate_config(self) -> None:
         """验证配置"""
         if not self.base_url:
+            logger.error(f"Configuration validation failed: {self.model_type} requires base_url")
             raise ValueError(f"{self.model_type} requires base_url")
 
         if self.extra_config.requires_auth and not self.api_key:
+            logger.error(f"Configuration validation failed: {self.model_type} requires api_key")
             raise ValueError(f"{self.model_type} requires api_key")
+
+        logger.debug(f"Configuration validated for {self.model_type}/{self.model_name}")
 
     def _get_extra_config_cls(self) -> Type[BaseExtraConfig]:
         """
@@ -200,7 +206,12 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
         Raises:
             NotImplementedError: 如果模型不支持补全模式
         """
+        logger.debug(
+            f"Completion request - prompt: {truncate_content(request.prompt)}, model: {request.model or self.model_name}, max_tokens: {request.max_tokens or self.max_tokens}"
+        )
+
         if not self.supports_completion:
+            logger.error(f"Completion mode not supported for {self.model_type}")
             raise NotImplementedError(f"{self.model_type} does not support completion mode")
 
         # 将补全请求转换为对话请求（单条 user 消息）
@@ -216,12 +227,19 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
         chat_response = await self.chat(chat_request)
 
         # 将对话响应转换为补全响应
-        return CompletionResponse(
+        response = CompletionResponse(
             text=chat_response.content,
             usage=chat_response.usage,
             finish_reason=chat_response.finish_reason,
             model=chat_response.model,
         )
+
+        logger.debug(
+            f"Completion response - text: {truncate_content(response.text)}, "
+            f"tokens: {response.usage.total_tokens}, finish_reason: {response.finish_reason}"
+        )
+
+        return response
 
     # ========== 通用工具方法 ==========
 
@@ -283,17 +301,23 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
         """判断是否应该重试（从 extra_config 读取）"""
         if attempt >= self.max_retries:
             return False
-        return status_code in self.extra_config.retry_on_status_codes
+        should_retry = status_code in self.extra_config.retry_on_status_codes
+        if should_retry:
+            logger.debug(f"Should retry: status_code={status_code}, attempt={attempt}/{self.max_retries}")
+        return should_retry
 
     def get_retry_delay(self, attempt: int) -> float:
         """获取重试延迟（从 extra_config 读取）"""
         strategy = self.extra_config.retry_strategy
         if strategy == "exponential":
-            return 2**attempt
+            delay = 2**attempt
         elif strategy == "linear":
-            return attempt * 2
+            delay = attempt * 2
         else:  # constant
-            return 1.0
+            delay = 1.0
+
+        logger.debug(f"Retry delay calculated: strategy={strategy}, attempt={attempt}, delay={delay}s")
+        return delay
 
     # ========== 响应解析辅助方法（用于 httpx 实现） ==========
 

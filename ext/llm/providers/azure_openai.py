@@ -16,6 +16,7 @@ from ext.llm.types import (
     LLMResponse,
     StreamChunk,
 )
+from util.general import truncate_content
 
 
 class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
@@ -32,9 +33,14 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
         deployment_name = self.extra_config.deployment_name or self.model_name
         api_version = self.extra_config.api_version
 
+        logger.debug(
+            f"Initializing Azure OpenAI client - deployment: {deployment_name}, "
+            f"api_version: {api_version}, endpoint: {self.base_url}"
+        )
+
         self._client = AsyncAzureOpenAI(
             api_key=self.api_key,
-            azure_endpoint=self.base_url, # type: ignore
+            azure_endpoint=self.base_url,  # type: ignore
             api_version=api_version,
             timeout=self.timeout,
             max_retries=self.max_retries,
@@ -114,8 +120,14 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
         Returns:
             LLM 响应
         """
+        logger.debug(
+            f"Azure OpenAI chat request - deployment: {self._deployment_name}, "
+            f"messages: {len(request.messages)}, "
+            f"temperature: {request.temperature or self.default_temperature}"
+        )
+
         try:
-            response = await self._client.chat.completions.create( # type: ignore
+            response = await self._client.chat.completions.create(  # type: ignore
                 model=self._deployment_name,
                 messages=self._convert_messages(request.messages),
                 temperature=request.temperature or self.default_temperature,
@@ -131,7 +143,14 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
                 stream=False,
             )
 
-            return self._parse_response(response)
+            parsed_response = self._parse_response(response)
+
+            logger.debug(
+                f"Azure OpenAI chat response - content: {truncate_content(parsed_response.content)}, "
+                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}"
+            )
+
+            return parsed_response
 
         except Exception as e:
             logger.error(f"Azure OpenAI API error: {e}")
@@ -186,7 +205,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
             model=response.model,
         )
 
-    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]: # type: ignore
+    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]:  # type: ignore
         """
         发起对话请求（流式）
 
@@ -196,8 +215,12 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
         Yields:
             流式响应块
         """
+        logger.debug(
+            f"Azure OpenAI chat stream request - deployment: {self._deployment_name}, messages: {len(request.messages)}"
+        )
+
         try:
-            stream = await self._client.chat.completions.create( # type: ignore
+            stream = await self._client.chat.completions.create(  # type: ignore
                 model=self._deployment_name,
                 messages=self._convert_messages(request.messages),
                 temperature=request.temperature or self.default_temperature,
@@ -213,8 +236,12 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
                 stream=True,
             )
 
+            chunk_count = 0
             async for chunk in stream:
+                chunk_count += 1
                 yield self._parse_stream_chunk(chunk)
+
+            logger.debug(f"Azure OpenAI stream completed - total chunks: {chunk_count}")
 
         except Exception as e:
             logger.error(f"Azure OpenAI API error in stream: {e}")

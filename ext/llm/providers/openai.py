@@ -20,6 +20,7 @@ from ext.llm.types import (
     TokenUsage,
     ToolCall,
 )
+from util.general import truncate_content
 
 
 class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
@@ -36,6 +37,9 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        logger.debug(
+            f"Initializing OpenAI client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}"
+        )
         self._client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
@@ -133,6 +137,14 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
         Returns:
             LLM 响应
         """
+        logger.debug(
+            f"OpenAI chat request - model: {request.model or self.model_name}, "
+            f"messages: {len(request.messages)}, "
+            f"temperature: {request.temperature or self.default_temperature}, "
+            f"max_tokens: {request.max_tokens or self.max_tokens}, "
+            f"tools: {len(request.tools) if request.tools else 0}"
+        )
+
         try:
             kwargs = {
                 "model": request.model or self.model_name,
@@ -158,7 +170,14 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
 
             response = await self._client.chat.completions.create(**kwargs)
 
-            return self._parse_response(response)
+            parsed_response = self._parse_response(response)
+
+            logger.debug(
+                f"OpenAI chat response - content: {truncate_content(parsed_response.content)}, "
+                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}"
+            )
+
+            return parsed_response
 
         except openai.APIError as e:
             logger.error(f"OpenAI API error: {e}")
@@ -218,7 +237,7 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
             model=response.model,
         )
 
-    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]: # type: ignore
+    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]:  # type: ignore
         """
         发起对话请求（流式）
 
@@ -228,6 +247,10 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
         Yields:
             流式响应块
         """
+        logger.debug(
+            f"OpenAI chat stream request - model: {request.model or self.model_name}, messages: {len(request.messages)}"
+        )
+
         try:
             kwargs = {
                 "model": request.model or self.model_name,
@@ -253,8 +276,12 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
 
             stream = await self._client.chat.completions.create(**kwargs)
 
+            chunk_count = 0
             async for chunk in stream:
+                chunk_count += 1
                 yield self._parse_stream_chunk(chunk)
+
+            logger.debug(f"OpenAI stream completed - total chunks: {chunk_count}")
 
         except openai.APIError as e:
             logger.error(f"OpenAI API error in stream: {e}")
