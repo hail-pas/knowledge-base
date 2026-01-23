@@ -1,40 +1,51 @@
 """
-LLM 模型抽象层
+LLM 模块
 
-提供统一的 LLM 接口，支持动态切换不同的 LLM 服务提供商。
-基于 pydantic_ai.models 实现。
+提供统一的 LLM 模型抽象层，支持多种 provider
 """
 
-from ext.llm.base import LLMModel, ModelCapabilities
+from ext.llm.base import BaseLLMModel
 from ext.llm.factory import LLMModelFactory
-from ext.llm.exceptions import (
-    LLMError,
-    LLMConfigError,
-    LLMModelNotFoundError,
-    LLMAPIError,
-    LLMTimeoutError,
-    LLMRateLimitError,
-    LLMTokenLimitError,
-    LLMCapabilityError,
-    LLMStreamingError,
+from ext.llm.types import (
+    ChatMessage,
+    LLMRequest,
+    LLMResponse,
+    StreamChunk,
+    CompletionRequest,
+    CompletionResponse,
+    FunctionDefinition,
+    ToolDefinition,
+    ToolCall,
+    TokenUsage,
+    BaseExtraConfig,
+    OpenAIExtraConfig,
+    AzureOpenAIExtraConfig,
+    DeepSeekExtraConfig,
+    AnthropicExtraConfig,
 )
 
 __all__ = [
-    # 基类
-    "LLMModel",
-    "ModelCapabilities",
-    # 工厂
+    # Base class
+    "BaseLLMModel",
+    # Factory
     "LLMModelFactory",
-    # 异常
-    "LLMError",
-    "LLMConfigError",
-    "LLMModelNotFoundError",
-    "LLMAPIError",
-    "LLMTimeoutError",
-    "LLMRateLimitError",
-    "LLMTokenLimitError",
-    "LLMCapabilityError",
-    "LLMStreamingError",
+    # Request/Response models
+    "ChatMessage",
+    "LLMRequest",
+    "LLMResponse",
+    "StreamChunk",
+    "CompletionRequest",
+    "CompletionResponse",
+    "Tool-related",
+    "FunctionDefinition",
+    "ToolDefinition",
+    "ToolCall",
+    # Utility models
+    "TokenUsage",
+    # Extra config types
+    "BaseExtraConfig",
+    "OpenAIExtraConfig",
+    "AzureOpenAIExtraConfig",
+    "DeepSeekExtraConfig",
+    "AnthropicExtraConfig",
 ]
-
-__version__ = "0.1.0"

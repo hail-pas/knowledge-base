@@ -1,336 +1,370 @@
 """
-LLM 模型抽象基类
+LLM 模型泛型基类
 
-提供统一的 LLM 接口，封装 pydantic_ai.models，支持动态切换不同的 LLM 服务提供商。
+提供 LLM 模型的抽象接口和默认实现
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict, List, Union, TYPE_CHECKING
+from typing import TypeVar, Generic, AsyncIterator, Dict, Any, Optional, Type
+import asyncio
+import httpx
 from loguru import logger
-from pydantic_ai.models import Model
 
-class ModelCapabilities:
-    """模型能力配置
+from ext.llm.types import (
+    BaseExtraConfig,
+    LLMRequest,
+    LLMResponse,
+    StreamChunk,
+    CompletionRequest,
+    CompletionResponse,
+    ChatMessage,
+    TokenUsage,
+    ToolCall,
+)
 
-    定义 LLM 模型支持的各种能力，用于验证模型是否满足特定功能需求。
+ExtraConfigT = TypeVar("ExtraConfigT", bound=BaseExtraConfig)
+
+
+class BaseLLMModel(Generic[ExtraConfigT], ABC):
+    """
+    LLM 模型抽象基类（泛型）
+
+    类型参数:
+        ExtraConfigT: extra_config 的具体类型
+
+    设计原则:
+        1. 提供大量默认实现，子类只需在必要时覆盖
+        2. 通过配置化处理 provider 差异
+        3. 核心方法（chat, chat_stream）由子类实现
+        4. 使用全局 httpx client（对于非SDK实现）
     """
 
-    def __init__(
-        self,
-        function_calling: bool = False,
-        json_output: bool = False,
-        multimodal: bool = False,
-        streaming: bool = True,
-        vision: bool = False,
-        audio_input: bool = False,
-        audio_output: bool = False,
-        tools: bool = False,
-        structured_output: bool = False,
-    ):
-        """
-        初始化模型能力配置
-
-        Args:
-            function_calling: 是否支持函数调用
-            json_output: 是否支持 JSON 格式输出
-            multimodal: 是否支持多模态输入
-            streaming: 是否支持流式输出
-            vision: 是否支持视觉能力
-            audio_input: 是否支持音频输入
-            audio_output: 是否支持音频输出
-            tools: 是否支持工具调用
-            structured_output: 是否支持结构化输出（Pydantic模型）
-        """
-        self.function_calling = function_calling
-        self.json_output = json_output
-        self.multimodal = multimodal
-        self.streaming = streaming
-        self.vision = vision
-        self.audio_input = audio_input
-        self.audio_output = audio_output
-        self.tools = tools
-        self.structured_output = structured_output
-
-    def to_dict(self) -> Dict[str, bool]:
-        """转换为字典格式"""
-        return {
-            "function_calling": self.function_calling,
-            "json_output": self.json_output,
-            "multimodal": self.multimodal,
-            "streaming": self.streaming,
-            "vision": self.vision,
-            "audio_input": self.audio_input,
-            "audio_output": self.audio_output,
-            "tools": self.tools,
-            "structured_output": self.structured_output,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ModelCapabilities":
-        """从字典创建能力配置"""
-        return cls(
-            function_calling=data.get("function_calling", False),
-            json_output=data.get("json_output", False),
-            multimodal=data.get("multimodal", False),
-            streaming=data.get("streaming", True),
-            vision=data.get("vision", False),
-            audio_input=data.get("audio_input", False),
-            audio_output=data.get("audio_output", False),
-            tools=data.get("tools", False),
-            structured_output=data.get("structured_output", False),
-        )
-
-    def requires_capability(
-        self,
-        capability: str,
-        raise_error: bool = True
-    ) -> bool:
-        """
-        检查模型是否支持特定能力
-
-        Args:
-            capability: 能力名称（如 "function_calling", "vision" 等）
-            raise_error: 如果不支持是否抛出异常
-
-        Returns:
-            是否支持该能力
-
-        Raises:
-            LLMCapabilityError: 当 raise_error=True 且不支持该能力时
-        """
-        has_capability = getattr(self, capability, False)
-
-        if not has_capability and raise_error:
-            from ext.llm.exceptions import LLMCapabilityError
-            raise LLMCapabilityError(
-                f"模型不支持 {capability} 能力。"
-                f"当前能力: {self.to_dict()}"
-            )
-
-        return has_capability
-
-    def __repr__(self) -> str:
-        enabled = [k for k, v in self.to_dict().items() if v]
-        return f"ModelCapabilities({', '.join(enabled) if enabled else 'none'})"
-
-
-class LLMModel(ABC):
-    """LLM 模型抽象基类
-
-    所有 LLM 模型实现必须继承此类并实现核心方法。
-    提供统一的接口，封装 pydantic_ai.models，支持动态切换不同的 LLM 服务提供商。
-
-    注意：此类封装的是 pydantic_ai.models.Model，不是 Agent。
-    Agent 应当在外部使用 Model 实例创建。
-    """
+    extra_config: ExtraConfigT
 
     def __init__(
         self,
         model_name: str,
         model_type: str,
-        config: Dict[str, Any],
-        max_tokens: int = 4096,
-        capabilities: Optional[ModelCapabilities] = None,
-        max_retries: int = 3,
-        timeout: int = 60,
-        rate_limit: int = 60,
+        max_tokens: int,
+        api_key: Optional[str],
+        base_url: Optional[str],
+        supports_chat: bool,
+        supports_completion: bool,
+        supports_streaming: bool,
+        supports_function_calling: bool,
+        supports_vision: bool,
+        default_temperature: float,
+        default_top_p: float,
+        max_retries: int,
+        timeout: int,
+        extra_config: Dict[str, Any],
     ):
         """
         初始化 LLM 模型
 
         Args:
-            model_name: 模型标识符（如 gpt-4o, claude-3-opus, deepseek-chat 等）
-            model_type: 模型类型（openai, azure_openai, deepseek 等）
-            config: 模型配置参数（如 api_key, base_url, temperature 等）
-            max_tokens: 模型最大输出 token 数
-            capabilities: 模型能力配置
+            model_name: 模型名称
+            model_type: 模型类型
+            max_tokens: 最大token数
+            api_key: API密钥
+            base_url: API基础URL
+            supports_chat: 是否支持对话模式
+            supports_completion: 是否支持补全模式
+            supports_streaming: 是否支持流式输出
+            supports_function_calling: 是否支持函数调用
+            supports_vision: 是否支持视觉/图像
+            default_temperature: 默认温度参数
+            default_top_p: 默认top_p
             max_retries: 最大重试次数
-            timeout: 请求超时时间（秒）
-            rate_limit: 每分钟最大请求次数（0表示无限制）
+            timeout: 请求超时时间(秒)
+            extra_config: provider特定配置（dict），内部会转换成具体的 dataclass
         """
         self.model_name = model_name
         self.model_type = model_type
-        self.config = config or {}
         self.max_tokens = max_tokens
+        self.api_key = api_key
+        self.base_url = base_url
+
+        self.supports_chat = supports_chat
+        self.supports_completion = supports_completion
+        self.supports_streaming = supports_streaming
+        self.supports_function_calling = supports_function_calling
+        self.supports_vision = supports_vision
+
+        self.default_temperature = default_temperature
+        self.default_top_p = default_top_p
         self.max_retries = max_retries
         self.timeout = timeout
-        self.rate_limit = rate_limit
 
-        # 设置能力配置
-        if capabilities is None:
-            # 从 config 中读取能力配置，如果没有则使用默认值
-            capabilities_data = self.config.get("capabilities", {})
-            self.capabilities = ModelCapabilities.from_dict(capabilities_data)
-        else:
-            self.capabilities = capabilities
+        self.extra_config: ExtraConfigT = self._convert_extra_config(extra_config)
 
-        # pydantic_ai Model 实例（延迟创建）
-        self._model: Optional[Any] = None
+        self._validate_config()
+
+    def _validate_config(self) -> None:
+        """验证配置"""
+        if not self.base_url:
+            raise ValueError(f"{self.model_type} requires base_url")
+
+        if self.extra_config.requires_auth and not self.api_key:
+            raise ValueError(f"{self.model_type} requires api_key")
+
+    def _get_extra_config_cls(self) -> Type[BaseExtraConfig]:
+        """
+        从泛型参数自动提取 extra_config 类型
+
+        子类通过 `class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig])` 声明泛型参数
+        此方法会自动从 `__orig_bases__` 中提取泛型类型
+
+        Returns:
+            extra_config 的 pydantic model 类型
+
+        Raises:
+            ValueError: 如果无法提取泛型类型
+        """
+        if hasattr(self, "__orig_bases__"):
+            for base in self.__orig_bases__:  # type: ignore
+                if hasattr(base, "__args__") and base.__args__:
+                    extra_config_type = base.__args__[0]
+                    if isinstance(extra_config_type, type) and issubclass(extra_config_type, BaseExtraConfig):
+                        return extra_config_type
+
+        logger.warning(
+            f"无法从泛型参数提取 extra_config 类型，使用默认类型 BaseExtraConfig。"
+            f"请确保子类正确声明泛型参数，如：class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig])"
+        )
+        return BaseExtraConfig
+
+    def _convert_extra_config(self, extra_config_dict: Dict[str, Any]) -> ExtraConfigT:
+        """
+        将 dict 转换成具体的 pydantic model 类型
+
+        自动从泛型参数提取类型并转换
+
+        Args:
+            extra_config_dict: extra_config 的字典形式
+
+        Returns:
+            类型化的 extra_config 实例
+        """
+        extra_config_cls = self._get_extra_config_cls()
+        return extra_config_cls.from_dict(extra_config_dict)  # type: ignore
+
+    # ========== 核心抽象方法（必须由子类实现） ==========
 
     @abstractmethod
-    def _create_pydantic_model(self) -> Model:
+    async def chat(self, request: LLMRequest) -> LLMResponse:
         """
-        创建 pydantic_ai Model 实例（由子类实现）
-
-        Returns:
-            pydantic_ai.models.Model 实例
-
-        Raises:
-            LLMConfigError: 配置错误
-            LLMModelNotFoundError: 模型未找到
-        """
-        pass
-
-    @property
-    def model(self) -> Model:
-        """
-        获取 pydantic_ai Model 实例（懒加载）
-
-        Returns:
-            pydantic_ai.models.Model 实例
-        """
-        if self._model is None:
-            self._model = self._create_pydantic_model()
-        return self._model
-
-    def get_model_for_agent(self, **agent_kwargs) -> Model:
-        """
-        获取用于创建 Agent 的 Model 实例
-
-        这个方法提供了一个便捷的接口，让外部可以直接使用返回的 Model 实例创建 pydantic_ai Agent。
+        发起对话请求（非流式）
 
         Args:
-            **agent_kwargs: 额外的 Agent 配置参数（如 temperature, max_tokens 等）
-                           这些参数会与模型的默认配置合并，agent_kwargs 的优先级更高。
+            request: LLM 请求
 
         Returns:
-            pydantic_ai.models.Model 实例
-
-        Example:
-            >>> llm_model = await LLMModelFactory.create(config)
-            >>> model = llm_model.get_model_for_agent(temperature=0.7)
-            >>> agent = Agent(model, result_type=str)
-        """
-        # 获取基础 Model 实例
-        model = self.model
-
-        # 某些 Model 类型支持在获取时应用额外的设置
-        # 这里可以根据具体的 pydantic_ai Model 类型进行扩展
-        # 目前直接返回 model，具体的参数配置应该在创建 Model 时处理
-
-        return model
-
-    def validate_config(self, required_keys: List[str]) -> None:
-        """
-        验证配置是否包含必需的参数
-
-        Args:
-            required_keys: 必需的配置键列表
+            LLM 响应
 
         Raises:
-            LLMConfigError: 配置缺少必需参数
+            NotImplementedError: 子类未实现
         """
-        from ext.llm.exceptions import LLMConfigError
+        raise NotImplementedError
 
-        missing_keys = [key for key in required_keys if key not in self.config or not self.config[key]]
-        if missing_keys:
-            raise LLMConfigError(
-                f"缺少必需的配置参数: {', '.join(missing_keys)}. "
-                f"模型类型: {self.model_type}, 模型名称: {self.model_name}"
+    @abstractmethod
+    async def chat_stream(self, request: LLMRequest) -> AsyncIterator[StreamChunk]:
+        """
+        发起对话请求（流式）
+
+        如果 provider 不原生支持流式，子类可以在内部转换为流式
+
+        Args:
+            request: LLM 请求
+
+        Yields:
+            流式响应块
+        """
+        raise NotImplementedError
+
+    # ========== 可选实现的方法 ==========
+
+    async def completion(self, request: CompletionRequest) -> CompletionResponse:
+        """
+        传统补全模式
+
+        默认实现：将补全请求转换为对话请求
+        如果不支持 completion，子类可以抛出 NotImplementedError
+
+        Args:
+            request: 补全请求
+
+        Returns:
+            补全响应
+
+        Raises:
+            NotImplementedError: 如果模型不支持补全模式
+        """
+        if not self.supports_completion:
+            raise NotImplementedError(f"{self.model_type} does not support completion mode")
+
+        # 将补全请求转换为对话请求（单条 user 消息）
+        chat_request = LLMRequest(
+            messages=[ChatMessage(role="user", content=request.prompt)],
+            model=request.model or self.model_name,
+            temperature=request.temperature or self.default_temperature,
+            max_tokens=request.max_tokens,
+            top_p=request.top_p or self.default_top_p,
+            stop=request.stop,
+        )
+
+        chat_response = await self.chat(chat_request)
+
+        # 将对话响应转换为补全响应
+        return CompletionResponse(
+            text=chat_response.content,
+            usage=chat_response.usage,
+            finish_reason=chat_response.finish_reason,
+            model=chat_response.model,
+        )
+
+    # ========== 通用工具方法 ==========
+
+    def get_httpx_client(self) -> httpx.AsyncClient:
+        """获取全局 httpx client"""
+        from config.main import local_configs
+
+        return local_configs.extensions.httpx.instance
+
+    # ========== 请求构建辅助方法（用于 httpx 实现） ==========
+
+    def build_endpoint_url(self) -> str:
+        """
+        构建 API 端点 URL
+
+        默认实现: {base_url}{endpoint}
+        """
+        base_url = self.base_url or ""
+        endpoint = self.extra_config.endpoint
+
+        base_url = base_url.rstrip("/")
+        if not endpoint.startswith("/"):
+            endpoint = "/" + endpoint
+
+        query_params = self.extra_config.query_params
+        if query_params:
+            query_string = "&".join(f"{k}={v}" for k, v in query_params.items())
+            endpoint = f"{endpoint}?{query_string}"
+
+        return f"{base_url}{endpoint}"
+
+    def build_auth_headers(self) -> Dict[str, str]:
+        """
+        构建认证头
+
+        默认 Bearer Token 实现（通过 extra_config 配置）
+        """
+        if not self.extra_config.requires_auth:
+            return {}
+
+        if not self.api_key:
+            raise ValueError("API key is required")
+
+        auth_header = self.extra_config.auth_header
+        auth_type = self.extra_config.auth_type
+        value = f"{auth_type} {self.api_key}" if auth_type else self.api_key
+        return {auth_header: value}
+
+    def build_request_headers(self) -> Dict[str, str]:
+        """构建完整的请求头"""
+        headers = {"Content-Type": "application/json"}
+        headers.update(self.build_auth_headers())
+        headers.update(self.extra_config.headers)
+        return headers
+
+    # ========== 重试逻辑（配置驱动） ==========
+
+    def should_retry(self, status_code: int, attempt: int) -> bool:
+        """判断是否应该重试（从 extra_config 读取）"""
+        if attempt >= self.max_retries:
+            return False
+        return status_code in self.extra_config.retry_on_status_codes
+
+    def get_retry_delay(self, attempt: int) -> float:
+        """获取重试延迟（从 extra_config 读取）"""
+        strategy = self.extra_config.retry_strategy
+        if strategy == "exponential":
+            return 2**attempt
+        elif strategy == "linear":
+            return attempt * 2
+        else:  # constant
+            return 1.0
+
+    # ========== 响应解析辅助方法（用于 httpx 实现） ==========
+
+    def _extract_by_path(self, data: Dict[str, Any], path: str) -> Any:
+        """通过路径提取数据（点分隔路径）"""
+        keys = path.split(".")
+        result = data
+        for key in keys:
+            if isinstance(result, dict):
+                result = result.get(key)
+            else:
+                return None
+            if result is None:
+                return None
+        return result
+
+    def _extract_content(self, response_data: Dict[str, Any]) -> str:
+        """从响应中提取内容"""
+        content_path = self.extra_config.response_content_path
+        content = self._extract_by_path(response_data, content_path)
+        return content or ""
+
+    def _extract_usage(self, response_data: Dict[str, Any]) -> TokenUsage:
+        """从响应中提取使用统计"""
+        usage_path = self.extra_config.response_usage_path
+        usage_data = self._extract_by_path(response_data, usage_path)
+
+        if usage_data:
+            return TokenUsage(
+                prompt_tokens=usage_data.get("prompt_tokens", 0),
+                completion_tokens=usage_data.get("completion_tokens", 0),
+                total_tokens=usage_data.get("total_tokens", 0),
             )
+        else:
+            return TokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
 
-    def requires_capability(self, capability: str) -> bool:
-        """
-        检查模型是否支持特定能力
+    def _extract_finish_reason(self, response_data: Dict[str, Any]) -> str:
+        """从响应中提取结束原因"""
+        finish_reason_path = self.extra_config.response_finish_reason_path
+        return self._extract_by_path(response_data, finish_reason_path) or "stop"
 
-        Args:
-            capability: 能力名称
+    def _extract_model(self, response_data: Dict[str, Any]) -> Optional[str]:
+        """从响应中提取模型名称"""
+        model_path = self.extra_config.response_model_path
+        return self._extract_by_path(response_data, model_path)
 
-        Returns:
-            是否支持该能力
-        """
-        return self.capabilities.requires_capability(capability, raise_error=False)
+    def _extract_tool_calls(self, response_data: Dict[str, Any]) -> Optional[list[ToolCall]]:
+        """从响应中提取工具调用"""
+        tool_calls_path = self.extra_config.response_tool_calls_path
+        if not tool_calls_path:
+            return None
 
-    def ensure_capability(self, capability: str) -> None:
-        """
-        确保模型支持特定能力，如果不支持则抛出异常
+        tool_calls_data = self._extract_by_path(response_data, tool_calls_path)
+        if not tool_calls_data:
+            return None
 
-        Args:
-            capability: 能力名称
+        tool_calls = []
+        for tc_data in tool_calls_data:
+            tool_call = ToolCall(
+                id=tc_data.get("id", ""),
+                type=tc_data.get("type", "function"),
+                function=tc_data.get("function", {}),
+            )
+            tool_calls.append(tool_call)
 
-        Raises:
-            LLMCapabilityError: 不支持该能力
-        """
-        self.capabilities.requires_capability(capability, raise_error=True)
-
-    def get_config(self, key: str, default: Any = None) -> Any:
-        """
-        获取配置参数
-
-        Args:
-            key: 配置键
-            default: 默认值
-
-        Returns:
-            配置值
-        """
-        return self.config.get(key, default)
-
-    def set_config(self, key: str, value: Any) -> None:
-        """
-        设置配置参数
-
-        注意：此方法只更新内存中的配置，不会影响已创建的 Model 实例。
-        如果需要重新创建 Model，可以调用 reset_model() 方法。
-
-        Args:
-            key: 配置键
-            value: 配置值
-        """
-        self.config[key] = value
-
-    def reset_model(self) -> None:
-        """重置 Model 实例（下次访问时重新创建）"""
-        self._model = None
-
-    def get_model_settings(self) -> Dict[str, Any]:
-        """
-        获取模型设置（用于传递给 Agent 或 API）
-
-        Returns:
-            模型设置字典
-        """
-        return {
-            "max_tokens": self.max_tokens,
-            "max_retries": self.max_retries,
-            "timeout": self.timeout,
-        }
+        return tool_calls
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             f"model_name={self.model_name}, "
             f"model_type={self.model_type}, "
-            f"capabilities={self.capabilities}, "
             f"max_tokens={self.max_tokens})"
         )
-
-    async def close(self) -> None:
-        """
-        关闭模型，释放资源
-
-        某些模型可能需要清理资源（如关闭连接池等）
-        """
-        # 默认实现：如果 model 有 close 方法则调用
-        if self._model is not None:
-            if hasattr(self._model, 'close'):
-                await self._model.close()
-            self._model = None
-
-    async def __aenter__(self):
-        """异步上下文管理器入口"""
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """异步上下文管理器出口"""
-        await self.close()

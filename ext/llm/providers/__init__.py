@@ -1,16 +1,18 @@
 """
-LLM 模型提供者实现模块
+LLM Provider 注册
 
-包含各种 LLM 服务提供商的具体实现，封装 pydantic_ai.models。
-每个提供者都实现统一的 LLMModel 接口。
+自动注册所有 LLM providers
 """
 
-from ext.llm.providers.openai import OpenAIModelWrapper
-from ext.llm.providers.azure_openai import AzureOpenAIModelWrapper
-from ext.llm.providers.deepseek import DeepSeekModelWrapper
+from ext.llm.providers.openai import OpenAILLMModel
+from ext.llm.providers.azure_openai import AzureOpenAILLMModel
+from ext.llm.providers.deepseek import DeepSeekLLMModel
+from ext.llm.providers.anthropic import AnthropicLLMModel
 
-__all__ = [
-    "OpenAIModelWrapper",
-    "AzureOpenAIModelWrapper",
-    "DeepSeekModelWrapper",
-]
+from ext.llm.factory import LLMModelFactory
+from ext.ext_tortoise.enums import LLMModelTypeEnum
+
+LLMModelFactory.register(LLMModelTypeEnum.openai, OpenAILLMModel)
+LLMModelFactory.register(LLMModelTypeEnum.azure_openai, AzureOpenAILLMModel)
+LLMModelFactory.register(LLMModelTypeEnum.deepseek, DeepSeekLLMModel)
+LLMModelFactory.register(LLMModelTypeEnum.anthropic, AnthropicLLMModel)
