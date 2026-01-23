@@ -62,6 +62,7 @@ class FileSourceTypeEnum(StrEnum):
 
     local_file = ("local_file", "本地文件")
     s3 = ("s3", "S3 Compatible")
+    minio = ("minio", "MinIO")
     aliyun_oss = ("aliyun_oss", "阿里云 OSS")
     sharepoint = ("sharepoint", "SharePoint")
     api = ("api", "API 接口")
@@ -69,6 +70,7 @@ class FileSourceTypeEnum(StrEnum):
 
 class DocumentStatusEnum(StrEnum):
     """文件状态"""
+
     pending = ("pending", "待处理")
     fetching = ("fetching", "正在获取")
     fetched = ("fetched", "已获取")
@@ -138,6 +140,7 @@ class LLMModelTypeEnum(StrEnum):
     openai = ("openai", "OpenAI")
     azure_openai = ("azure_openai", "Azure OpenAI")
     deepseek = ("deepseek", "DeepSeek")
+    anthropic = ("anthropic", "Anthropic")
 
 
 class IndexingBackendTypeEnum(StrEnum):

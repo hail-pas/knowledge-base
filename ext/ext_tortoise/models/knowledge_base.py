@@ -92,20 +92,54 @@ class FileSource(BaseModel):
     """文件源配置表
 
     存储各类文件源的连接配置信息，支持多种文件源类型
+    采用公共字段明确 + JSON 存储provider特定配置的模式
     """
 
+    # ========== 基础信息（所有 provider 共有）==========
     name = fields.CharField(max_length=100, description="文件源名称")
     type = fields.CharEnumField(FileSourceTypeEnum, description="文件源类型")
-    config = fields.JSONField(description="连接配置（JSON格式）", default=dict)
+
+    # ========== 认证信息（S3 兼容 providers）==========
+    access_key = fields.CharField(max_length=500, null=True, description="访问密钥")
+    secret_key = fields.CharField(max_length=500, null=True, description="密钥（加密存储）")
+
+    # ========== 连接信息（合并字段）==========
+    storage_location = fields.CharField(
+        max_length=1000,
+        null=True,
+        description="存储位置"
+        "  - type=local_file: 本地文件路径（如 /data/documents）"
+        "  - type=s3/minio/aliyun_oss: 存储桶名称（如 my-bucket）",
+    )
+
+    # ========== 连接信息（对象存储通用）==========
+    endpoint = fields.CharField(max_length=500, null=True, description="服务端点URL")
+    region = fields.CharField(max_length=100, null=True, description="区域/地域")
+
+    # ========== 安全配置（所有 provider）==========
+    use_ssl = fields.BooleanField(default=True, description="是否使用SSL/TLS")
+    verify_ssl = fields.BooleanField(default=True, description="是否验证SSL证书")
+    timeout = fields.IntField(default=30, description="连接/读取超时时间(秒)")
+
+    # ========== 性能配置（所有 provider）==========
+    max_retries = fields.IntField(default=3, description="最大重试次数")
+    concurrent_limit = fields.IntField(default=10, description="并发限制")
+    max_connections = fields.IntField(default=100, description="最大连接数(连接池)")
+
+    # ========== 状态管理 ==========
     is_enabled = fields.BooleanField(default=True, description="是否启用")
     is_default = fields.BooleanField(default=False, description="是否默认")
     description = fields.TextField(description="描述信息", default="")
+
+    # ========== Provider 特定扩展配置 ==========
+    extra_config = fields.JSONField(default=dict, description="Provider特定扩展配置（JSON格式）")
 
     class Meta:  # type: ignore
         table = "file_source"
         table_description = "文件源配置表"
         app = _KBConnectionName
         unique_together = [("name", "deleted_at")]
+        indexes = [("type", "is_enabled"), ("is_default", "is_enabled"), ("created_at",)]
         ordering = ["-id"]
 
     def __str__(self):
@@ -289,7 +323,9 @@ class LLMModelConfig(BaseModel):
     """LLM 模型配置表
 
     存储各类大语言模型的配置信息，支持动态切换不同的 LLM 服务和模型能力
+    采用明确字段设计，避免使用 JSON 存储，便于维护和查询
     """
+
 
 
 class ChatSkill(BaseModel):
