@@ -1,229 +1,201 @@
+"""
+File Source Provider 基类
+
+定义统一的文件操作接口和基类实现
+"""
+
+import aiofiles
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import TYPE_CHECKING, Generic, TypeVar
+
 from datetime import datetime
-import os
-import mimetypes
+from loguru import logger
+from pydantic import BaseModel, Field
+from ext.ext_tortoise.models.knowledge_base import FileSource
+from ext.file_source.types import BaseFileSourceExtraConfig
+
+ExtraConfigT = TypeVar("ExtraConfigT")
 
 
-@dataclass
-class FileItem:
-    """统一的文件项描述"""
-    uri: str                    # 唯一标识（本地为绝对路径）
-    name: str                   # 文件名
-    size: int                   # 大小
-    content_type: str           # MIME 类型
-    last_modified: datetime     # 最后修改时间
-    metadata: Optional[dict] = field(default=None)       # 其他元数据
+class FileMetadata(BaseModel):
+    """统一的文件元数据"""
+
+    uri: str = Field(..., description="文件URI")
+    file_name: str = Field(..., description="文件名")
+    file_size: int = Field(..., description="文件大小(bytes)")
+    last_modified: datetime | None = Field(None, description="最后修改时间")
+    etag: str | None = Field(None, description="ETag标识")
+    content_type: str | None = Field(None, description="MIME类型")
+    extra: dict = Field(default_factory=dict, description="额外元数据")
 
 
-@dataclass
-class FileFilter:
-    """文件过滤条件（预留，用于后续批量获取）"""
-    allowed_extensions: Optional[list[str]] = field(default=None)   # 允许的扩展名
-    blocked_extensions: Optional[list[str]] = field(default=None)   # 禁止的扩展名
-    min_size: Optional[int] = field(default=None)                   # 最小文件大小
-    max_size: Optional[int] = field(default=None)                   # 最大文件大小
-    name_pattern: Optional[str] = field(default=None)               # 文件名匹配模式
+class BaseFileSourceProvider(ABC, Generic[ExtraConfigT]):
+    """
+    文件源 Provider 基类（泛型）
 
+    类型参数:
+        ExtraConfigT: extra_config 的具体类型（必须继承 BaseFileSourceExtraConfig）
 
-class FileSourceAdapter(ABC):
-    """文件源适配器抽象基类
-
-    所有文件源适配器都需要实现此接口，提供统一的文件获取方式。
+    设计原则:
+        1. 定义统一的文件操作接口
+        2. 提供默认的错误处理和重试逻辑
+        3. 支持异步操作
+        4. 提供连接验证和健康检查
     """
 
-    def __init__(self, config: dict):
-        """初始化适配器
+    extra_config: ExtraConfigT
 
-        Args:
-            config: 文件源配置（JSON 格式）
+    def __init__(
+        self,
+        access_key: str | None,
+        secret_key: str | None,
+        endpoint: str | None,
+        region: str | None,
+        storage_location: str | None,
+        use_ssl: bool,
+        verify_ssl: bool,
+        timeout: int,
+        max_retries: int,
+        concurrent_limit: int,
+        max_connections: int,
+        extra_config: dict,
+    ) -> None:
         """
-        self.config = config
+        初始化 Provider
+
+        参数说明：
+            - storage_location: 统一的存储位置字段
+              * type=local_file: 本地路径
+              * type=s3/minio/aliyun_oss: bucket 名称
+        """
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.endpoint = endpoint
+        self.region = region
+        self.storage_location = storage_location
+        self.use_ssl = use_ssl
+        self.verify_ssl = verify_ssl
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.concurrent_limit = concurrent_limit
+        self.max_connections = max_connections
+
+        extra_config = extra_config or {}
+        self.extra_config: ExtraConfigT = self._convert_extra_config(extra_config)
+
+        self._validate_config()
+
+    def _convert_extra_config(self, extra_config_dict: dict) -> ExtraConfigT:
+        """将 dict 转换成具体的 Pydantic model 类型"""
+        extra_config_cls: type[BaseFileSourceExtraConfig] = self._get_extra_config_cls()  # type: ignore[assignment]
+        return extra_config_cls.from_dict(extra_config_dict)  # type: ignore[return-value]
+
+    def _get_extra_config_cls(self) -> type:
+        """从泛型参数提取 extra_config 类型"""
+        if hasattr(self, "__orig_bases__"):  # type: ignore[attr-defined]
+            for base in self.__orig_bases__:  # type: ignore[attr-defined]
+                if hasattr(base, "__args__") and base.__args__:
+                    extra_config_type = base.__args__[0]
+                    if isinstance(extra_config_type, type):
+                        return extra_config_type
+
+        logger.warning("无法从泛型参数提取 extra_config 类型，使用默认类型 BaseFileSourceExtraConfig")
+        return BaseFileSourceExtraConfig
+
+    def _validate_config(self) -> None:
+        """验证配置（子类可覆盖）"""
 
     @abstractmethod
-    async def validate(self) -> bool:
-        """验证配置是否正确
-
-        Returns:
-            配置是否有效
-        """
-        pass
+    async def validate_connection(self) -> bool:
+        """验证连接是否有效"""
 
     @abstractmethod
-    async def get_file(self, uri: str) -> bytes:
-        """获取单文件内容
-
-        Args:
-            uri: 文件唯一标识（本地为绝对路径）
-
-        Returns:
-            文件内容（字节数组）
-
-        """
-        pass
-
-    async def get_file_stream(self, uri: str) -> AsyncIterator[bytes]:
-        """获取文件流（大文件可选实现）
-
-        Args:
-            uri: 文件唯一标识
-
-        Yields:
-            文件内容分块
-
-        Raises:
-            NotImplementedError: 如果适配器不支持流式读取
-        """
-        raise NotImplementedError("此适配器不支持流式读取")
-
-    async def upload_file(
-        self,
-        uri: str,
-        content: bytes,
-        content_type: str = "application/octet-stream",
-        metadata: dict | None = None
-    ) -> bool:
-        """上传文件到文件源（可选实现）
-
-        Args:
-            uri: 文件唯一标识（上传后的目标路径）
-            content: 文件内容
-            content_type: MIME 类型（可选）
-            metadata: 元数据（可选）
-
-        Returns:
-            是否上传成功
-
-        Raises:
-            NotImplementedError: 如果适配器不支持上传
-        """
-        raise NotImplementedError("此适配器不支持上传文件")
-
-    async def upload_file_from_path(
-        self,
-        uri: str,
-        file_path: str,
-        content_type: str | None = None,
-        metadata: dict | None = None
-    ) -> bool:
-        """从本地路径上传文件到文件源（可选实现）
-
-        Args:
-            uri: 文件唯一标识（上传后的目标路径）
-            file_path: 本地文件路径
-            content_type: MIME 类型（可选，如果为 None 则自动检测）
-            metadata: 元数据（可选）
-
-        Returns:
-            是否上传成功
-
-        Raises:
-            NotImplementedError: 如果适配器不支持上传
-            FileNotFoundError: 本地文件不存在
-        """
-
-
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"本地文件不存在: {file_path}")
-
-        # 读取文件内容
-        with open(file_path, "rb") as f:
-            content = f.read()
-
-        # 自动检测 content_type
-        if content_type is None:
-            content_type, _ = mimetypes.guess_type(file_path)
-            if content_type is None:
-                content_type = "application/octet-stream"
-
-        # 调用上传方法
-        return await self.upload_file(uri, content, content_type, metadata)
-
-    async def download_file_to_path(
-        self,
-        uri: str,
-        file_path: str,
-        overwrite: bool = False
-    ) -> bool:
-        """下载文件到指定路径（可选实现）
-
-        Args:
-            uri: 文件唯一标识
-            file_path: 本地目标路径
-            overwrite: 是否覆盖已存在的文件（默认 False）
-
-        Returns:
-            是否下载成功
-
-        Raises:
-            NotImplementedError: 如果适配器不支持下载
-            FileExistsError: 文件已存在且 overwrite=False
-            PermissionError: 无写入权限
-        """
-
-
-        # 检查文件是否已存在
-        if os.path.exists(file_path) and not overwrite:
-            raise FileExistsError(f"目标文件已存在: {file_path}")
-
-        # 确保目录存在
-        os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
-
-        # 获取文件内容
-        content = await self.get_file(uri)
-
-        # 写入文件
-        with open(file_path, "wb") as f:
-            f.write(content)
-
-        return True
-
-    async def delete_file(self, uri: str) -> bool:
-        """删除文件（可选实现）
-
-        Args:
-            uri: 文件唯一标识
-
-        Returns:
-            是否删除成功
-
-        Raises:
-            NotImplementedError: 如果适配器不支持删除
-        """
-        raise NotImplementedError("此适配器不支持删除文件")
-
-    async def get_file_meta(self, uri: str) -> FileItem:
-        """获取文件元数据（可选实现）
-
-        Args:
-            uri: 文件唯一标识
-
-        Returns:
-            文件元数据
-
-        Raises:
-            NotImplementedError: 如果适配器不支持获取元数据
-        """
-        raise NotImplementedError("此适配器不支持获取元数据")
-
-    # 以下方法为后续扩展预留（批量获取）
-
     async def list_files(
         self,
         prefix: str = "",
-        filter: Optional[FileFilter] = None
-    ) -> AsyncIterator[FileItem]:
-        """列出文件（批量获取预留）
+        recursive: bool = False,
+        limit: int | None = None,
+    ) -> list[FileMetadata]:
+        """列出文件
 
         Args:
-            prefix: 文件路径前缀
-            filter: 文件过滤条件
+            prefix: 路径前缀
+            recursive: 是否递归列出
+            limit: 最大返回数量
 
-        Yields:
-            文件项
-
-        Raises:
-            NotImplementedError: 如果适配器不支持批量列出
+        Returns:
+            文件元数据列表
         """
-        raise NotImplementedError("此适配器不支持批量列出文件")
+
+    @abstractmethod
+    async def get_file(self, uri: str) -> bytes:
+        """获取文件内容"""
+
+    @abstractmethod
+    async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
+        """获取文件流（用于大文件）"""
+
+    @abstractmethod
+    async def get_file_metadata(self, uri: str) -> FileMetadata:
+        """获取文件元数据"""
+
+    @abstractmethod
+    async def file_exists(self, uri: str) -> bool:
+        """检查文件是否存在"""
+
+    async def upload_file(self, uri: str, content: bytes, content_type: str | None = None) -> FileMetadata:
+        """上传文件（可选）"""
+        raise NotImplementedError(f"{self.__class__.__name__} does not support upload")
+
+    async def delete_file(self, uri: str) -> bool:
+        """删除文件（可选）"""
+        raise NotImplementedError(f"{self.__class__.__name__} does not support delete")
+
+    async def upload_from_local(self, local_path: str, uri: str, content_type: str | None = None) -> FileMetadata:
+        """从本地文件上传
+
+        Args:
+            local_path: 本地文件路径
+            uri: 目标URI
+            content_type: MIME类型
+
+        Returns:
+            上传后的文件元数据
+        """
+
+        async with aiofiles.open(local_path, "rb") as f:
+            content = await f.read()
+        return await self.upload_file(uri, content, content_type)
+
+    async def download_to_local(self, uri: str, local_path: str) -> None:
+        """下载文件到本地
+
+        Args:
+            uri: 源文件URI
+            local_path: 本地文件路径
+        """
+        local_path_obj = Path(local_path)
+        local_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+        content = await self.get_file(uri)
+        async with aiofiles.open(local_path, "wb") as f:
+            await f.write(content)
+
+    async def health_check(self) -> dict[str, str | bool]:
+        """健康检查，返回连接状态和性能指标"""
+        try:
+            is_connected: bool = await self.validate_connection()
+            return {
+                "status": "healthy" if is_connected else "unhealthy",
+                "connected": is_connected,
+                "timestamp": datetime.now().isoformat(),
+            }
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }

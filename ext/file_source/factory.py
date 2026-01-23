@@ -1,171 +1,120 @@
 """
-FileSource Factory - 文件源适配器工厂类
+File Source Factory
+
+负责根据数据库配置动态创建 file source provider 实例
 """
 
-from typing import Dict, Type, Optional
+from typing import Any
 import asyncio
+from loguru import logger
 
-from ext.file_source.base import FileSourceAdapter
-from ext.file_source.exceptions import (
-    FileSourceConfigError,
-    FileSourceTypeError,
-)
-
+from ext.file_source.base import BaseFileSourceProvider, FileMetadata
 from ext.ext_tortoise.enums import FileSourceTypeEnum
 from ext.ext_tortoise.models.knowledge_base import FileSource
 
 
-class FileSourceAdapterFactory:
-    """文件源适配器工厂类
+class FileSourceFactory:
+    """文件源工厂类
 
-    管理不同文件源类型（Local、S3、OSS、SharePoint等）的适配器实例创建和缓存。
+    负责根据数据库配置动态创建 file source provider 实例
     """
 
-    # 文件源类型到适配器类的映射
-    _adapters: Dict[FileSourceTypeEnum, Type[FileSourceAdapter]] = {}
-
-    # 适配器实例缓存（source_id -> Adapter 实例）
-    _instances: Dict[int, FileSourceAdapter] = {}
-
-    # 锁，用于防止并发创建同一实例
-    _locks: Dict[int, asyncio.Lock] = {}
+    _providers: dict[FileSourceTypeEnum, type[BaseFileSourceProvider]] = {}
+    _instances: dict[int, BaseFileSourceProvider] = {}
+    _locks: dict[int, asyncio.Lock] = {}
 
     @classmethod
-    def register(cls, source_type: FileSourceTypeEnum, adapter_class: Type[FileSourceAdapter]) -> None:
-        """注册新的文件源适配器类型
-
-        Args:
-            source_type: 文件源类型标识（如 local_file, s3, aliyun_oss）
-            adapter_class: 实现 FileSourceAdapter 的类
-        """
-        cls._adapters[source_type] = adapter_class
+    def register(cls, source_type: FileSourceTypeEnum, provider_class: type[BaseFileSourceProvider]) -> None:
+        """注册新的 file source provider"""
+        if source_type in cls._providers:
+            logger.warning(f"Provider type {source_type.value} 已注册，将被覆盖")
+        cls._providers[source_type] = provider_class
+        logger.info(f"Registered file source provider: {source_type.value} -> {provider_class.__name__}")
 
     @classmethod
-    async def create(cls, source: FileSource, use_cache: bool = True) -> FileSourceAdapter:
-        """创建适配器实例
+    async def create(cls, config: FileSource, use_cache: bool = True) -> BaseFileSourceProvider:
+        """创建 file source provider 实例"""
+        if not config.is_enabled:
+            raise ValueError(f"File source config is disabled: {config.name} (id={config.id})")
 
-        Args:
-            source: FileSource 数据库实例（必须已保存到数据库）
-            use_cache: 是否使用缓存
+        provider_cls = cls._providers.get(config.type)
+        if not provider_cls:
+            available_types = ", ".join([t.value for t in cls._providers.keys()])
+            raise ValueError(f"Unsupported file source type: {config.type.value}, available: {available_types}")
 
-        Returns:
-            FileSourceAdapter 实例
+        if not use_cache or not config._saved_in_db:
+            return cls._create_instance(provider_cls, config)
 
-        Raises:
-            FileSourceConfigError: 配置无效或未启用
-            FileSourceTypeError: 不支持的文件源类型或创建失败
-        """
-        # 验证配置是否启用
-        if not source.is_enabled:
-            raise FileSourceConfigError(
-                f"File source config is disabled. "
-                f"Config: {source.name} (id={source.id})"
-            )
+        if config.id in cls._instances:
+            return cls._instances[config.id]
 
-        # 获取适配器类
-        adapter_cls = cls._adapters.get(source.type)
-        if not adapter_cls:
-            available_types = ", ".join([t.value for t in cls._adapters.keys()])
-            raise FileSourceTypeError(
-                f"不支持的文件源类型: {source.type.value}, "
-                f"可用类型: {available_types}"
-            )
+        if config.id not in cls._locks:
+            cls._locks[config.id] = asyncio.Lock()
 
-        # 如果不使用缓存或临时对象，直接创建新实例
-        if not use_cache or not source._saved_in_db:
-            adapter = adapter_cls(source.config)
-            return adapter
+        async with cls._locks[config.id]:
+            if config.id in cls._instances:
+                return cls._instances[config.id]
 
-        # 检查缓存
-        if source.id in cls._instances:
-            return cls._instances[source.id]
+            provider = cls._create_instance(provider_cls, config)
+            cls._instances[config.id] = provider
 
-        # 获取或创建锁
-        if source.id not in cls._locks:
-            cls._locks[source.id] = asyncio.Lock()
-
-        # 使用锁防止并发创建
-        async with cls._locks[source.id]:
-            # 再次检查缓存（可能在等待锁时已被其他协程创建）
-            if source.id in cls._instances:
-                return cls._instances[source.id]
-
-            # 创建新实例并缓存
-            adapter = adapter_cls(source.config)
-            cls._instances[source.id] = adapter
-            return adapter
+            return provider
 
     @classmethod
-    def clear_cache(cls, source_id: Optional[int] = None) -> None:
-        """清除适配器实例缓存
+    def _create_instance(cls, provider_cls: type[BaseFileSourceProvider], config: FileSource) -> BaseFileSourceProvider:
+        """创建 provider 实例的内部方法"""
+        return provider_cls(
+            access_key=config.access_key,
+            secret_key=config.secret_key,
+            endpoint=config.endpoint,
+            region=config.region,
+            storage_location=config.storage_location,
+            use_ssl=config.use_ssl,
+            verify_ssl=config.verify_ssl,
+            timeout=config.timeout,
+            max_retries=config.max_retries,
+            concurrent_limit=config.concurrent_limit,
+            max_connections=config.max_connections,
+            extra_config=config.extra_config or {},
+        )
 
-        Args:
-            source_id: 要清除的文件源 ID，如果为 None 则清除所有缓存
-        """
-        if source_id is None:
+    @classmethod
+    def clear_cache(cls, config_id: int | None = None) -> None:
+        """清除实例缓存"""
+        if config_id is None:
             cls._instances.clear()
             cls._locks.clear()
         else:
-            # 清除缓存前先处理（如果实例存在）
-            instance = cls._instances.pop(source_id, None)
-            if instance is not None:
-                # 这里只是从缓存中移除，实际的连接清理由用户管理
-                pass
-            cls._locks.pop(source_id, None)
+            cls._instances.pop(config_id, None)
+            cls._locks.pop(config_id, None)
 
     @classmethod
-    def has_adapter(cls, source_type: FileSourceTypeEnum) -> bool:
-        """检查文件源类型是否已注册
+    async def create_by_name(cls, name: str, use_cache: bool = True) -> BaseFileSourceProvider:
+        """根据配置名称创建实例"""
+        config = await FileSource.filter(name=name, is_enabled=True).first()
+        if not config:
+            raise ValueError(f"未找到名称为 '{name}' 的已启用 file source 配置")
 
-        Args:
-            source_type: 文件源类型
-
-        Returns:
-            是否已注册
-        """
-        return source_type in cls._adapters
+        return await cls.create(config, use_cache=use_cache)
 
     @classmethod
-    def get_registered_source_types(cls) -> list[FileSourceTypeEnum]:
-        """获取所有已注册的文件源类型
+    async def create_default(cls, use_cache: bool = True) -> BaseFileSourceProvider:
+        """创建默认的 file source 实例"""
+        config = await FileSource.filter(is_enabled=True, is_default=True).first()
 
-        Returns:
-            已注册文件源类型列表
-        """
-        return list(cls._adapters.keys())
+        if not config:
+            config = await FileSource.filter(is_enabled=True).first()
+
+        if not config:
+            raise ValueError("未找到可用的 file source 配置")
+
+        return await cls.create(config, use_cache=use_cache)
 
     @classmethod
-    async def get_default_adapter(cls) -> Optional[FileSourceAdapter]:
-        """获取默认的适配器实例
-
-        Returns:
-            默认的适配器实例，如果没有默认配置则返回 None
-
-        Raises:
-            FileSourceConfigError: 默认配置无效
-            FileSourceTypeError: 创建失败
-        """
-        # 查找默认配置
-        default_source = await FileSource.filter(
-            is_enabled=True,
-            is_default=True
-        ).first()
-
-        if default_source is None:
-            return None
-
-        return await cls.create(default_source)
-
-
-# 注册内置适配器（导入时自动注册）
-from ext.file_source.providers.local import LocalAdapter
-from ext.file_source.providers.s3 import S3Adapter
-from ext.file_source.providers.aliyun_oss import AliyunOSSAdapter
-from ext.file_source.providers.sharepoint import SharePointAdapter
-
-FileSourceAdapterFactory.register(FileSourceTypeEnum.local_file, LocalAdapter)
-FileSourceAdapterFactory.register(FileSourceTypeEnum.s3, S3Adapter)
-FileSourceAdapterFactory.register(FileSourceTypeEnum.aliyun_oss, AliyunOSSAdapter)
-FileSourceAdapterFactory.register(FileSourceTypeEnum.sharepoint, SharePointAdapter)
-# 后续扩展：
-# FileSourceAdapterFactory.register(FileSourceTypeEnum.api, APIAdapter)
+    def get_cache_info(cls) -> dict[str, Any]:
+        """获取缓存信息"""
+        return {
+            "cached_count": len(cls._instances),
+            "cached_ids": list(cls._instances.keys()),
+            "registered_providers": [t.value for t in cls._providers.keys()],
+        }

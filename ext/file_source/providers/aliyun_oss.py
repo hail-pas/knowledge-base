@@ -1,279 +1,231 @@
-from typing import AsyncIterator, Optional, cast
+"""
+Aliyun OSS Provider
 
-from ext.file_source.base import FileSourceAdapter, FileItem
+支持 CryptoBucket 和普通 Bucket，支持 RSA 密钥对认证
+"""
+
+from typing import Any
+
 import oss2
 from oss2.crypto import RsaProvider
+from oss2.exceptions import OssError, NoSuchKey
+import asyncio
+from loguru import logger
+
+from ext.file_source.base import BaseFileSourceProvider, FileMetadata
+from ext.file_source.types import AliyunOSSExtraConfig
 
 
-class AliyunOSSAdapter(FileSourceAdapter):
-    """阿里云 OSS 适配器（支持客户端加密）
+class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
+    """阿里云 OSS Provider（支持 CryptoBucket）"""
 
-    支持阿里云 OSS 的客户端加密功能，使用 RSA 密钥对进行加密。
-
-    Config 格式:
-    {
-        "endpoint": "https://oss-cn-shanghai.aliyuncs.com",
-        "bucket": "my-bucket",
-        "access_key_id": "LTAI5t...",
-        "access_key_secret": "...",
-        "enable_encryption": true,  # 是否启用客户端加密
-        "private_key_path": "/path/to/private_key.pem",  # RSA 私钥路径
-        "public_key_path": "/path/to/public_key.pem",   # RSA 公钥路径
-        "mat_desc": {"key": "value"},  # 加密材料描述（可选）
-    }
-
-    使用示例:
-    ```python
-    config = {
-        "endpoint": "https://oss-cn-shanghai.aliyuncs.com",
-        "bucket": "my-bucket",
-        "access_key_id": "LTAI5t...",
-        "access_key_secret": "...",
-        "enable_encryption": True,
-        "private_key_path": "/path/to/private_key.pem",
-        "public_key_path": "/path/to/public_key.pem",
-    }
-    adapter = AliyunOSSAdapter(config)
-    ```
-    """
-
-    def __init__(self, config: dict):
-        super().__init__(config)
-        self.endpoint = config.get("endpoint")
-        self.bucket = config.get("bucket")
-        self.access_key_id = config.get("access_key_id")
-        self.access_key_secret = config.get("access_key_secret")
-        self.enable_encryption = config.get("enable_encryption", False)
-        self.private_key_path = config.get("private_key_path")
-        self.public_key_path = config.get("public_key_path")
-        self.mat_desc = config.get("mat_desc", {"desc": "aliyun-oss-encryption"})
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]
+        super().__init__(*args, **kwargs)
         self._bucket = None
         self._auth = None
 
-    def _create_auth(self):
-        """创建 OSS 认证对象"""
+    @property
+    def auth(self):  # type: ignore[no-untyped-def]
+        """懒加载认证对象"""
         if self._auth is None:
-            self._auth = oss2.Auth(self.access_key_id, self.access_key_secret)
-
+            self._auth = oss2.AuthV4(self.access_key, self.secret_key)
         return self._auth
 
-    def _create_bucket(self):
-        """创建 OSS Bucket 对象"""
+    @property
+    def bucket(self):  # type: ignore[no-untyped-def]
+        """懒加载 Bucket 对象（支持加密）"""
         if self._bucket is None:
-            auth = self._create_auth()
+            bucket_name = self.storage_location
 
-            if self.enable_encryption:
-                # 客户端加密模式
-                if not self.private_key_path or not self.public_key_path:
-                    raise ValueError(
-                        "启用加密时必须提供 private_key_path 和 public_key_path"
-                    )
-
-                # 读取 RSA 密钥对
-                with open(self.private_key_path, "r") as f:
-                    private_key = f.read()
-                with open(self.public_key_path, "r") as f:
-                    public_key = f.read()
+            if self.extra_config.private_key_content and self.extra_config.public_key_content:
+                logger.info("Using CryptoBucket with RSA key pair for Aliyun OSS")
 
                 key_pair = {
-                    'private_key': private_key,
-                    'public_key': public_key
+                    "private_key": self.extra_config.private_key_content,
+                    "public_key": self.extra_config.public_key_content,
                 }
 
-                # 创建加密 Bucket
-                crypto_provider = RsaProvider(key_pair, mat_desc=self.mat_desc)
+                mat_desc = {self.extra_config.mat_desc_vendor: self.extra_config.mat_desc_vendor} if self.extra_config.mat_desc_vendor else {"kbService": "kbService"}
+
+                crypto_provider = RsaProvider(key_pair, mat_desc=mat_desc)
+
                 self._bucket = oss2.CryptoBucket(
-                    auth,
-                    self.endpoint,
-                    self.bucket,
-                    crypto_provider=crypto_provider
+                    auth=self.auth,
+                    endpoint=self.endpoint,
+                    bucket_name=bucket_name,
+                    crypto_provider=crypto_provider,
+                    region=self.region,
+                    app_name=self.extra_config.app_name or "",
+                    enable_crc=self.extra_config.enable_crc,
                 )
+
             else:
-                # 普通 Bucket
-                self._bucket = oss2.Bucket(auth, self.endpoint, self.bucket)
+                logger.info("Using regular Bucket for Aliyun OSS")
 
-        return self._bucket
+                self._bucket = oss2.Bucket(
+                    auth=self.auth,
+                    endpoint=self.endpoint,
+                    bucket_name=bucket_name,
+                    region=self.region,
+                    app_name=self.extra_config.app_name or "",
+                    enable_crc=self.extra_config.enable_crc,
+                )
 
-    async def validate(self) -> bool:
-        """验证配置是否正确"""
-        if not self.bucket or not self.endpoint:
-            return False
+                if self.extra_config.is_encrypted_bucket:
+                    if self.extra_config.kms_key_id:
+                        assert self._bucket is not None
+                        self._bucket.server_side_encryption = "KMS"  # type: ignore[attr-defined]
+                        self._bucket.kms_key_id = self.extra_config.kms_key_id  # type: ignore[attr-defined]
+                    else:
+                        assert self._bucket is not None
+                        self._bucket.server_side_encryption = "AES256"  # type: ignore[attr-defined]
 
+        return self._bucket  # type: ignore[return-value]
+
+    def _validate_config(self) -> None:
+        if not self.storage_location:
+            raise ValueError("storage_location (bucket name) is required for Aliyun OSS")
+        if not self.endpoint:
+            raise ValueError("endpoint is required for Aliyun OSS")
+        if not self.region:
+            raise ValueError("region is required for Aliyun OSS (V4 signature)")
+
+        if self.extra_config.private_key_content or self.extra_config.public_key_content:
+            if not self.access_key:
+                raise ValueError("access_key (RAM AccessKey) is required when using RSA key pair")
+            if not self.secret_key:
+                raise ValueError("secret_key (RAM AccessKey Secret) is required when using RSA key pair")
+        else:
+            if not self.access_key or not self.secret_key:
+                raise ValueError("access_key and secret_key are required for Aliyun OSS")
+
+    async def validate_connection(self) -> bool:
+        """验证连接"""
         try:
-            bucket = self._create_bucket()
-            # 尝试获取 bucket 信息
-            bucket.get_bucket_info()
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: self.bucket.get_bucket_info())
             return True
-        except Exception:
+        except OssError as e:
+            logger.error(f"Aliyun OSS connection failed: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to validate Aliyun OSS connection: {e}")
             return False
 
-    async def get_file(self, uri: str) -> bytes:
-        """获取文件内容
-
-        Args:
-            uri: OSS 对象键
-
-        Returns:
-            文件内容
-        """
-        try:
-            bucket = self._create_bucket()
-            result = bucket.get_object(uri)
-            return cast(bytes, result.read())
-        except Exception as e:
-            if "NoSuchKey" in str(e) or "404" in str(e):
-                raise FileNotFoundError(f"OSS 对象不存在: {self.bucket}/{uri}")
-            raise RuntimeError(f"获取 OSS 对象失败: {e}")
-
-    async def upload_file(
+    async def list_files(
         self,
-        uri: str,
-        content: bytes,
-        content_type: str = "application/octet-stream",
-        metadata: dict | None = None
-    ) -> bool:
-        """上传文件到 OSS
+        prefix: str = "",
+        recursive: bool = False,
+        limit: int | None = None,
+    ) -> list[FileMetadata]:
+        """列出文件"""
+        loop = asyncio.get_event_loop()
+        bucket_name = self.storage_location
 
-        Args:
-            uri: OSS 对象键
-            content: 文件内容
-            content_type: MIME 类型
-            metadata: 元数据
+        files = []
+        count = 0
 
-        Returns:
-            是否上传成功
-        """
-        try:
-            bucket = self._create_bucket()
+        def list_files_sync() -> None:  # type: ignore[misc]
+            nonlocal count
+            max_keys = limit if limit else 1000
+            for obj in oss2.ObjectIterator(
+                self.bucket, prefix=prefix, delimiter="" if recursive else "/", max_keys=max_keys
+            ):
+                if limit and count >= limit:
+                    break
 
-            headers = {}
-            if content_type:
-                headers['Content-Type'] = content_type
-
-            bucket.put_object(uri, content, headers=headers)
-
-            return True
-        except Exception as e:
-            raise RuntimeError(f"上传文件到 OSS 失败: {e}")
-
-    async def delete_file(self, uri: str) -> bool:
-        """删除 OSS 中的文件
-
-        Args:
-            uri: OSS 对象键
-
-        Returns:
-            是否删除成功
-        """
-        try:
-            bucket = self._create_bucket()
-            bucket.delete_object(uri)
-            return True
-        except Exception as e:
-            raise RuntimeError(f"删除 OSS 对象失败: {e}")
-
-    async def check_file_exists(self, uri: str) -> bool:
-        """检查文件是否存在
-
-        Args:
-            uri: OSS 对象键
-
-        Returns:
-            文件是否存在
-        """
-        try:
-            bucket = self._create_bucket()
-            bucket.head_object(uri)
-            return True
-        except Exception:
-            return False
-
-    async def get_file_meta(self, uri: str) -> FileItem:
-        """获取文件元数据
-
-        Args:
-            uri: OSS 对象键
-
-        Returns:
-            文件元数据
-        """
-        try:
-            bucket = self._create_bucket()
-            result = bucket.head_object(uri)
-
-            # 从对象键中提取文件名
-            name = uri.split("/")[-1] if "/" in uri else uri
-
-            # 获取 content_type，优先从 headers 中获取
-            content_type = None
-            if hasattr(result, 'content_type') and result.content_type:
-                content_type = result.content_type
-            elif hasattr(result, 'headers') and 'Content-Type' in result.headers:
-                content_type = result.headers['Content-Type']
-            else:
-                content_type = "application/octet-stream"
-
-            # 将时间戳转换为 datetime 对象
-            from datetime import datetime as dt
-            last_modified_dt = result.last_modified if isinstance(result.last_modified, dt) else dt.fromtimestamp(result.last_modified)
-
-            return FileItem(
-                uri=uri,
-                name=name,
-                size=result.content_length,
-                content_type=content_type,
-                last_modified=last_modified_dt,
-                metadata={
-                    "etag": result.etag.strip('"') if result.etag else None,
-                }
-            )
-        except Exception as e:
-            if "NoSuchKey" in str(e) or "404" in str(e):
-                raise FileNotFoundError(f"OSS 对象不存在: {self.bucket}/{uri}")
-            raise RuntimeError(f"获取 OSS 对象元数据失败: {e}")
-
-    async def list_files(self, prefix: str = "", filter=None) -> AsyncIterator[FileItem]: # type: ignore
-        """列出文件
-
-        Args:
-            prefix: 对象键前缀
-            filter: 文件过滤条件
-
-        Yields:
-            文件项
-        """
-        try:
-            bucket = self._create_bucket()
-
-            for obj in oss2.ObjectIterator(bucket, prefix=prefix):
-                key = obj.key
-
-                # 跳过以 "/" 结尾的文件夹标记
-                if key.endswith("/"):
+                if obj.is_prefix():
                     continue
 
-                # 应用文件扩展名过滤
-                if filter and filter.allowed_extensions:
-                    if not any(key.endswith(ext) for ext in filter.allowed_extensions):
-                        continue
-
-                if filter and filter.blocked_extensions:
-                    if any(key.endswith(ext) for ext in filter.blocked_extensions):
-                        continue
-
-                # 将时间戳转换为 datetime 对象
-                from datetime import datetime as dt
-                last_modified_dt = obj.last_modified if isinstance(obj.last_modified, dt) else dt.fromtimestamp(obj.last_modified)
-
-                yield FileItem(
-                    uri=key,
-                    name=key.split("/")[-1] if "/" in key else key,
-                    size=obj.size,
-                    content_type="application/octet-stream",
-                    last_modified=last_modified_dt,
-                    metadata={
-                        "etag": obj.etag.strip('"') if obj.etag else None,
-                    }
+                files.append(
+                    FileMetadata(  # type: ignore[call-arg]
+                        uri=f"oss://{bucket_name}/{obj.key}",
+                        file_name=obj.key.split("/")[-1],
+                        file_size=obj.size,
+                        last_modified=obj.last_modified,
+                        etag=obj.etag,
+                    )
                 )
-        except Exception as e:
-            raise RuntimeError(f"列出 OSS 对象失败: {e}")
+                count += 1
+
+        await loop.run_in_executor(None, list_files_sync)
+        return files
+
+    async def get_file(self, uri: str) -> bytes:
+        """获取文件内容"""
+        key = self._extract_key(uri)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
+        return result.read()  # type: ignore[no-any-return]
+
+    async def get_file_stream(self, uri: str, chunk_size: int = 8192):  # type: ignore[misc]
+        """获取文件流"""
+        key = self._extract_key(uri)
+        loop = asyncio.get_event_loop()
+
+        result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
+
+        while True:
+            chunk = result.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+    async def get_file_metadata(self, uri: str) -> FileMetadata:
+        """获取文件元数据"""
+        key = self._extract_key(uri)
+        loop = asyncio.get_event_loop()
+
+        meta = await loop.run_in_executor(None, lambda: self.bucket.head_object(key))
+
+        last_modified_val = meta.last_modified
+        if isinstance(last_modified_val, int):
+            from datetime import datetime
+
+            last_modified_val = datetime.fromtimestamp(last_modified_val)
+
+        return FileMetadata(
+            uri=uri,
+            file_name=key.split("/")[-1],
+            file_size=int(meta.content_length or 0),
+            last_modified=last_modified_val,  # type: ignore[arg-type]
+            etag=meta.etag,
+            content_type=meta.content_type,
+        )
+
+    async def file_exists(self, uri: str) -> bool:
+        """检查文件是否存在"""
+        try:
+            await self.get_file_metadata(uri)
+            return True
+        except NoSuchKey:
+            return False
+
+    async def upload_file(self, uri: str, content: bytes, content_type: str | None = None) -> FileMetadata:
+        """上传文件"""
+        key = self._extract_key(uri)
+        loop = asyncio.get_event_loop()
+
+        headers = {}
+        if content_type:
+            headers["Content-Type"] = content_type
+
+        await loop.run_in_executor(None, lambda: self.bucket.put_object(key, content, headers=headers))
+
+        return await self.get_file_metadata(uri)
+
+    async def delete_file(self, uri: str) -> bool:
+        """删除文件"""
+        try:
+            key = self._extract_key(uri)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: self.bucket.delete_object(key))
+            return True
+        except Exception:
+            return False
+
+    def _extract_key(self, uri: str) -> str:
+        """从 URI 提取 object key"""
+        if uri.startswith(f"oss://{self.storage_location}/"):
+            return uri[len(f"oss://{self.storage_location}/") :]
+        return uri
