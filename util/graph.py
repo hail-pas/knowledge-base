@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from collections.abc import Iterable
 
 import networkx as nx
 import pydantic
@@ -7,15 +8,15 @@ import yaml
 
 NodeName = str
 ConfigFormat = Literal["yaml", "json", "dict"]
-OptionsDict = Dict[str, Any]
-ExecuteParamsDict = Dict[str, Any]
-InputDict = Dict[str, Any]
+OptionsDict = dict[str, Any]
+ExecuteParamsDict = dict[str, Any]
+InputDict = dict[str, Any]
 
 
 class NodeConfig(pydantic.BaseModel):
     options: OptionsDict = pydantic.Field(default_factory=dict, description="节点选项")
     execute_params: ExecuteParamsDict = pydantic.Field(default_factory=dict, description="执行参数")
-    depends_on: List[NodeName] = pydantic.Field(default_factory=list, description="依赖的父节点列表")
+    depends_on: list[NodeName] = pydantic.Field(default_factory=list, description="依赖的父节点列表")
     input: InputDict = pydantic.Field(default_factory=dict, description="输入数据")
 
     model_config = pydantic.ConfigDict(extra="allow")
@@ -27,30 +28,26 @@ class NodeInfo(pydantic.BaseModel):
     execute_params: ExecuteParamsDict = pydantic.Field(default_factory=dict)
     input: InputDict = pydantic.Field(default_factory=dict)
 
-    parents: List[NodeName] = pydantic.Field(default_factory=list, description="直接父节点")
-    children: List[NodeName] = pydantic.Field(default_factory=list, description="直接子节点")
-    ancestors: List[NodeName] = pydantic.Field(default_factory=list, description="所有祖先节点")
-    descendants: List[NodeName] = pydantic.Field(default_factory=list, description="所有后代节点")
+    parents: list[NodeName] = pydantic.Field(default_factory=list, description="直接父节点")
+    children: list[NodeName] = pydantic.Field(default_factory=list, description="直接子节点")
+    ancestors: list[NodeName] = pydantic.Field(default_factory=list, description="所有祖先节点")
+    descendants: list[NodeName] = pydantic.Field(default_factory=list, description="所有后代节点")
 
 
 class DagError(Exception):
     """DAG 基础错误"""
-    pass
 
 
 class DagConfigError(DagError):
     """配置错误（字段缺失/类型不对/引用不存在等）"""
-    pass
 
 
 class DagCycleError(DagError):
     """不是 DAG（存在环）"""
-    pass
 
 
 class DagValidationError(DagError):
     """DAG 验证错误"""
-    pass
 
 
 class GraphUtil:
@@ -58,14 +55,14 @@ class GraphUtil:
 
     config_format: ConfigFormat
     deterministic: bool
-    config: Dict[NodeName, NodeConfig]
+    config: dict[NodeName, NodeConfig]
     graph: nx.DiGraph
-    activities: Dict[NodeName, NodeInfo]
-    _topo_order: List[NodeName]
+    activities: dict[NodeName, NodeInfo]
+    _topo_order: list[NodeName]
 
     def __init__(
         self,
-        config: Union[str, Dict[NodeName, Union[NodeConfig, Dict[str, Any]]]],
+        config: str | dict[NodeName, NodeConfig | dict[str, Any]],
         config_format: ConfigFormat = "dict",
         *,
         deterministic: bool = True,
@@ -85,10 +82,10 @@ class GraphUtil:
 
     def _parse_config(
         self,
-        config: Union[str, Dict[NodeName, Union[NodeConfig, Dict[str, Any]]]],
+        config: str | dict[NodeName, NodeConfig | dict[str, Any]],
         config_format: ConfigFormat,
-    ) -> Dict[NodeName, NodeConfig]:
-        config_dict: Dict[str, Any]
+    ) -> dict[NodeName, NodeConfig]:
+        config_dict: dict[str, Any]
 
         match config_format:
             case "yaml":
@@ -120,7 +117,7 @@ class GraphUtil:
         if not isinstance(config_dict, dict) or not config_dict:
             raise DagConfigError(f"Config parsed error, raw config is: {config!r}")
 
-        normalized: Dict[NodeName, NodeConfig] = {}
+        normalized: dict[NodeName, NodeConfig] = {}
 
         for k, v in config_dict.items():
             if not isinstance(k, str) or not k.strip():
@@ -138,8 +135,8 @@ class GraphUtil:
                 raise DagConfigError(f"Node '{k}' config must be dict or NodeConfig, got: {type(v)}")
 
             # depends_on 去重 + 校验
-            validated: List[NodeName] = []
-            seen: Set[NodeName] = set()
+            validated: list[NodeName] = []
+            seen: set[NodeName] = set()
             for dep in node_config.depends_on:
                 if not isinstance(dep, str) or not dep.strip():
                     raise DagConfigError(f"Node '{k}' has invalid dependency: {dep!r}")
@@ -152,9 +149,9 @@ class GraphUtil:
 
         return normalized
 
-    def export_config(self) -> Dict[str, Any]:
+    def export_config(self) -> dict[str, Any]:
         """导出为 Python dict（可用于持久化/打印/再构建）"""
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         # 稳定输出顺序：按 topo 或字典序
         nodes = self._topo_order if self._topo_order else sorted(self.config.keys())
         for name in nodes:
@@ -162,7 +159,7 @@ class GraphUtil:
             out[name] = cfg.model_dump()
         return out
 
-    def export_config_json(self, *, indent: Optional[int] = None) -> str:
+    def export_config_json(self, *, indent: int | None = None) -> str:
         config_dict = self.export_config()
         return json.dumps(config_dict, indent=indent, ensure_ascii=False)
 
@@ -228,19 +225,19 @@ class GraphUtil:
             raise DagConfigError(f"Node '{node_name}' not found")
         return self.activities[node_name]
 
-    def get_root_nodes(self) -> List[NodeName]:
+    def get_root_nodes(self) -> list[NodeName]:
         roots = [n for n in self.graph.nodes() if self.graph.in_degree(n) == 0]
         if self.deterministic:
             roots.sort()
         return roots
 
-    def get_leaf_nodes(self) -> List[NodeName]:
+    def get_leaf_nodes(self) -> list[NodeName]:
         leaves = [n for n in self.graph.nodes() if self.graph.out_degree(n) == 0]
         if self.deterministic:
             leaves.sort()
         return leaves
 
-    def get_node_dependencies(self, node_name: NodeName) -> Dict[str, List[NodeName]]:
+    def get_node_dependencies(self, node_name: NodeName) -> dict[str, list[NodeName]]:
         info = self.get_node_info(node_name)
         return {
             "parents": list(info.parents),
@@ -249,7 +246,7 @@ class GraphUtil:
             "descendants": list(info.descendants),
         }
 
-    def get_layers(self) -> List[List[NodeName]]:
+    def get_layers(self) -> list[list[NodeName]]:
         """
         按层级（level）返回节点：List[List[str]]
 
@@ -265,7 +262,7 @@ class GraphUtil:
         if self.deterministic:
             ready.sort()
 
-        layers: List[List[NodeName]] = []
+        layers: list[list[NodeName]] = []
         visited_count = 0
 
         while ready:
@@ -275,7 +272,7 @@ class GraphUtil:
             visited_count += len(layer)
 
             # 计算下一层
-            next_ready: List[NodeName] = []
+            next_ready: list[NodeName] = []
             for n in layer:
                 for child in self.graph.successors(n):
                     in_deg[child] -= 1
@@ -293,7 +290,7 @@ class GraphUtil:
         return layers
 
 
-    def is_node_ready(self, node_name: NodeName, completed_nodes: Set[NodeName]) -> bool:
+    def is_node_ready(self, node_name: NodeName, completed_nodes: set[NodeName]) -> bool:
         if node_name not in self.graph:
             raise DagConfigError(f"Node '{node_name}' not found in graph")
         for parent in self.graph.predecessors(node_name):
@@ -301,8 +298,8 @@ class GraphUtil:
                 return False
         return True
 
-    def get_ready_nodes(self, completed_nodes: Set[NodeName]) -> List[NodeName]:
-        ready: List[NodeName] = []
+    def get_ready_nodes(self, completed_nodes: set[NodeName]) -> list[NodeName]:
+        ready: list[NodeName] = []
         for node in self.graph.nodes():
             if node in completed_nodes:
                 continue
