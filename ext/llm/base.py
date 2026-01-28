@@ -5,7 +5,8 @@ LLM 模型泛型基类
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic, AsyncIterator, Dict, Any, Optional, Type
+from typing import TypeVar, Generic, Dict, Any, Optional, Type
+from collections.abc import AsyncIterator
 import httpx
 from loguru import logger
 from util.general import truncate_content
@@ -46,8 +47,8 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
         model_name: str,
         model_type: str,
         max_tokens: int,
-        api_key: Optional[str],
-        base_url: Optional[str],
+        api_key: str | None,
+        base_url: str | None,
         supports_chat: bool,
         supports_completion: bool,
         supports_streaming: bool,
@@ -57,7 +58,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
         default_top_p: float,
         max_retries: int,
         timeout: int,
-        extra_config: Dict[str, Any],
+        extra_config: dict[str, Any],
     ):
         """
         初始化 LLM 模型
@@ -114,7 +115,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
 
         logger.debug(f"Configuration validated for {self.model_type}/{self.model_name}")
 
-    def _get_extra_config_cls(self) -> Type[BaseExtraConfig]:
+    def _get_extra_config_cls(self) -> type[BaseExtraConfig]:
         """
         从泛型参数自动提取 extra_config 类型
 
@@ -135,12 +136,12 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
                         return extra_config_type
 
         logger.warning(
-            f"无法从泛型参数提取 extra_config 类型，使用默认类型 BaseExtraConfig。"
-            f"请确保子类正确声明泛型参数，如：class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig])"
+            "无法从泛型参数提取 extra_config 类型，使用默认类型 BaseExtraConfig。"
+            "请确保子类正确声明泛型参数，如：class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig])",
         )
         return BaseExtraConfig
 
-    def _convert_extra_config(self, extra_config_dict: Dict[str, Any]) -> ExtraConfigT:
+    def _convert_extra_config(self, extra_config_dict: dict[str, Any]) -> ExtraConfigT:
         """
         将 dict 转换成具体的 pydantic model 类型
 
@@ -207,7 +208,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
             NotImplementedError: 如果模型不支持补全模式
         """
         logger.debug(
-            f"Completion request - prompt: {truncate_content(request.prompt)}, model: {request.model or self.model_name}, max_tokens: {request.max_tokens or self.max_tokens}"
+            f"Completion request - prompt: {truncate_content(request.prompt)}, model: {request.model or self.model_name}, max_tokens: {request.max_tokens or self.max_tokens}",
         )
 
         if not self.supports_completion:
@@ -236,7 +237,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
 
         logger.debug(
             f"Completion response - text: {truncate_content(response.text)}, "
-            f"tokens: {response.usage.total_tokens}, finish_reason: {response.finish_reason}"
+            f"tokens: {response.usage.total_tokens}, finish_reason: {response.finish_reason}",
         )
 
         return response
@@ -271,7 +272,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
 
         return f"{base_url}{endpoint}"
 
-    def build_auth_headers(self) -> Dict[str, str]:
+    def build_auth_headers(self) -> dict[str, str]:
         """
         构建认证头
 
@@ -288,7 +289,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
         value = f"{auth_type} {self.api_key}" if auth_type else self.api_key
         return {auth_header: value}
 
-    def build_request_headers(self) -> Dict[str, str]:
+    def build_request_headers(self) -> dict[str, str]:
         """构建完整的请求头"""
         headers = {"Content-Type": "application/json"}
         headers.update(self.build_auth_headers())
@@ -321,7 +322,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
 
     # ========== 响应解析辅助方法（用于 httpx 实现） ==========
 
-    def _extract_by_path(self, data: Dict[str, Any], path: str) -> Any:
+    def _extract_by_path(self, data: dict[str, Any], path: str) -> Any:
         """通过路径提取数据（点分隔路径）"""
         keys = path.split(".")
         result = data
@@ -334,13 +335,13 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
                 return None
         return result
 
-    def _extract_content(self, response_data: Dict[str, Any]) -> str:
+    def _extract_content(self, response_data: dict[str, Any]) -> str:
         """从响应中提取内容"""
         content_path = self.extra_config.response_content_path
         content = self._extract_by_path(response_data, content_path)
         return content or ""
 
-    def _extract_usage(self, response_data: Dict[str, Any]) -> TokenUsage:
+    def _extract_usage(self, response_data: dict[str, Any]) -> TokenUsage:
         """从响应中提取使用统计"""
         usage_path = self.extra_config.response_usage_path
         usage_data = self._extract_by_path(response_data, usage_path)
@@ -351,20 +352,19 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
                 completion_tokens=usage_data.get("completion_tokens", 0),
                 total_tokens=usage_data.get("total_tokens", 0),
             )
-        else:
-            return TokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+        return TokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
 
-    def _extract_finish_reason(self, response_data: Dict[str, Any]) -> str:
+    def _extract_finish_reason(self, response_data: dict[str, Any]) -> str:
         """从响应中提取结束原因"""
         finish_reason_path = self.extra_config.response_finish_reason_path
         return self._extract_by_path(response_data, finish_reason_path) or "stop"
 
-    def _extract_model(self, response_data: Dict[str, Any]) -> Optional[str]:
+    def _extract_model(self, response_data: dict[str, Any]) -> str | None:
         """从响应中提取模型名称"""
         model_path = self.extra_config.response_model_path
         return self._extract_by_path(response_data, model_path)
 
-    def _extract_tool_calls(self, response_data: Dict[str, Any]) -> Optional[list[ToolCall]]:
+    def _extract_tool_calls(self, response_data: dict[str, Any]) -> list[ToolCall] | None:
         """从响应中提取工具调用"""
         tool_calls_path = self.extra_config.response_tool_calls_path
         if not tool_calls_path:

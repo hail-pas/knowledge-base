@@ -18,8 +18,8 @@ class FileSourceSimpleList(
         FileSource,
         name="FileSourceList",
         meta_override=OverridePydanticMeta,
-        include=("id", "name", "type")
-    )
+        include=("id", "name", "type"),
+    ),
 ): ...
 
 
@@ -27,8 +27,8 @@ class FileSourceList(
     pydantic_model_creator(  # type: ignore
         FileSource,
         name="FileSourceList",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -36,8 +36,8 @@ class FileSourceDetail(
     pydantic_model_creator(  # type: ignore
         FileSource,
         name="FileSourceDetail",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -45,8 +45,8 @@ class FileSourceCreate(
     pydantic_model_creator(  # type: ignore
         FileSource,
         name="FileSourceCreate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 
@@ -55,8 +55,8 @@ class FileSourceUpdate(
     pydantic_model_creator(  # type: ignore
         FileSource,
         name="FileSourceUpdate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 

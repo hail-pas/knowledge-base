@@ -11,7 +11,7 @@ from ext.ext_tortoise.models.user_center import Account
 
 
 class AccountCreate(
-    pydantic_model_creator(Account, name="AccountCreate", exclude=("last_login_at", "status"), exclude_readonly=True)
+    pydantic_model_creator(Account, name="AccountCreate", exclude=("last_login_at", "status"), exclude_readonly=True),
 ):
     role_id: int
 
@@ -25,8 +25,8 @@ class AccountCreate(
 @optional()
 class AccountUpdate(
     pydantic_model_creator(
-        Account, name="AccountUpdate", exclude=("last_login_at", "password"), exclude_readonly=True
-    )
+        Account, name="AccountUpdate", exclude=("last_login_at", "password"), exclude_readonly=True,
+    ),
 ): ...
 
 

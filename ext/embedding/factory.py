@@ -20,19 +20,19 @@ class EmbeddingModelFactory:
     """
 
     # 模型类型到provider类的映射
-    _providers: Dict[EmbeddingModelTypeEnum, Type[BaseEmbeddingModel]] = {}
+    _providers: dict[EmbeddingModelTypeEnum, type[BaseEmbeddingModel]] = {}
 
     # 实例缓存
-    _instances: Dict[int, BaseEmbeddingModel] = {}
+    _instances: dict[int, BaseEmbeddingModel] = {}
 
     # 锁，用于防止并发创建同一实例
-    _locks: Dict[int, asyncio.Lock] = {}
+    _locks: dict[int, asyncio.Lock] = {}
 
     @classmethod
     def register(
         cls,
         model_type: EmbeddingModelTypeEnum,
-        provider_class: Type[BaseEmbeddingModel],
+        provider_class: type[BaseEmbeddingModel],
     ) -> None:
         """
         注册新的 embedding provider
@@ -109,7 +109,7 @@ class EmbeddingModelFactory:
     @classmethod
     def _create_instance(
         cls,
-        provider_cls: Type[BaseEmbeddingModel],
+        provider_cls: type[BaseEmbeddingModel],
         config: EmbeddingModelConfig,
     ) -> BaseEmbeddingModel:
         """
@@ -244,7 +244,7 @@ class EmbeddingModelFactory:
         return await cls.create(config, use_cache=use_cache)
 
     @classmethod
-    def get_cache_info(cls) -> Dict[str, Any]:
+    def get_cache_info(cls) -> dict[str, Any]:
         """
         获取缓存信息
 

@@ -16,7 +16,7 @@ class OpenAIExtraConfig(BaseExtraConfig):
     扩展自 BaseExtraConfig，添加 OpenAI 特有的字段
     """
 
-    encoding_format: Optional[str] = Field(default=None, description="编码格式：float 或 base64")
+    encoding_format: str | None = Field(default=None, description="编码格式：float 或 base64")
 
 
 class AzureOpenAIExtraConfig(BaseExtraConfig):
@@ -33,5 +33,5 @@ class CohereExtraConfig(BaseExtraConfig):
     Cohere 特定配置
     """
 
-    input_type: Optional[str] = Field(default=None, description="输入类型：search_document 或 search_query")
-    truncate: Optional[str] = Field(default=None, description="截断方式：NONE、END 或 START")
+    input_type: str | None = Field(default=None, description="输入类型：search_document 或 search_query")
+    truncate: str | None = Field(default=None, description="截断方式：NONE、END 或 START")

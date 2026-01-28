@@ -19,4 +19,4 @@ class OpenAIEmbeddingModel(BaseEmbeddingModel[OpenAIExtraConfig]):
     extra_config 类型会自动从泛型参数中提取
     """
 
-    pass  # 无需任何实现！
+    # 无需任何实现！

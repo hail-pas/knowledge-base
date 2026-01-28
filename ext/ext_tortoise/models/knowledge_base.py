@@ -31,7 +31,7 @@ class Collection(BaseModel):
     is_temp = fields.BooleanField(default=False, description="是否临时")
     workflow_template = fields.JSONField(default=dict, description="默认DAG工作流模版")
     extra_config = fields.JSONField(
-        default=dict, description="额外配置：gen_faq: bool, use_mineru: bool 等，可继续扩展"
+        default=dict, description="额外配置：gen_faq: bool, use_mineru: bool 等，可继续扩展",
     )
     # workflow template 默认值为：
     # {
@@ -157,10 +157,10 @@ class Document(BaseModel):
     """
 
     collection = fields.ForeignKeyField(
-        f"{_KBConnectionName}.Collection", related_name="documents", on_delete=fields.CASCADE, description="关联集合"
+        f"{_KBConnectionName}.Collection", related_name="documents", on_delete=fields.CASCADE, description="关联集合",
     )
     file_source = fields.ForeignKeyField(
-        f"{_KBConnectionName}.FileSource", related_name="documents", on_delete=fields.RESTRICT, description="关联文件源"
+        f"{_KBConnectionName}.FileSource", related_name="documents", on_delete=fields.RESTRICT, description="关联文件源",
     )
     uri = fields.CharField(max_length=1000, description="文件唯一标识（本地为绝对路径）")
     file_name = fields.CharField(max_length=255, description="文件名")
@@ -207,7 +207,7 @@ class Workflow(BaseModel):
         description="配置格式（yaml/json/python）",
     )
     status = fields.CharEnumField(
-        WorkflowStatusEnum, default=WorkflowStatusEnum.pending.value, description="工作流状态"
+        WorkflowStatusEnum, default=WorkflowStatusEnum.pending.value, description="工作流状态",
     )
     started_at = fields.DatetimeField(null=True, description="开始执行时间")
     completed_at = fields.DatetimeField(null=True, description="完成时间")
@@ -317,6 +317,46 @@ class IndexingBackendConfig(BaseModel):
 
     存储各类索引后端服务（如Elasticsearch、Milvus等）的连接配置信息
     """
+
+    # 基础信息
+    name = fields.CharField(max_length=100, unique=True, description="配置名称")
+    type = fields.CharEnumField(IndexingBackendTypeEnum, description="后端类型")
+
+    # 连接配置（公共字段）
+    host = fields.CharField(max_length=255, null=True, description="主机地址")
+    port = fields.IntField(null=True, description="端口号")
+    username = fields.CharField(max_length=255, null=True, description="用户名")
+    password = fields.CharField(max_length=500, null=True, description="密码（加密）")
+
+    # 安全配置（公共）
+    use_ssl = fields.BooleanField(default=True, description="是否使用SSL/TLS")
+    verify_ssl = fields.BooleanField(default=True, description="是否验证SSL证书")
+    timeout = fields.IntField(default=30, description="连接超时时间(秒)")
+    max_retries = fields.IntField(default=3, description="最大重试次数")
+
+    # 连接池配置（公共）
+    max_connections = fields.IntField(default=100, description="最大连接数(连接池)")
+
+    # Provider 特定配置（JSON 存储差异）
+    extra_config = fields.JSONField(default=dict, description="Provider特定扩展配置")
+
+    # 状态配置
+    is_enabled = fields.BooleanField(default=True, description="是否启用")
+    is_default = fields.BooleanField(default=False, description="是否默认配置")
+    description = fields.TextField(default="", description="描述信息")
+
+    class Meta:
+        table = "indexing_backend_config"
+        table_description = "索引后端配置表"
+        app = _KBConnectionName
+        indexes = [
+            ("type", "is_enabled"),
+            ("is_default", "is_enabled"),
+        ]
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"{self.name} ({self.type.value})"
 
 
 class LLMModelConfig(BaseModel):

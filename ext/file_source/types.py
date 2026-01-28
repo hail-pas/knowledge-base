@@ -34,7 +34,7 @@ class LocalFileSourceExtraConfig(BaseFileSourceExtraConfig):
     """本地文件存储特定配置"""
 
     allowed_extensions: list[str] | None = Field(
-        default=None, description="允许的文件扩展名列表（如 ['.txt', '.pdf']）"
+        default=None, description="允许的文件扩展名列表（如 ['.txt', '.pdf']）",
     )
     excluded_extensions: list[str] | None = Field(default=None, description="排除的文件扩展名列表")
     max_file_size: int | None = Field(default=None, description="最大文件大小(bytes)，None=无限制")
@@ -50,7 +50,7 @@ class S3CompatibleExtraConfig(BaseFileSourceExtraConfig):
     multipart_chunksize: int | None = Field(default=8388608, description="分片大小(bytes)")
     addressing_style: str | None = Field(default="path", description="地址模式（path/virtual-hosted）")
     payload_transfer_threshold: int | None = Field(
-        default=0, description="禁用 aws-chunked encoding 的阈值(bytes), 0 表示禁用"
+        default=0, description="禁用 aws-chunked encoding 的阈值(bytes), 0 表示禁用",
     )
 
 
@@ -65,7 +65,7 @@ class S3ExtraConfig(S3CompatibleExtraConfig):
     """AWS S3 特定配置"""
 
     config: dict[str, Any] | None = Field(
-        default_factory=lambda: {}, description="boto3 Config对象额外参数（如max_pool_connections等）"
+        default_factory=dict, description="boto3 Config对象额外参数（如max_pool_connections等）",
     )
     session_token: str | None = Field(default=None, description="STS临时会话令牌")
 

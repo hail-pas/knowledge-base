@@ -7,7 +7,7 @@ from typing import Optional
 class ProviderConfig(BaseModel):
     """Provider 配置基类（所有 Provider 特定配置的父类）"""
 
-    partition_value: Optional[str] = Field(default=None, description="Partition 值")
+    partition_value: str | None = Field(default=None, description="Partition 值")
 
 
 class ElasticsearchConfig(ProviderConfig):

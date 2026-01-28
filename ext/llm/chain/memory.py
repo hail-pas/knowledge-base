@@ -21,13 +21,12 @@ class BaseMemory(ABC):
     """
 
     @abstractmethod
-    async def load_memory_variables(self) -> Dict[str, Any]:
+    async def load_memory_variables(self) -> dict[str, Any]:
         """加载记忆变量
 
         Returns:
             包含记忆的变量字典
         """
-        pass
 
     @abstractmethod
     async def save_context(self, input: str, output: str) -> None:
@@ -37,12 +36,10 @@ class BaseMemory(ABC):
             input: 用户输入
             output: Assistant 输出
         """
-        pass
 
     @abstractmethod
     async def clear(self) -> None:
         """清空记忆"""
-        pass
 
 
 class InMemoryMemory(BaseMemory):
@@ -59,9 +56,9 @@ class InMemoryMemory(BaseMemory):
             max_messages: 最大消息数量
         """
         self.max_messages = max_messages
-        self.messages: List[ChatMessage] = []
+        self.messages: list[ChatMessage] = []
 
-    async def load_memory_variables(self) -> Dict[str, Any]:
+    async def load_memory_variables(self) -> dict[str, Any]:
         """加载消息历史
 
         Returns:
@@ -115,9 +112,9 @@ class DatabaseMemory(BaseMemory):
     def __init__(
         self,
         session_id: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         agent_type: str = "default",
-        uid: Optional[str] = None,
+        uid: str | None = None,
     ):
         """初始化数据库记忆
 
@@ -150,7 +147,7 @@ class DatabaseMemory(BaseMemory):
 
         return record
 
-    async def load_memory_variables(self) -> Dict[str, Any]:
+    async def load_memory_variables(self) -> dict[str, Any]:
         """从数据库加载消息历史
 
         Returns:
@@ -243,9 +240,9 @@ class ConversationBufferMemory(BaseMemory):
             max_token_limit: 最大 Token 数量
         """
         self.max_token_limit = max_token_limit
-        self.messages: List[ChatMessage] = []
+        self.messages: list[ChatMessage] = []
 
-    async def load_memory_variables(self) -> Dict[str, Any]:
+    async def load_memory_variables(self) -> dict[str, Any]:
         """加载消息历史（自动裁剪超出限制的部分）
 
         Returns:

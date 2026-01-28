@@ -137,8 +137,8 @@ class CeleryConfig(InstanceExtensionConfig[Celery]):
             # "workflow.schedule_resume": {
             #     "queue": "workflow_entry"
             # },
-            'workflow.*': {
-                'queue': 'default',
+            "workflow.*": {
+                "queue": "default",
             },
         }
 
@@ -184,8 +184,8 @@ class CeleryConfig(InstanceExtensionConfig[Celery]):
             broker_use_ssl={
                 # 'ssl_cert_reqs': 0,  # 0 = ssl.CERT_NONE, 不验证证书
                 #
-                'ssl_cert_reqs': 2,  # 2 = ssl.CERT_REQUIRED
-                'ssl_ca_certs': self.broker_url.query,
+                "ssl_cert_reqs": 2,  # 2 = ssl.CERT_REQUIRED
+                "ssl_ca_certs": self.broker_url.query,
             },
             # result_backend_use_ssl={
             #     'ssl_cert_reqs': 0,

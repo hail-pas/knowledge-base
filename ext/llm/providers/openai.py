@@ -4,7 +4,8 @@ OpenAI LLM Provider
 使用官方 OpenAI SDK 实现
 """
 
-from typing import AsyncIterator, Optional, Any
+from typing import Optional, Any
+from collections.abc import AsyncIterator
 from loguru import logger
 
 import openai
@@ -38,7 +39,7 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         logger.debug(
-            f"Initializing OpenAI client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}"
+            f"Initializing OpenAI client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}",
         )
         self._client = AsyncOpenAI(
             api_key=self.api_key,
@@ -81,7 +82,7 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
 
         return converted
 
-    def _convert_tools(self, tools: Optional[list]) -> Optional[list]:
+    def _convert_tools(self, tools: list | None) -> list | None:
         """
         转换工具格式
 
@@ -104,12 +105,12 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
                         "description": tool.function.description,
                         "parameters": tool.function.parameters,
                     },
-                }
+                },
             )
 
         return converted
 
-    def _convert_tool_choice(self, tool_choice: Optional[Any]) -> Any:
+    def _convert_tool_choice(self, tool_choice: Any | None) -> Any:
         """
         转换工具选择格式
 
@@ -142,7 +143,7 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
             f"messages: {len(request.messages)}, "
             f"temperature: {request.temperature or self.default_temperature}, "
             f"max_tokens: {request.max_tokens or self.max_tokens}, "
-            f"tools: {len(request.tools) if request.tools else 0}"
+            f"tools: {len(request.tools) if request.tools else 0}",
         )
 
         try:
@@ -174,7 +175,7 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
 
             logger.debug(
                 f"OpenAI chat response - content: {truncate_content(parsed_response.content)}, "
-                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}"
+                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}",
             )
 
             return parsed_response
@@ -248,7 +249,7 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
             流式响应块
         """
         logger.debug(
-            f"OpenAI chat stream request - model: {request.model or self.model_name}, messages: {len(request.messages)}"
+            f"OpenAI chat stream request - model: {request.model or self.model_name}, messages: {len(request.messages)}",
         )
 
         try:

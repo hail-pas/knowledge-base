@@ -8,11 +8,11 @@ from ext.indexing.base import BaseProvider
 class IndexingProviderFactory:
     """Indexing Provider 工厂"""
 
-    _providers: Dict[str, Type[BaseProvider]] = {}
-    _instances: Dict[int, BaseProvider] = {}
+    _providers: dict[str, type[BaseProvider]] = {}
+    _instances: dict[int, BaseProvider] = {}
 
     @classmethod
-    def register(cls, backend_type: str, provider_class: Type[BaseProvider]):
+    def register(cls, backend_type: str, provider_class: type[BaseProvider]):
         """注册 provider"""
         cls._providers[backend_type] = provider_class
 
@@ -40,7 +40,7 @@ class IndexingProviderFactory:
         from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
         config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum(backend_type), is_enabled=True, is_default=True
+            type=IndexingBackendTypeEnum(backend_type), is_enabled=True, is_default=True,
         ).first()
 
         if not config:
@@ -57,7 +57,7 @@ class IndexingProviderFactory:
 
 
 from ext.indexing.providers.elasticsearch import ElasticsearchProvider
-# from ext.indexing.providers.milvus import MilvusProvider
+from ext.indexing.providers.milvus import MilvusProvider
 
 IndexingProviderFactory.register(IndexingBackendTypeEnum.elasticsearch.value, ElasticsearchProvider)
-# IndexingProviderFactory.register("milvus", MilvusProvider)
+IndexingProviderFactory.register("milvus", MilvusProvider)

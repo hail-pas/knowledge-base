@@ -1,7 +1,7 @@
 import uuid
 import datetime
 
-from typing import Iterable
+from collections.abc import Iterable
 from ulid import ULID
 from tortoise import fields, manager
 from tortoise.models import Model
@@ -59,7 +59,7 @@ class TimeStampModel(Model):
         force_update: bool = False,
     ) -> None:
         if update_fields:
-            update_fields = list(update_fields) + ["updated_at", ]
+            update_fields = list(update_fields) + ["updated_at" ]
         await super().save(using_db, update_fields, force_create, force_update)
 
     async def real_delete(

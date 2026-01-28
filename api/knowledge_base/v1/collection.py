@@ -29,7 +29,7 @@ from api.service.collection.schema import (
     CollectionCreate,
     CollectionDetail,
     CollectionUpdate,
-    CollectionFilterSchema
+    CollectionFilterSchema,
 )
 
 router = APIRouter()

@@ -7,7 +7,8 @@ Agent 实现
 
 import json
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
+from collections.abc import AsyncIterator
 
 from loguru import logger
 
@@ -29,17 +30,17 @@ class AgentStream:
 
     event_type: Literal["thought", "action", "observation", "content", "error", "max_iterations_reached", "retry"]
     content: Any
-    tool_call: Optional[Dict[str, Any]] = None
-    tool_result: Optional[Dict[str, Any]] = None
-    error: Optional[Exception] = None
+    tool_call: dict[str, Any] | None = None
+    tool_result: dict[str, Any] | None = None
+    error: Exception | None = None
 
     def __init__(
         self,
         event_type: Literal["thought", "action", "observation", "content", "error", "max_iterations_reached", "retry"],
         content: Any,
-        tool_call: Optional[Dict[str, Any]] = None,
-        tool_result: Optional[Dict[str, Any]] = None,
-        error: Optional[Exception] = None,
+        tool_call: dict[str, Any] | None = None,
+        tool_result: dict[str, Any] | None = None,
+        error: Exception | None = None,
     ):
         """初始化 AgentStream
 
@@ -69,10 +70,10 @@ class Agent(Runnable[str, str], ABC):
     def __init__(
         self,
         llm: LLM,
-        tools: List[Tool],
-        memory: Optional[BaseMemory] = None,
+        tools: list[Tool],
+        memory: BaseMemory | None = None,
         max_iterations: int = 10,
-        system_prompt: Optional[str] = None,
+        system_prompt: str | None = None,
     ):
         """初始化 Agent
 
@@ -99,7 +100,6 @@ class Agent(Runnable[str, str], ABC):
         Returns:
             最终答案
         """
-        pass
 
     @abstractmethod
     async def astream(self, input: str) -> AsyncIterator[AgentStream]: # type: ignore
@@ -111,7 +111,6 @@ class Agent(Runnable[str, str], ABC):
         Yields:
             AgentStream 事件
         """
-        pass
 
     def _get_tool(self, tool_name: str) -> Tool:
         """根据名称获取工具
@@ -131,7 +130,7 @@ class Agent(Runnable[str, str], ABC):
 
         raise ToolNotFoundError(tool_name)
 
-    async def _execute_tool(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_tool(self, tool_call: dict[str, Any]) -> dict[str, Any]:
         """执行工具
 
         Args:
@@ -170,7 +169,7 @@ class FunctionCallingAgent(Agent):
         """
         logger.debug(
             f"FunctionCallingAgent ainvoke - input length: {len(input)}, "
-            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}"
+            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}",
         )
 
         # 构建消息历史
@@ -219,14 +218,14 @@ class FunctionCallingAgent(Agent):
                         role="assistant",
                         content=response.content or "",
                         tool_calls=[tool_call_data], # type: ignore
-                    )
+                    ),
                 )
                 messages.append(
                     ChatMessage(
                         role="tool",
                         content=json.dumps(tool_result),
                         tool_call_id=tool_call["id"],
-                    )
+                    ),
                 )
 
         # 达到最大迭代次数
@@ -244,7 +243,7 @@ class FunctionCallingAgent(Agent):
         """
         logger.debug(
             f"FunctionCallingAgent astream - input length: {len(input)}, "
-            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}"
+            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}",
         )
 
         # 构建消息历史
@@ -305,14 +304,14 @@ class FunctionCallingAgent(Agent):
                             role="assistant",
                             content=response.content or "",
                             tool_calls=[tool_call_data], # type: ignore
-                        )
+                        ),
                     )
                     messages.append(
                         ChatMessage(
                             role="tool",
                             content=json.dumps(tool_result),
                             tool_call_id=tool_call["id"],
-                        )
+                        ),
                     )
                 except ToolExecutionError as e:
                     logger.error(f"Tool execution failed: {e}")
@@ -331,7 +330,7 @@ class FunctionCallingAgent(Agent):
         )
         raise MaxIterationsError(self.max_iterations)
 
-    async def _build_messages(self, input: str) -> List[ChatMessage]:
+    async def _build_messages(self, input: str) -> list[ChatMessage]:
         """构建消息历史
 
         Args:
@@ -358,8 +357,8 @@ class FunctionCallingAgent(Agent):
 
     async def _call_llm(
         self,
-        messages: List[ChatMessage],
-        tools: List[Any],
+        messages: list[ChatMessage],
+        tools: list[Any],
     ) -> LLMResponse:
         """调用 LLM
 
@@ -391,7 +390,7 @@ class FunctionCallingAgent(Agent):
                 messages=messages_dict, # type: ignore
                 tools=tools,
                 tool_choice="auto",
-            )
+            ),
         )
 
         return response
@@ -408,10 +407,10 @@ class ReActAgent(Agent):
     def __init__(
         self,
         llm: LLM,
-        tools: List[Tool],
-        memory: Optional[BaseMemory] = None,
+        tools: list[Tool],
+        memory: BaseMemory | None = None,
         max_iterations: int = 10,
-        system_prompt: Optional[str] = None,
+        system_prompt: str | None = None,
     ):
         """初始化 ReAct Agent
 
@@ -457,7 +456,7 @@ Final Answer: 最终答案
         """
         logger.debug(
             f"ReActAgent ainvoke - input length: {len(input)}, "
-            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}"
+            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}",
         )
 
         # 构建工具描述
@@ -531,7 +530,7 @@ Final Answer: 最终答案
         """
         logger.debug(
             f"ReActAgent astream - input length: {len(input)}, "
-            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}"
+            f"tools: {len(self.tools)}, max_iterations: {self.max_iterations}",
         )
 
         # 构建工具描述
@@ -621,7 +620,7 @@ Final Answer: 最终答案
         )
         raise MaxIterationsError(self.max_iterations)
 
-    def _parse_react_response(self, response: str) -> Dict[str, Any]:
+    def _parse_react_response(self, response: str) -> dict[str, Any]:
         """解析 ReAct 响应
 
         Args:

@@ -15,8 +15,8 @@ class DocumentList(
     pydantic_model_creator(  # type: ignore
         Document,
         name="DocumentList",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ):
     collection_id: int
     file_source: FileSourceSimpleList
@@ -27,8 +27,8 @@ class DocumentDetail(
     pydantic_model_creator(  # type: ignore
         Document,
         name="DocumentDetail",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 

@@ -4,7 +4,8 @@ DeepSeek LLM Provider
 使用 httpx 直接调用 API（完全 OpenAI 兼容）
 """
 
-from typing import AsyncIterator, Any
+from typing import Any
+from collections.abc import AsyncIterator
 import json
 import httpx
 from loguru import logger
@@ -75,7 +76,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
                         "description": tool.function.description,
                         "parameters": tool.function.parameters,
                     },
-                }
+                },
             )
 
         return converted
@@ -105,7 +106,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
         logger.debug(
             f"DeepSeek chat request - model: {request.model or self.model_name}, "
             f"messages: {len(request.messages)}, "
-            f"temperature: {request.temperature or self.default_temperature}"
+            f"temperature: {request.temperature or self.default_temperature}",
         )
 
         client = self.get_httpx_client()
@@ -125,26 +126,24 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
                         f"DeepSeek chat response - status: 200, "
                         f"content: {truncate_content(parsed_response.content)}, "
                         f"tokens: {parsed_response.usage.total_tokens}, "
-                        f"finish_reason: {parsed_response.finish_reason}"
+                        f"finish_reason: {parsed_response.finish_reason}",
                     )
 
                     return parsed_response
-                else:
-                    error_data = response.json()
-                    error_message = self._extract_error_message(error_data) or "Unknown error"
+                error_data = response.json()
+                error_message = self._extract_error_message(error_data) or "Unknown error"
 
-                    if self.should_retry(response.status_code, attempt):
-                        delay = self.get_retry_delay(attempt)
-                        logger.warning(
-                            f"DeepSeek 请求失败（{response.status_code}: {error_message}），"
-                            f"{delay}秒后重试（{attempt + 1}/{self.max_retries}）"
-                        )
-                        import asyncio
+                if self.should_retry(response.status_code, attempt):
+                    delay = self.get_retry_delay(attempt)
+                    logger.warning(
+                        f"DeepSeek 请求失败（{response.status_code}: {error_message}），"
+                        f"{delay}秒后重试（{attempt + 1}/{self.max_retries}）",
+                    )
+                    import asyncio
 
-                        await asyncio.sleep(delay)
-                        continue
-                    else:
-                        raise RuntimeError(f"DeepSeek API error: {error_message} (状态码: {response.status_code})")
+                    await asyncio.sleep(delay)
+                    continue
+                raise RuntimeError(f"DeepSeek API error: {error_message} (状态码: {response.status_code})")
 
             except httpx.TimeoutException as e:
                 if attempt == self.max_retries:
@@ -164,7 +163,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
 
                 await asyncio.sleep(delay)
 
-        raise RuntimeError(f"DeepSeek API 请求失败，已达最大重试次数")
+        raise RuntimeError("DeepSeek API 请求失败，已达最大重试次数")
 
     def _build_request_body(self, request: LLMRequest) -> dict:
         """
@@ -281,7 +280,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
         """
         logger.debug(
             f"DeepSeek chat stream request - model: {request.model or self.model_name}, "
-            f"messages: {len(request.messages)}"
+            f"messages: {len(request.messages)}",
         )
 
         client = self.get_httpx_client()

@@ -129,7 +129,7 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
             nonlocal count
             max_keys = limit if limit else 1000
             for obj in oss2.ObjectIterator(
-                self.bucket, prefix=prefix, delimiter="" if recursive else "/", max_keys=max_keys
+                self.bucket, prefix=prefix, delimiter="" if recursive else "/", max_keys=max_keys,
             ):
                 if limit and count >= limit:
                     break
@@ -144,7 +144,7 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
                         file_size=obj.size,
                         last_modified=obj.last_modified,
                         etag=obj.etag,
-                    )
+                    ),
                 )
                 count += 1
 

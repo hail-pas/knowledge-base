@@ -23,7 +23,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         # Validate configuration
         if self.extra_config.vector_similarity not in ["cosine", "l2", "ip"]:
             raise ValueError(
-                f"Invalid vector_similarity: {self.extra_config.vector_similarity}. Must be one of: cosine, l2, ip"
+                f"Invalid vector_similarity: {self.extra_config.vector_similarity}. Must be one of: cosine, l2, ip",
             )
 
     async def connect(self):
@@ -51,7 +51,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         if self._client:
             await self._client.close()
 
-    async def create_collection(self, model_class: Type[BaseIndexModel], drop_existing: bool = False):
+    async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False):
         """创建索引"""
         # Validate model configuration
         self._validate_model_config(model_class)
@@ -70,12 +70,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         await self._client.indices.create(index=index_name, mappings=mapping, settings=settings)
 
-    async def drop_collection(self, model_class: Type[BaseIndexModel]):
+    async def drop_collection(self, model_class: type[BaseIndexModel]):
         """删除索引"""
         index_name = self.build_collection_name(model_class)
         await self._client.indices.delete(index=index_name, ignore_unavailable=True)
 
-    def _build_mapping(self, model_class: Type[BaseIndexModel]) -> dict:
+    def _build_mapping(self, model_class: type[BaseIndexModel]) -> dict:
         """根据模型类生成 Elasticsearch mapping"""
 
         mapping = {"properties": {}}
@@ -84,12 +84,16 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             if field_name.startswith("_") or field_name == "id":
                 continue
 
+            index_metadata: dict[str, Any] = {}
+            if field_info.json_schema_extra and isinstance(field_info.json_schema_extra, dict):
+                index_metadata = field_info.json_schema_extra.get("index_metadata", {})  # type: ignore
+
             if field_name == model_class.Meta.dense_vector_field:
                 mapping["properties"][field_name] = {
                     "type": "dense_vector",
                     "dims": model_class.Meta.dense_vector_dimension,
                     "index": True,
-                    "similarity": self.extra_config.vector_similarity,
+                    "similarity": index_metadata.get("similarity") or self.extra_config.vector_similarity,
                 }
             elif field_info.annotation == bool:
                 mapping["properties"][field_name] = {"type": "boolean"}
@@ -100,13 +104,13 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             elif field_info.annotation == str:
                 mapping["properties"][field_name] = {
                     "type": "text",
-                    "analyzer": self.extra_config.text_analyzer,
-                    "search_analyzer": self.extra_config.search_analyzer,
+                    "analyzer": index_metadata.get("analyzer") or self.extra_config.text_analyzer,
+                    "search_analyzer": index_metadata.get("search_analyzer") or self.extra_config.search_analyzer,
                     "fields": {"keyword": {"type": "keyword"}},
                 }
             elif field_info.annotation == datetime:
                 mapping["properties"][field_name] = {"type": "date"}
-            elif field_info.annotation in [dict, Dict] or get_origin(field_info.annotation) == dict:
+            elif field_info.annotation in [dict, dict] or get_origin(field_info.annotation) == dict:
                 mapping["properties"][field_name] = {"type": "object"}
             elif get_origin(field_info.annotation) == list:
                 # Handle list types: List[str], List[int], etc.
@@ -123,7 +127,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return mapping
 
-    def _build_term_or_match_query(self, model_class: Type[BaseIndexModel], field: str, value: Any) -> dict:
+    def _build_term_or_match_query(self, model_class: type[BaseIndexModel], field: str, value: Any) -> dict:
         """根据字段类型构建 term 或 match 查询
 
         - 如果字段名以 .keyword 结尾，使用 term 查询（精确匹配）
@@ -140,16 +144,16 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return {"term": {field: value}}
 
-    def _get_routing_value(self, model_class: Type[BaseIndexModel], document: Dict[str, Any]) -> str | None:
+    def _get_routing_value(self, model_class: type[BaseIndexModel], document: dict[str, Any]) -> str | None:
         """从 document 中提取 partition_key 字段的值作为 routing"""
         if model_class.Meta.partition_key:
             value = document.get(model_class.Meta.partition_key)
             if not value:
-                raise RuntimeError(f"partition key value can not be empty")
+                raise RuntimeError("partition key value can not be empty")
             return value
         return None
 
-    def _get_routing_value_from_filter(self, filter_clause: Optional[FilterClause], partition_key: str) -> str | None:
+    def _get_routing_value_from_filter(self, filter_clause: FilterClause | None, partition_key: str) -> str | None:
         """从 filter_clause 提取 routing 值（支持多个，逗号分隔）"""
         if not filter_clause:
             return None
@@ -166,7 +170,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return None
 
-    async def get(self, model_class: Type[BaseIndexModel], ids: list) -> list[dict]:
+    async def get(self, model_class: type[BaseIndexModel], ids: list) -> list[dict]:
         """获取文档"""
         index_name = self.build_collection_name(model_class)
 
@@ -174,7 +178,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         if model_class.Meta.partition_key:
             search_body = {"size": len(ids), "query": {"ids": {"values": ids}}}
             response = await self._client.search(index=index_name, body=search_body)
-            result: List[Dict] = []
+            result: list[dict] = []
             for hit in response["hits"]["hits"]:
                 doc_data = hit["_source"]
                 doc_data["id"] = hit["_id"]
@@ -184,7 +188,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         # 无 partition_key，使用 mget
         docs = [{"_id": doc_id} for doc_id in ids]
         response = await self._client.mget(index=index_name, docs=docs)
-        result: List[Dict] = []
+        result: list[dict] = []
         for doc in response["docs"]:
             if doc.get("found"):
                 doc_data = doc["_source"]
@@ -195,12 +199,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
     async def filter(
         self,
-        model_class: Type[BaseIndexModel],
-        filter_clause: Optional[FilterClause],
+        model_class: type[BaseIndexModel],
+        filter_clause: FilterClause | None,
         limit: int = 10,
         offset: int = 0,
-        sort: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        sort: str | None = None,
+    ) -> list[dict[str, Any]]:
         """过滤查询"""
         index_name = self.build_collection_name(model_class)
 
@@ -234,8 +238,8 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         return results
 
     async def insert(
-        self, model_class: Type[BaseIndexModel], documents: List[Dict[str, Any]]
-    ) -> Optional[List[Dict[str, Any]]]:
+        self, model_class: type[BaseIndexModel], documents: list[dict[str, Any]],
+    ) -> list[dict[str, Any]] | None:
         """插入文档（批量）"""
         if not documents:
             return None
@@ -266,22 +270,31 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         response = await self._client.bulk(operations=bulk_data, refresh=True)
 
-        # Check for bulk errors
-        if response.get("errors", False):
-            items = response.get("items", [])
-            for i, item in enumerate(items):
-                index_result = item.get("index", {})
-                if "error" in index_result:
-                    # Use proper logging instead of print
-                    logger.warning(f"insert encouter error: {index_result['error']}")
+        self._log_bulk_errors(response, "insert")
+        return self._extract_bulk_results(response, documents, "index")
 
-        # Extract generated IDs from response
+    def _log_bulk_errors(self, response: Any, operation: str = "bulk"):
+        """记录批量操作错误"""
+        response_dict = response.body if hasattr(response, "body") else response
+        if response_dict.get("errors", False):
+            items = response_dict.get("items", [])
+            for item in items:
+                result_key = next(iter(item.keys()))
+                result = item.get(result_key, {})
+                if "error" in result:
+                    logger.warning(f"{operation} encounter error: {result['error']}")
+
+    def _extract_bulk_results(
+        self, response: Any, documents: list[dict[str, Any]], operation: str = "index",
+    ) -> list[dict[str, Any]] | None:
+        """从批量响应中提取结果文档"""
+        response_dict = response.body if hasattr(response, "body") else response
         results = []
-        items = response.get("items", [])
+        items = response_dict.get("items", [])
         for i, item in enumerate(items):
-            index_result = item.get("index", {})
-            if index_result.get("result") in ["created", "updated"]:
-                result_id = index_result.get("_id")
+            result = item.get(operation, {})
+            if result.get("result") in ["created", "updated"]:
+                result_id = result.get("_id")
                 if result_id:
                     result_doc = documents[i].copy()
                     result_doc["id"] = result_id
@@ -289,7 +302,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return results if results else None
 
-    async def update(self, model_class: Type[BaseIndexModel], documents: List[Dict[str, Any]]):
+    async def update(self, model_class: type[BaseIndexModel], documents: list[dict[str, Any]]):
         """更新文档"""
         if not documents:
             return
@@ -311,17 +324,11 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             bulk_data.append({"doc": doc_to_update})
         response = await self._client.bulk(operations=bulk_data, refresh=True)
 
-        # 检查 bulk 更新错误
-        if response.get("errors", False):
-            items = response.get("items", [])
-            for i, item in enumerate(items):
-                update_result = item.get("update", {})
-                if "error" in update_result:
-                    logger.warning(f"update encounter error: {update_result['error']}")
+        self._log_bulk_errors(response, "update")
 
     async def bulk_upsert(
-        self, model_class: Type[BaseIndexModel], documents: List[Dict[str, Any]]
-    ) -> Optional[List[Dict[str, Any]]]:
+        self, model_class: type[BaseIndexModel], documents: list[dict[str, Any]],
+    ) -> list[dict[str, Any]] | None:
         """批量插入或更新（upsert）"""
         if not documents:
             return None
@@ -340,28 +347,16 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             if model_class.Meta.partition_key:
                 routing_value = self._get_routing_value(model_class, doc)
                 if routing_value:
-                    op["index"]["routing"] = routing_value  # type: ignore
+                    op["index"]["routing"] = routing_value
 
             bulk_data.append(op)
             bulk_data.append(doc)
 
         response = await self._client.bulk(operations=bulk_data, refresh=True)
 
-        # Extract generated IDs from response
-        results = []
-        items = response.get("items", [])
-        for i, item in enumerate(items):
-            index_result = item.get("index", {})
-            if index_result.get("result") in ["created", "updated"]:
-                result_id = index_result.get("_id")
-                if result_id:
-                    result_doc = documents[i].copy()
-                    result_doc["id"] = result_id
-                    results.append(result_doc)
+        return self._extract_bulk_results(response, documents, "index")
 
-        return results if results else None
-
-    async def delete(self, model_class: Type[BaseIndexModel], ids: List[str]):  # type: ignore
+    async def delete(self, model_class: type[BaseIndexModel], ids: list[str]):  # type: ignore
         """删除文档（根据 ID，支持 routing）"""
         if not ids:
             return
@@ -393,7 +388,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 except Exception as e:
                     logger.warning(f"Failed to delete document {doc_id} without routing: {e}")
 
-    async def delete_by_query(self, model_class: Type[BaseIndexModel], filter_clause: FilterClause):
+    async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause):
         """根据条件删除（支持 routing）"""
         index_name = self.build_collection_name(model_class)
         query = self._convert_filter(model_class, filter_clause)
@@ -407,12 +402,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         if not routing_value:
             raise ValueError(
                 f"Cannot delete documents with partition key '{model_class.Meta.partition_key}'. "
-                f"Please include the partition key value in the filter_clause."
+                f"Please include the partition key value in the filter_clause.",
             )
 
         await self._client.delete_by_query(index=index_name, query=query, routing=routing_value, refresh=True)
 
-    async def count(self, model_class: Type[BaseIndexModel], filter_clause: Optional[FilterClause]) -> int:
+    async def count(self, model_class: type[BaseIndexModel], filter_clause: FilterClause | None) -> int:
         """统计文档数量"""
         index_name = self.build_collection_name(model_class)
 
@@ -425,12 +420,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
     async def search(
         self,
-        model_class: Type[BaseIndexModel],
+        model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: Optional[FilterClause] = None,
+        filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
-    ) -> List[tuple[Dict[str, Any], float]]:
+    ) -> list[tuple[dict[str, Any], float]]:
         """搜索"""
         index_name = self.build_collection_name(model_class)
 
@@ -459,12 +454,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
     async def search_cursor(
         self,
-        model_class: Type[BaseIndexModel],
+        model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: Optional[FilterClause] = None,
+        filter_clause: FilterClause | None = None,
         page_size: int = 100,
-        cursor: Optional[str] = None,
-    ) -> tuple[List[tuple[Dict[str, Any], float]], Optional[str]]:
+        cursor: str | None = None,
+    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
         """搜索（Cursor 方式）"""
         index_name = self.build_collection_name(model_class)
 
@@ -512,79 +507,110 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
     def _build_search_body(
         self,
-        model_class: Type[BaseIndexModel],
+        model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
         filter_clause: FilterClause | None,
     ) -> dict:
         """根据查询类型构建 ES Query DSL"""
 
         if isinstance(query_clause, DenseSearchClause):
-            if not model_class.Meta.dense_vector_field:
-                raise RuntimeError("Not supported dense query without dense vector field")
-
-            search_body = {
-                "query": {
-                    "knn": {
-                        "field": model_class.Meta.dense_vector_field,
-                        "query_vector": query_clause.vector,
-                        "num_candidates": query_clause.top_k * 50,
-                    }
-                }
-            }
-
+            search_body = self._build_dense_search_body(model_class, query_clause)
         elif isinstance(query_clause, SparseSearchClause):
-            search_body = {
-                "query": {
-                    "multi_match": {"query": query_clause.query_text, "fields": query_clause.output_fields},
-                    "min_score": query_clause.min_score,
-                }
-            }
-
+            search_body = self._build_sparse_search_body(query_clause)
         elif isinstance(query_clause, HybridSearchClause):
-            search_body = {
-                "query": {
-                    "bool": {
-                        "should": [
-                            {
-                                "knn": {
-                                    "field": model_class.Meta.dense_vector_field,
-                                    "query_vector": query_clause.dense.vector,
-                                    "num_candidates": query_clause.dense.top_k * 50,
-                                }
-                            },
-                            {
-                                "multi_match": {
-                                    "query": query_clause.sparse.query_text,
-                                    "fields": query_clause.output_fields,
-                                }
-                            },
-                        ]
-                    }
-                }
-            }
-
+            search_body = self._build_hybrid_search_body(model_class, query_clause)
         else:
             raise RuntimeError(f"Not supported query clause: {query_clause}")
 
         if not filter_clause:
             return search_body
 
+        return self._apply_filter_to_search_body(model_class, search_body, query_clause, filter_clause)
+
+    def _build_dense_search_body(self, model_class: type[BaseIndexModel], query_clause: DenseSearchClause) -> dict:
+        """构建稠密向量搜索 query body"""
+        if not model_class.Meta.dense_vector_field:
+            raise RuntimeError("Not supported dense query without dense vector field")
+
+        return {
+            "query": {
+                "knn": {
+                    "field": model_class.Meta.dense_vector_field,
+                    "query_vector": query_clause.vector,
+                    "num_candidates": query_clause.top_k * 50,
+                },
+            },
+        }
+
+    def _build_sparse_search_body(self, query_clause: SparseSearchClause) -> dict:
+        """构建稀疏全文搜索 query body"""
+        return {
+            "query": {
+                "multi_match": {"query": query_clause.query_text, "fields": query_clause.output_fields},
+                "min_score": query_clause.min_score,
+            },
+        }
+
+    def _build_hybrid_search_body(self, model_class: type[BaseIndexModel], query_clause: HybridSearchClause) -> dict:
+        """构建混合搜索 query body（带权重）"""
+        if not model_class.Meta.dense_vector_field:
+            raise RuntimeError("Not supported hybrid query without dense vector field")
+
+        return {
+            "query": {
+                "bool": {
+                    "should": [
+                        {
+                            "knn": {
+                                "field": model_class.Meta.dense_vector_field,
+                                "query_vector": query_clause.dense.vector,
+                                "num_candidates": query_clause.dense.top_k * 50,
+                                "boost": query_clause.weight_dense,
+                            },
+                        },
+                        {
+                            "bool": {
+                                "must": [
+                                    {
+                                        "multi_match": {
+                                            "query": query_clause.sparse.query_text,
+                                            "fields": query_clause.output_fields,
+                                            "boost": query_clause.weight_sparse,
+                                        },
+                                    },
+                                ],
+                                "min_score": query_clause.sparse.min_score,
+                            },
+                        },
+                    ],
+                },
+            },
+        }
+
+    def _apply_filter_to_search_body(
+        self,
+        model_class: type[BaseIndexModel],
+        search_body: dict,
+        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        filter_clause: FilterClause,
+    ) -> dict:
+        """应用过滤条件到搜索 body"""
         if isinstance(query_clause, DenseSearchClause) or isinstance(query_clause, HybridSearchClause):
             converted_filter = self._convert_filter(model_class, filter_clause)
             if "knn" in search_body["query"]:
-                search_body["query"]["knn"]["filter"] = converted_filter  # type: ignore
+                search_body["query"]["knn"]["filter"] = converted_filter
             elif "bool" in search_body["query"] and "should" in search_body["query"]["bool"]:
                 for clause in search_body["query"]["bool"]["should"]:
                     if "knn" in clause:
                         clause["knn"]["filter"] = converted_filter
         else:
             search_body["query"]["bool"] = {
-                "must": [search_body["query"], self._convert_filter(model_class, filter_clause)]
+                "must": [search_body["query"], self._convert_filter(model_class, filter_clause)],
             }
 
         return search_body
 
-    def _convert_filter(self, model_class: Type[BaseIndexModel], filter_clause: FilterClause) -> dict:
+    def _convert_filter(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> dict:
         """转换 FilterClause 为 ES Query DSL"""
         must = []
 
@@ -610,7 +636,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return {"bool": {"must": must}} if must else {"match_all": {}}
 
-    async def exists(self, model_class: Type[BaseIndexModel], id: str) -> bool:
+    async def exists(self, model_class: type[BaseIndexModel], id: str) -> bool:
         """检查文档是否存在"""
         index_name = self.build_collection_name(model_class)
 

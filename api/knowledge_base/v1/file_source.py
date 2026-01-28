@@ -26,7 +26,7 @@ from api.service.file_source.schema import (
     FileSourceDetail,
     FileSourceCreate,
     FileSourceUpdate,
-    FileSourceFilterSchema
+    FileSourceFilterSchema,
 
 )
 

@@ -29,8 +29,8 @@ class BaseExtraConfig(BaseModel):
     DEFAULT_INDEX_FIELD: str = "index"
 
     # 通用字段（使用类属性作为默认值）
-    encoding_format: Optional[str] = Field(default=None, description="编码格式")
-    user: Optional[str] = Field(default=None, description="用户标识")
+    encoding_format: str | None = Field(default=None, description="编码格式")
+    user: str | None = Field(default=None, description="用户标识")
 
     # API 配置（使用类属性作为默认值）
     endpoint: str = Field(default=DEFAULT_EMBEDDING_ENDPOINT, description="API端点路径")
@@ -48,10 +48,10 @@ class BaseExtraConfig(BaseModel):
     index_field: str = Field(default=DEFAULT_INDEX_FIELD, description="索引字段名")
 
     # 额外配置
-    headers: Dict[str, str] = Field(default_factory=dict, description="额外的HTTP头")
-    query_params: Dict[str, str] = Field(default_factory=dict, description="查询参数")
+    headers: dict[str, str] = Field(default_factory=dict, description="额外的HTTP头")
+    query_params: dict[str, str] = Field(default_factory=dict, description="查询参数")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         转换为字典（用于存储到数据库）
 
@@ -61,7 +61,7 @@ class BaseExtraConfig(BaseModel):
         return self.model_dump(exclude_none=True)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BaseExtraConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "BaseExtraConfig":
         """
         从字典创建实例
 

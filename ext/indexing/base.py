@@ -53,7 +53,7 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
             not model_class.Meta.dense_vector_dimension or model_class.Meta.dense_vector_dimension <= 0
         ):
             raise ValueError(
-                f"Model {model_class.__name__} has invalid dimension: {model_class.Meta.dense_vector_dimension}"
+                f"Model {model_class.__name__} has invalid dimension: {model_class.Meta.dense_vector_dimension}",
             )
 
         if model_class.Meta.partition_key:
@@ -85,25 +85,25 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
     async def filter(
         self,
         model_class: type["BaseIndexModel"],
-        filter_clause: Optional[FilterClause],
+        filter_clause: FilterClause | None,
         limit: int = 10,
         offset: int = 0,
-        sort: Optional[str] = None,
-    ) -> List[dict[str, Any]]:
+        sort: str | None = None,
+    ) -> list[dict[str, Any]]:
         """过滤查询"""
 
     @abstractmethod
     async def insert(
-        self, model_class: type["BaseIndexModel"], documents: List[dict[str, Any]]
-    ) -> Optional[List[dict[str, Any]]]:
+        self, model_class: type["BaseIndexModel"], documents: list[dict[str, Any]],
+    ) -> list[dict[str, Any]] | None:
         """插入文档（支持批量）"""
 
     @abstractmethod
-    async def update(self, model_class: type["BaseIndexModel"], documents: List[dict[str, Any]]):
+    async def update(self, model_class: type["BaseIndexModel"], documents: list[dict[str, Any]]):
         """更新文档"""
 
     @abstractmethod
-    async def delete(self, model_class: type["BaseIndexModel"], ids: List[str]):
+    async def delete(self, model_class: type["BaseIndexModel"], ids: list[str]):
         """删除文档（根据 ID）"""
 
     @abstractmethod
@@ -111,7 +111,7 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
         """根据条件删除文档（支持 routing）"""
 
     @abstractmethod
-    async def count(self, model_class: type["BaseIndexModel"], filter_clause: Optional[FilterClause]) -> int:
+    async def count(self, model_class: type["BaseIndexModel"], filter_clause: FilterClause | None) -> int:
         """统计文档数量"""
 
     @abstractmethod
@@ -119,10 +119,10 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
         self,
         model_class: type["BaseIndexModel"],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: Optional[FilterClause] = None,
+        filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
-    ) -> List[tuple[dict[str, Any], float]]:
+    ) -> list[tuple[dict[str, Any], float]]:
         """搜索（返回 [(文档, 分数)]）"""
 
     @abstractmethod
@@ -130,23 +130,21 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
         self,
         model_class: type["BaseIndexModel"],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: Optional[FilterClause] = None,
+        filter_clause: FilterClause | None = None,
         page_size: int = 100,
-        cursor: Optional[str] = None,
-    ) -> tuple[List[tuple[dict[str, Any], float]], Optional[str]]:
+        cursor: str | None = None,
+    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
         """搜索（返回 [(文档, 分数)], next_cursor）"""
 
     @abstractmethod
     async def bulk_upsert(
-        self, model_class: type["BaseIndexModel"], documents: List[dict[str, Any]]
-    ) -> Optional[List[dict[str, Any]]]:
+        self, model_class: type["BaseIndexModel"], documents: list[dict[str, Any]],
+    ) -> list[dict[str, Any]] | None:
         """批量插入或更新（upsert）"""
-        pass
 
     @abstractmethod
     async def health_check(self) -> bool:
         """健康检查"""
-        pass
 
     def build_collection_name(self, model_class: type["BaseIndexModel"]) -> str:
         """按维度区分"""
@@ -214,7 +212,7 @@ class BaseIndexModel(BaseModel):
                     if not attr_name.startswith("_") and not hasattr(cls.Meta, attr_name):
                         setattr(cls.Meta, attr_name, attr_value)
 
-    id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default())
+    id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={}) # type: ignore
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
 
@@ -228,7 +226,7 @@ class BaseIndexModel(BaseModel):
 
     @classmethod
     def _get_id_default(cls):
-        id_field = cls.model_fields.get('id')
+        id_field = cls.model_fields.get("id")
         if id_field and id_field.annotation:
             id_type = cls._extract_type(id_field.annotation)
             return "" if id_type == str else 0 if id_type == int else ""
@@ -262,8 +260,8 @@ class BaseIndexModel(BaseModel):
 
     @classmethod
     async def filter(
-        cls, filter_clause: FilterClause | None = None, limit: int = 10, offset: int = 0, sort: str | None = None
-    ) -> List[Self]:
+        cls, filter_clause: FilterClause | None = None, limit: int = 10, offset: int = 0, sort: str | None = None,
+    ) -> list[Self]:
         """过滤查询"""
         provider = cls.get_provider()
         results = await provider.filter(cls, filter_clause=filter_clause, limit=limit, offset=offset, sort=sort)
@@ -276,11 +274,11 @@ class BaseIndexModel(BaseModel):
         filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
-    ) -> List[tuple[Self, float]]:
+    ) -> list[tuple[Self, float]]:
         """搜索（Provider 自动转换）"""
         provider = cls.get_provider()
         results = await provider.search(
-            cls, query_clause=query_clause, filter_clause=filter_clause, limit=limit, offset=offset
+            cls, query_clause=query_clause, filter_clause=filter_clause, limit=limit, offset=offset,
         )
         return [(cls.model_validate(r), score) for r, score in results]  # type: ignore
 
@@ -295,7 +293,7 @@ class BaseIndexModel(BaseModel):
         """搜索（Cursor 方式）"""
         provider = cls.get_provider()
         results, next_cursor = await provider.search_cursor(
-            cls, query_clause=query_clause, filter_clause=filter_clause, page_size=page_size, cursor=cursor
+            cls, query_clause=query_clause, filter_clause=filter_clause, page_size=page_size, cursor=cursor,
         )
 
         converted_results = [(cls.model_validate(r), score) for r, score in results]
@@ -316,7 +314,7 @@ class BaseIndexModel(BaseModel):
             self.id = result[0].get("id", self.id)
 
     @classmethod
-    async def bulk_insert(cls, documents: List[Self], batch_size: int = 100, concurrent_batches: int = 5):
+    async def bulk_insert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5):
         """批量插入（自动并发）"""
         provider = cls.get_provider()
 
@@ -325,7 +323,7 @@ class BaseIndexModel(BaseModel):
         # Use semaphore to limit concurrent batch operations
         semaphore = asyncio.Semaphore(concurrent_batches)
 
-        async def insert_batch(batch: List[Self]):
+        async def insert_batch(batch: list[Self]):
             async with semaphore:
                 result = await provider.insert(cls, documents=[d.model_dump(mode="json") for d in batch])
                 # Update each document with the actual id from the result
@@ -337,13 +335,13 @@ class BaseIndexModel(BaseModel):
         await asyncio.gather(*[insert_batch(batch) for batch in batches])  # type: ignore
 
     @classmethod
-    async def bulk_update(cls, documents: List[Self]):
+    async def bulk_update(cls, documents: list[Self]):
         """批量更新"""
         provider = cls.get_provider()
         await provider.update(cls, documents=[d.model_dump(mode="json") for d in documents])
 
     @classmethod
-    async def bulk_upsert(cls, documents: List[Self], batch_size: int = 100, concurrent_batches: int = 5):
+    async def bulk_upsert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5):
         """批量插入或更新（upsert，自动并发）"""
         provider = cls.get_provider()
 
@@ -352,7 +350,7 @@ class BaseIndexModel(BaseModel):
         # Use semaphore to limit concurrent batch operations
         semaphore = asyncio.Semaphore(concurrent_batches)
 
-        async def upsert_batch(batch: List[Self]):
+        async def upsert_batch(batch: list[Self]):
             async with semaphore:
                 result = await provider.bulk_upsert(cls, documents=[d.model_dump(mode="json") for d in batch])
                 # Update each document with the actual id from the result
@@ -364,7 +362,7 @@ class BaseIndexModel(BaseModel):
         await asyncio.gather(*[upsert_batch(batch) for batch in batches])
 
     @classmethod
-    async def bulk_delete(cls, ids: List[str]):
+    async def bulk_delete(cls, ids: list[str]):
         """批量删除"""
         provider = cls.get_provider()
         await provider.delete(cls, ids=ids)

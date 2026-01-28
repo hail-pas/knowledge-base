@@ -4,7 +4,8 @@ Chain 组合实现
 提供 Runnable 的组合能力，支持顺序执行和条件分支
 """
 
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, List, Optional, Tuple, TypeVar
+from collections.abc import AsyncIterator, Callable
 from loguru import logger
 
 from ext.llm.chain.base import Runnable
@@ -20,7 +21,7 @@ class RunnableSequence(Runnable[InputT, OutputT]):
     将多个 Runnable 串联起来，按顺序执行
     """
 
-    def __init__(self, steps: List[Runnable]):
+    def __init__(self, steps: list[Runnable]):
         """初始化顺序执行 Chain
 
         Args:
@@ -44,7 +45,7 @@ class RunnableSequence(Runnable[InputT, OutputT]):
             logger.debug(f"RunnableSequence step {idx + 1}/{len(self.steps)}: {step.__class__.__name__}")
             result = await step.ainvoke(result)
 
-        logger.debug(f"RunnableSequence completed")
+        logger.debug("RunnableSequence completed")
         return result
 
     async def astream(self, input: InputT) -> AsyncIterator[OutputT]:
@@ -65,7 +66,7 @@ class RunnableSequence(Runnable[InputT, OutputT]):
 
         for idx, step in enumerate(self.steps[:-1]):
             logger.debug(
-                f"RunnableSequence step {idx + 1}/{len(self.steps) - 1} (non-stream): {step.__class__.__name__}"
+                f"RunnableSequence step {idx + 1}/{len(self.steps) - 1} (non-stream): {step.__class__.__name__}",
             )
             result = await step.ainvoke(result)
 
@@ -100,7 +101,7 @@ class RunnableBranch(Runnable[InputT, OutputT]):
     根据条件选择不同的执行路径
     """
 
-    def __init__(self, branches: List[Tuple[Callable[[InputT], bool], Runnable[InputT, OutputT]]]):
+    def __init__(self, branches: list[tuple[Callable[[InputT], bool], Runnable[InputT, OutputT]]]):
         """初始化条件分支 Chain
 
         Args:
@@ -127,8 +128,8 @@ class RunnableBranch(Runnable[InputT, OutputT]):
     @classmethod
     def from_conditions(
         cls,
-        condition_runnable_pairs: List[Tuple[Callable[[InputT], bool], Runnable[InputT, OutputT]]],
-        default: Optional[Runnable[InputT, OutputT]] = None,
+        condition_runnable_pairs: list[tuple[Callable[[InputT], bool], Runnable[InputT, OutputT]]],
+        default: Runnable[InputT, OutputT] | None = None,
     ) -> "RunnableBranch":
         """从条件对创建分支
 
@@ -147,13 +148,13 @@ class RunnableBranch(Runnable[InputT, OutputT]):
         return cls(branches)
 
 
-class RunnableMap(Runnable[InputT, Dict[str, Any]]):
+class RunnableMap(Runnable[InputT, dict[str, Any]]):
     """并行执行 Chain
 
     将输入传递到多个 Runnable 并行执行，返回字典
     """
 
-    def __init__(self, mappings: Dict[str, Runnable]):
+    def __init__(self, mappings: dict[str, Runnable]):
         """初始化并行执行 Chain
 
         Args:
@@ -161,7 +162,7 @@ class RunnableMap(Runnable[InputT, Dict[str, Any]]):
         """
         self.mappings = mappings
 
-    async def ainvoke(self, input: InputT) -> Dict[str, Any]:
+    async def ainvoke(self, input: InputT) -> dict[str, Any]:
         """并行执行所有映射
 
         Args:
@@ -178,7 +179,7 @@ class RunnableMap(Runnable[InputT, Dict[str, Any]]):
         results = await asyncio.gather(*tasks)
 
         logger.debug(f"RunnableMap completed - results: {list(results)}")
-        return dict(zip(self.mappings.keys(), results))
+        return dict(zip(self.mappings.keys(), results, strict=False))
 
 
 __all__ = [

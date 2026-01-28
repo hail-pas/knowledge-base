@@ -39,14 +39,14 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
         model_name: str,
         model_type: str,
         dimension: int,
-        api_key: Optional[str],
-        base_url: Optional[str],
+        api_key: str | None,
+        base_url: str | None,
         max_chunk_length: int,
         batch_size: int,
         max_retries: int,
         timeout: int,
         rate_limit: int,
-        extra_config: Dict[str, Any],
+        extra_config: dict[str, Any],
     ):
         """
         初始化embedding模型
@@ -92,7 +92,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
         if not self.api_key and self.requires_auth():
             raise ValueError(f"{self.model_type} requires api_key")
 
-    def _get_extra_config_cls(self) -> Type[BaseExtraConfig]:
+    def _get_extra_config_cls(self) -> type[BaseExtraConfig]:
         """
         从泛型参数自动提取 extra_config 类型
 
@@ -116,12 +116,12 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
         # 如果无法提取，返回默认类型
         logger.warning(
-            f"无法从泛型参数提取 extra_config 类型，使用默认类型 BaseExtraConfig。"
-            f"请确保子类正确声明泛型参数，如：class OpenAIEmbeddingModel(BaseEmbeddingModel[OpenAIExtraConfig])"
+            "无法从泛型参数提取 extra_config 类型，使用默认类型 BaseExtraConfig。"
+            "请确保子类正确声明泛型参数，如：class OpenAIEmbeddingModel(BaseEmbeddingModel[OpenAIExtraConfig])",
         )
         return BaseExtraConfig
 
-    def _convert_extra_config(self, extra_config_dict: Dict[str, Any]) -> ExtraConfigT:
+    def _convert_extra_config(self, extra_config_dict: dict[str, Any]) -> ExtraConfigT:
         """
         将 dict 转换成具体的 pydantic model 类型
 
@@ -192,13 +192,13 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
         """获取endpoint路径（从extra_config或默认值）"""
         return self.extra_config.endpoint or self.extra_config.DEFAULT_EMBEDDING_ENDPOINT
 
-    def _get_query_params(self) -> Dict[str, str]:
+    def _get_query_params(self) -> dict[str, str]:
         """获取查询参数（子类可覆盖）"""
         return self.extra_config.query_params or {}
 
     # ==================== 认证头构建（默认实现） ====================
 
-    def build_auth_headers(self) -> Dict[str, str]:
+    def build_auth_headers(self) -> dict[str, str]:
         """
         构建认证头（默认Bearer Token实现）
 
@@ -217,7 +217,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
         value = f"{auth_type} {api_key}" if auth_type else api_key
         return {auth_header: value}
 
-    def build_request_headers(self) -> Dict[str, str]:
+    def build_request_headers(self) -> dict[str, str]:
         """构建完整的请求头"""
         headers = {"Content-Type": "application/json"}
         headers.update(self.build_auth_headers())
@@ -230,7 +230,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
     # ==================== 请求体构建（默认实现） ====================
 
-    def build_request_body(self, texts: List[str]) -> Dict[str, Any]:
+    def build_request_body(self, texts: list[str]) -> dict[str, Any]:
         """
         构建请求体（默认OpenAI格式实现）
 
@@ -258,7 +258,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
         return body
 
-    def _get_extra_request_params(self) -> Dict[str, Any]:
+    def _get_extra_request_params(self) -> dict[str, Any]:
         """
         获取额外请求参数（从extra_config中提取）
 
@@ -272,7 +272,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
             "encoding_format",
             "truncate",
             "user",
-            "dimensions"
+            "dimensions",
         ]
 
         params = {k: v for k, v in self.extra_config.model_dump().items() if k in supported_params and v is not None}
@@ -283,7 +283,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
     # ==================== 响应解析（默认实现） ====================
 
-    def parse_response(self, response: Dict[str, Any]) -> List[List[float]]:
+    def parse_response(self, response: dict[str, Any]) -> list[list[float]]:
         """
         解析响应，返回embeddings列表（默认OpenAI格式实现）
 
@@ -320,7 +320,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
         return embeddings
 
-    def _extract_by_path(self, data: Dict[str, Any], path: str) -> Any:
+    def _extract_by_path(self, data: dict[str, Any], path: str) -> Any:
         """通过路径提取数据（简单的点分隔路径）"""
         keys = path.split(".")
         result = data
@@ -334,16 +334,16 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
         return result
 
     def _sort_by_index(
-        self, items: List[Dict[str, Any]], embeddings: List[List[float]], index_field: str
-    ) -> List[List[float]]:
+        self, items: list[dict[str, Any]], embeddings: list[list[float]], index_field: str,
+    ) -> list[list[float]]:
         """根据index字段排序"""
-        indexed = list(zip(items, embeddings))
+        indexed = list(zip(items, embeddings, strict=False))
         indexed.sort(key=lambda x: x[0].get(index_field, 0))
         return [emb for _, emb in indexed]
 
     # ==================== 错误处理（默认实现） ====================
 
-    def extract_error_message(self, response: Dict[str, Any]) -> Optional[str]:
+    def extract_error_message(self, response: dict[str, Any]) -> str | None:
         """
         从响应中提取错误信息（尝试多种常见格式）
 
@@ -364,7 +364,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
             if value:
                 if isinstance(value, str):
                     return value
-                elif isinstance(value, dict):
+                if isinstance(value, dict):
                     msg = value.get("message") or value.get("msg")
                     if msg:
                         return msg
@@ -373,21 +373,21 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
     # ==================== 批处理逻辑（默认实现） ====================
 
-    def check_chunk_length(self, texts: List[str]) -> None:
+    def check_chunk_length(self, texts: list[str]) -> None:
         """检查chunk长度并输出警告"""
         for i, text in enumerate(texts):
             if len(text) > self.max_chunk_length:
                 logger.warning(
-                    f"Chunk #{i} 长度({len(text)})超过配置限制({self.max_chunk_length})，可能会被模型截断或导致错误"
+                    f"Chunk #{i} 长度({len(text)})超过配置限制({self.max_chunk_length})，可能会被模型截断或导致错误",
                 )
 
-    def split_into_batches(self, texts: List[str]) -> List[List[str]]:
+    def split_into_batches(self, texts: list[str]) -> list[list[str]]:
         """将文本列表分批"""
         return [texts[i : i + self.batch_size] for i in range(0, len(texts), self.batch_size)]
 
     # ==================== 公开API ====================
 
-    async def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """
         批量生成embeddings
 
@@ -429,11 +429,11 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
     # ==================== 内部请求方法 ====================
 
-    async def _do_single_request(self, client: httpx.AsyncClient, text: str) -> List[float]:
+    async def _do_single_request(self, client: httpx.AsyncClient, text: str) -> list[float]:
         """发送单条请求（用于不支持批处理的provider）"""
         return (await self._do_batch_request(client, [text]))[0]
 
-    async def _do_batch_request(self, client: httpx.AsyncClient, texts: List[str]) -> List[List[float]]:
+    async def _do_batch_request(self, client: httpx.AsyncClient, texts: list[str]) -> list[list[float]]:
         """发送批量请求（带重试）"""
         url = self.build_endpoint_url()
         headers = self.build_request_headers()
@@ -459,14 +459,13 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
                     delay = self.get_retry_delay(attempt)
                     logger.warning(
                         f"请求失败（{response.status_code}: {error_message}），"
-                        f"{delay}秒后重试（{attempt + 1}/{self.max_retries}）"
+                        f"{delay}秒后重试（{attempt + 1}/{self.max_retries}）",
                     )
                     await asyncio.sleep(delay)
                     continue
-                else:
-                    raise RuntimeError(
-                        f"{self.model_type} embedding请求失败: {error_message} (状态码: {response.status_code})"
-                    )
+                raise RuntimeError(
+                    f"{self.model_type} embedding请求失败: {error_message} (状态码: {response.status_code})",
+                )
 
             except httpx.TimeoutException as e:
                 if attempt == self.max_retries:

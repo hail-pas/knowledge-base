@@ -5,7 +5,8 @@ LLM Runnable 封装
 """
 
 import asyncio
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
+from collections.abc import AsyncIterator
 
 from ext.llm.base import BaseLLMModel
 from ext.llm.types import ChatMessage, LLMRequest, StreamChunk
@@ -23,8 +24,8 @@ class LLM(Runnable[str, str]):
     def __init__(
         self,
         model: BaseLLMModel,
-        default_temperature: Optional[float] = None,
-        default_max_tokens: Optional[int] = None,
+        default_temperature: float | None = None,
+        default_max_tokens: int | None = None,
     ):
         """初始化 LLM
 
@@ -41,8 +42,8 @@ class LLM(Runnable[str, str]):
     def from_name(
         cls,
         model_name: str,
-        default_temperature: Optional[float] = None,
-        default_max_tokens: Optional[int] = None,
+        default_temperature: float | None = None,
+        default_max_tokens: int | None = None,
     ):
         """从配置名称创建 LLM
 
@@ -60,9 +61,9 @@ class LLM(Runnable[str, str]):
     @classmethod
     def from_config(
         cls,
-        config: Dict[str, Any],
-        default_temperature: Optional[float] = None,
-        default_max_tokens: Optional[int] = None,
+        config: dict[str, Any],
+        default_temperature: float | None = None,
+        default_max_tokens: int | None = None,
     ):
         """从配置字典创建 LLM
 
@@ -84,8 +85,8 @@ class LLM(Runnable[str, str]):
     async def ainvoke(
         self,
         input: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> str:
         """调用 LLM（非流式）
@@ -105,7 +106,7 @@ class LLM(Runnable[str, str]):
         logger.debug(
             f"LLM ainvoke - input length: {len(input)}, "
             f"temperature: {temperature or self.default_temperature}, "
-            f"max_tokens: {max_tokens or self.default_max_tokens}"
+            f"max_tokens: {max_tokens or self.default_max_tokens}",
         )
 
         request = LLMRequest(
@@ -126,8 +127,8 @@ class LLM(Runnable[str, str]):
     async def astream(
         self,
         input: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """流式调用 LLM
@@ -145,7 +146,7 @@ class LLM(Runnable[str, str]):
             RuntimeError: LLM 调用失败
         """
         logger.debug(
-            f"LLM astream - input length: {len(input)}, temperature: {temperature or self.default_temperature}"
+            f"LLM astream - input length: {len(input)}, temperature: {temperature or self.default_temperature}",
         )
 
         request = LLMRequest(
@@ -169,9 +170,9 @@ class LLM(Runnable[str, str]):
 
     async def ainvoke_with_messages(
         self,
-        messages: List[ChatMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[ChatMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> str:
         """使用消息列表调用 LLM
@@ -187,7 +188,7 @@ class LLM(Runnable[str, str]):
         """
         logger.debug(
             f"LLM ainvoke_with_messages - messages: {len(messages)}, "
-            f"temperature: {temperature or self.default_temperature}"
+            f"temperature: {temperature or self.default_temperature}",
         )
 
         request = LLMRequest(
@@ -207,11 +208,11 @@ class LLM(Runnable[str, str]):
 
     async def abatch(
         self,
-        inputs: List[str],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        inputs: list[str],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> List[str]:
+    ) -> list[str]:
         """批量调用 LLM
 
         Args:
@@ -236,13 +237,13 @@ class _LLMFactoryWrapper:
     def __init__(
         self,
         model_name: str,
-        default_temperature: Optional[float],
-        default_max_tokens: Optional[int],
+        default_temperature: float | None,
+        default_max_tokens: int | None,
     ):
         self._model_name = model_name
         self._default_temperature = default_temperature
         self._default_max_tokens = default_max_tokens
-        self._llm_instance: Optional[LLM] = None
+        self._llm_instance: LLM | None = None
 
     async def _get_instance(self) -> LLM:
         """获取或创建 LLM 实例"""
@@ -264,17 +265,17 @@ class _LLMFactoryWrapper:
         async for chunk in llm.astream(input, **kwargs):
             yield chunk
 
-    async def abatch(self, inputs: List[str], **kwargs: Any) -> List[str]:  # type: ignore
+    async def abatch(self, inputs: list[str], **kwargs: Any) -> list[str]:  # type: ignore
         """批量调用 LLM"""
         llm = await self._get_instance()
         return await llm.abatch(inputs, **kwargs)
 
-    async def ainvoke_with_messages(self, messages: List[ChatMessage], **kwargs: Any) -> str:
+    async def ainvoke_with_messages(self, messages: list[ChatMessage], **kwargs: Any) -> str:
         """使用消息列表调用 LLM"""
         llm = await self._get_instance()
         return await llm.ainvoke_with_messages(messages, **kwargs)
 
-    async def abatch(self, inputs: List[str], **kwargs: Any) -> List[str]:
+    async def abatch(self, inputs: list[str], **kwargs: Any) -> list[str]:
         """批量调用 LLM"""
         llm = await self._get_instance()
         return await llm.abatch(inputs, **kwargs)

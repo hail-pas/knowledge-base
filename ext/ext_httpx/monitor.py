@@ -12,7 +12,7 @@ class HttpxConnectionPoolMonitor:
     """httpx 连接池监控器"""
 
     @staticmethod
-    async def get_client_stats(client: httpx.AsyncClient | None) -> Dict[str, Any]:
+    async def get_client_stats(client: httpx.AsyncClient | None) -> dict[str, Any]:
         """获取 httpx 客户端的统计信息
 
         Args:
@@ -98,8 +98,8 @@ class HttpxConnectionPoolMonitor:
 
     @staticmethod
     def recommend_config(
-        current_max_connections: int, current_keepalive: int, active_connections: int, idle_connections: int
-    ) -> Dict[str, Any]:
+        current_max_connections: int, current_keepalive: int, active_connections: int, idle_connections: int,
+    ) -> dict[str, Any]:
         """
         根据当前连接使用情况推荐配置
 
@@ -137,18 +137,18 @@ class HttpxConnectionPoolMonitor:
         keepalive_ratio = (current_keepalive / current_max_connections) * 100
         if keepalive_ratio < 30:
             recommendations["recommendations"].append(
-                f"💡 keepalive 连接数过低 ({keepalive_ratio:.1f}%)，" + f"建议调整为 max_connections 的 40-50%"
+                f"💡 keepalive 连接数过低 ({keepalive_ratio:.1f}%)，" + "建议调整为 max_connections 的 40-50%",
             )
             recommended_keepalive = int(current_max_connections * 0.4)
             recommendations["recommendations"].append(
-                f"建议将 max_keepalive_connections 调整为 {recommended_keepalive}"
+                f"建议将 max_keepalive_connections 调整为 {recommended_keepalive}",
             )
 
         # 检查空闲连接
         idle_ratio = (idle_connections / current_keepalive) * 100 if current_keepalive > 0 else 0
         if idle_ratio > 90:
             recommendations["recommendations"].append(
-                f"💡 空闲连接过多 ({idle_ratio:.1f}%)，" + "考虑减少 max_keepalive_connections"
+                f"💡 空闲连接过多 ({idle_ratio:.1f}%)，" + "考虑减少 max_keepalive_connections",
             )
 
         if not recommendations["issues"] and not recommendations["recommendations"]:

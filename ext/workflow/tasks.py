@@ -36,15 +36,14 @@ def run_async(coro):
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         # 等待协程完成并返回结果
         return future.result()
-    else:
-        # 循环存在但未运行，直接运行
-        return loop.run_until_complete(coro)
+    # 循环存在但未运行，直接运行
+    return loop.run_until_complete(coro)
 
 
 async def _schedule_workflow_start_async(
-    config: Dict[str, Any] | None  = None,
+    config: dict[str, Any] | None  = None,
     config_format: str = "dict",
-    initial_inputs: Dict[str, Any] | None = None,
+    initial_inputs: dict[str, Any] | None = None,
     use_async: bool = True,
     workflow_uid: uuid.UUID | None = None,
 ) -> str:
@@ -81,7 +80,7 @@ async def _schedule_workflow_start_async(
         if not config:
             raise ValueError("Either config or workflow_uid must be provided")
         workflow = await WorkflowManager.create_workflow(
-            config, config_format, initial_inputs
+            config, config_format, initial_inputs,
         )
         logger.info(f"Created workflow: {workflow.uid}, use_async={use_async}")
         # 更新 trace_id 为新创建的 workflow uid
@@ -101,7 +100,7 @@ async def _schedule_workflow_start_async(
 
         # 4. 获取第一批准备执行的活动（根节点）
         ready_activities = await WorkflowManager.get_ready_activities(
-            workflow.uid, graph
+            workflow.uid, graph,
         )
         logger.info(f"Ready activities: {[act.name for act in ready_activities]}")
 
@@ -128,7 +127,7 @@ async def _schedule_workflow_start_async(
                 )
                 logger.info(
                     f"Started task {task_name} for activity {activity.name} (async), "
-                    f"task_id: {celery_task_result.id}"
+                    f"task_id: {celery_task_result.id}",
                 )
             else:
                 # 直接调用任务（同步，用于本地调试）
@@ -136,16 +135,16 @@ async def _schedule_workflow_start_async(
                 logger.info(f"Starting task {task_name} for activity {activity.name} (direct call)")
                 await task.async_call(str(activity.uid), use_async)
                 logger.info(
-                    f"Completed task {task_name} for activity {activity.name} (direct call)"
+                    f"Completed task {task_name} for activity {activity.name} (direct call)",
                 )
 
         return str(workflow.uid)
 
 
 async def schedule_workflow_start(
-    config: Dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
     config_format: str = "dict",
-    initial_inputs: Dict[str, Any] | None = None,
+    initial_inputs: dict[str, Any] | None = None,
     use_async: bool = True,
     workflow_uid: uuid.UUID | None = None,
 ) -> str:
@@ -177,9 +176,9 @@ async def schedule_workflow_start(
 
 
 def schedule_workflow_start_sync(
-    config: Dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
     config_format: str = "dict",
-    initial_inputs: Dict[str, Any] | None = None,
+    initial_inputs: dict[str, Any] | None = None,
     use_async: bool = True,
     workflow_uid: uuid.UUID | None = None,
 ) -> str:
@@ -201,7 +200,7 @@ def schedule_workflow_start_sync(
         Workflow UID
     """
     return run_async(
-        _schedule_workflow_start_async(config, config_format, initial_inputs, use_async, workflow_uid)
+        _schedule_workflow_start_async(config, config_format, initial_inputs, use_async, workflow_uid),
     )
 
 
@@ -269,14 +268,14 @@ async def _schedule_workflow_resume_async(workflow_uid: uuid.UUID, use_async: bo
                 )
                 logger.info(
                     f"Started task {task_name} for activity {activity.name} (async), "
-                    f"task_id: {celery_task_result.id}"
+                    f"task_id: {celery_task_result.id}",
                 )
             else:
                 # 直接调用任务（同步，用于本地调试）
                 logger.info(f"Starting task {task_name} for activity {activity.name} (direct call)")
                 await task.async_call(str(activity.uid), use_async)
                 logger.info(
-                    f"Completed task {task_name} for activity {activity.name} (direct call)"
+                    f"Completed task {task_name} for activity {activity.name} (direct call)",
                 )
 
         return str(workflow_uid)
@@ -332,7 +331,7 @@ async def _schedule_activity_handoff_async(activity_uid: uuid.UUID, use_async: b
     with logger.contextualize(trace_id=activity.workflow_uid, activity_uid=activity_uid):
         logger.info(
             f"Activity handoff: {activity.name} (status: {activity.status}), "
-            f"workflow: {activity.workflow_uid}, use_async={use_async}"
+            f"workflow: {activity.workflow_uid}, use_async={use_async}",
         )
 
         # 2. 检查工作流是否已经失败或取消
@@ -347,7 +346,7 @@ async def _schedule_activity_handoff_async(activity_uid: uuid.UUID, use_async: b
         ]:
             logger.info(
                 f"Workflow {activity.workflow_uid} is already {workflow.status}, "
-                "skipping handoff"
+                "skipping handoff",
             )
             return str(activity_uid)
 
@@ -369,7 +368,7 @@ async def _schedule_activity_handoff_async(activity_uid: uuid.UUID, use_async: b
 
         # 5. 获取准备执行的下游活动
         ready_activities = await WorkflowManager.get_ready_activities(
-            activity.workflow_uid, graph
+            activity.workflow_uid, graph,
         )
         logger.info(f"Ready downstream activities: {[act.name for act in ready_activities]}")
 
@@ -396,21 +395,21 @@ async def _schedule_activity_handoff_async(activity_uid: uuid.UUID, use_async: b
                 )
                 logger.info(
                     f"Started task {task_name} for downstream activity {ready_activity.name} (async), "
-                    f"task_id: {celery_task_result.id}"
+                    f"task_id: {celery_task_result.id}",
                 )
             else:
                 # 直接调用任务（同步，用于本地调试）
                 logger.info(
-                    f"Starting task {task_name} for downstream activity {ready_activity.name} (direct call)"
+                    f"Starting task {task_name} for downstream activity {ready_activity.name} (direct call)",
                 )
                 await task.async_call(str(ready_activity.uid), use_async)
                 logger.info(
-                    f"Completed task {task_name} for downstream activity {ready_activity.name} (direct call)"
+                    f"Completed task {task_name} for downstream activity {ready_activity.name} (direct call)",
                 )
 
         # 7. 检查工作流是否完成
         is_completed = await WorkflowManager.check_workflow_completion(
-            activity.workflow_uid
+            activity.workflow_uid,
         )
         if is_completed:
             logger.info(f"Workflow {activity.workflow_uid} completed")
@@ -471,9 +470,9 @@ def schedule_activity_handoff_sync(activity_uid: uuid.UUID, use_async: bool = Tr
 )
 def _schedule_workflow_start_celery(
     celery_task: CeleryTask,
-    config: Dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
     config_format: str = "dict",
-    initial_inputs: Dict[str, Any] | None = None,
+    initial_inputs: dict[str, Any] | None = None,
     use_async: bool = True,
     workflow_uid: str | None = None,
 ) -> str:

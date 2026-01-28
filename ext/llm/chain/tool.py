@@ -6,7 +6,8 @@ Tool 实现和装饰器
 
 import inspect
 import json
-from typing import Any, Callable, Dict, List, Optional, Union, get_origin, get_args
+from typing import Any, Dict, List, Optional, Union, get_origin, get_args
+from collections.abc import Callable
 from loguru import logger
 
 from ext.llm.types import ToolDefinition, FunctionDefinition
@@ -24,7 +25,7 @@ class Tool:
         func: Callable,
         name: str,
         description: str,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
     ):
         """初始化 Tool
 
@@ -89,7 +90,7 @@ class Tool:
         return f"Tool(name='{self.name}', description='{self.description}')"
 
 
-def tool(func: Optional[Callable] = None, *, name: Optional[str] = None, description: Optional[str] = None):
+def tool(func: Callable | None = None, *, name: str | None = None, description: str | None = None):
     """装饰器：将函数转换为 Tool
 
     使用方式：
@@ -125,11 +126,10 @@ def tool(func: Optional[Callable] = None, *, name: Optional[str] = None, descrip
 
     if func is not None:
         return decorator(func)
-    else:
-        return decorator
+    return decorator
 
 
-def extract_parameters_from_signature(func: Callable) -> Dict[str, Any]:
+def extract_parameters_from_signature(func: Callable) -> dict[str, Any]:
     """从函数签名提取参数定义
 
     Args:
@@ -156,7 +156,7 @@ def extract_parameters_from_signature(func: Callable) -> Dict[str, Any]:
         has_default = param.default != inspect.Parameter.empty
 
         # 构建属性定义
-        prop_def: Dict[str, Any] = {
+        prop_def: dict[str, Any] = {
             "type": param_type_str,
         }
 
@@ -219,7 +219,7 @@ def _get_type_string(type_annotation: Any) -> str:
     return "string"
 
 
-def validate_json_schema(parameters: Dict[str, Any]) -> bool:
+def validate_json_schema(parameters: dict[str, Any]) -> bool:
     """验证 JSON Schema 是否有效
 
     Args:

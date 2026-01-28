@@ -1,5 +1,6 @@
 import inspect
-from typing import Literal, Callable
+from typing import Literal
+from collections.abc import Callable
 
 import pydantic
 from fastapi import Body, Form, Query
@@ -42,7 +43,7 @@ def create_sub_fields_model(
 
     pydantic_methods = dir(pydantic.BaseModel)
     for name in dir(base_model):
-        if name.startswith('_') or name in pydantic_methods:
+        if name.startswith("_") or name in pydantic_methods:
             continue
         attr = getattr(base_model, name)
         if callable(attr) and not isinstance(attr, property):

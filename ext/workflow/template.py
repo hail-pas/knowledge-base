@@ -42,9 +42,8 @@ def run_async(coro):
             future = asyncio.run_coroutine_threadsafe(coro, loop)
             # 等待协程完成并返回结果
             return future.result()
-        else:
-            # 循环存在但未运行，直接运行
-            return loop.run_until_complete(coro)
+        # 循环存在但未运行，直接运行
+        return loop.run_until_complete(coro)
     except RuntimeError:
         # 没有运行的事件循环，创建一个新的
         loop = asyncio.new_event_loop()
@@ -70,7 +69,7 @@ class ActivityTaskTemplate(ABC):
     8. 无论成功还是失败都需要启动一个三类调度任务
     """
 
-    def __init__(self, celery_task: Optional[CeleryTask], activity_uid: str, use_async: bool = True):
+    def __init__(self, celery_task: CeleryTask | None, activity_uid: str, use_async: bool = True):
         """初始化任务模板
 
         Args:
@@ -81,11 +80,11 @@ class ActivityTaskTemplate(ABC):
         self.celery_task = celery_task
         self.activity_uid = uuid.UUID(activity_uid)
         self.use_async = use_async
-        self.activity: Optional[Activity] = None
-        self.workflow: Optional[Workflow] = None
-        self.graph: Optional[GraphUtil] = None
+        self.activity: Activity | None = None
+        self.workflow: Workflow | None = None
+        self.graph: GraphUtil | None = None
 
-    async def _call_async(self) -> Dict[str, Any]:
+    async def _call_async(self) -> dict[str, Any]:
         """异步执行任务的完整流程"""
         # 先加载 activity 以获取 workflow_uid
         await self._load_activity()
@@ -140,7 +139,7 @@ class ActivityTaskTemplate(ABC):
             started_at=datetime.now(),
         )
 
-    async def _update_status_to_completed(self, output: Dict[str, Any]) -> None:
+    async def _update_status_to_completed(self, output: dict[str, Any]) -> None:
         """更新状态为完成
 
         Args:
@@ -220,25 +219,24 @@ class ActivityTaskTemplate(ABC):
                 await _schedule_activity_handoff_async(self.activity.uid, self.use_async)
 
     @abstractmethod
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行自定义业务逻辑（用户需要实现）
 
         Returns:
             执行结果（字典格式）
         """
-        pass
 
     # 便利方法：获取上下文数据
 
     @property
-    def input(self) -> Dict[str, Any]:
+    def input(self) -> dict[str, Any]:
         """获取 Activity 输入"""
         if not self.activity:
             raise ValueError("Activity not loaded")
         return self.activity.input or {}
 
     @property
-    def workflow_config(self) -> Dict[str, Any]:
+    def workflow_config(self) -> dict[str, Any]:
         """获取 Workflow 配置"""
         if not self.workflow:
             raise ValueError("Workflow not loaded")
@@ -258,7 +256,7 @@ class ActivityTaskTemplate(ABC):
             raise ValueError("Activity not loaded")
         return str(self.activity.workflow_uid)
 
-    async def get_upstream_outputs(self) -> Dict[str, Any]:
+    async def get_upstream_outputs(self) -> dict[str, Any]:
         """获取所有上游 Activity 的输出
 
         Returns:
@@ -269,7 +267,7 @@ class ActivityTaskTemplate(ABC):
 
         node_info = self.graph.get_node_info(self.activity_name)
 
-        outputs: Dict[str, Any] = {}
+        outputs: dict[str, Any] = {}
         for parent_name in node_info.parents:
             parent_activity = await Activity.filter(
                 workflow_uid=self.activity.workflow_uid,
@@ -282,7 +280,7 @@ class ActivityTaskTemplate(ABC):
 
         return outputs
 
-    async def get_workflow_context(self) -> Dict[str, Any]:
+    async def get_workflow_context(self) -> dict[str, Any]:
         """获取 Workflow 上下文
 
         Returns:
@@ -324,7 +322,7 @@ def activity_task(template_class: type):
         bind=True,
         max_retries=3,
     )
-    def _celery_task_wrapper(celery_task: CeleryTask, activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
+    def _celery_task_wrapper(celery_task: CeleryTask, activity_uid: str, use_async: bool = True) -> dict[str, Any]:
         """Celery 任务包装器（同步）"""
         # 创建任务模板实例
         task_instance = template_class(celery_task, activity_uid, use_async)
@@ -334,7 +332,7 @@ def activity_task(template_class: type):
         return run_async(task_instance._call_async())
 
     # 定义异步包装器函数
-    async def _async_wrapper_function(activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
+    async def _async_wrapper_function(activity_uid: str, use_async: bool = True) -> dict[str, Any]:
         """异步包装器函数"""
         # 创建任务模板实例（celery_task=None）
         task_instance = template_class(None, activity_uid, use_async)
@@ -345,7 +343,7 @@ def activity_task(template_class: type):
     _celery_task_wrapper.async_call = _async_wrapper_function
 
     # 定义可以直接调用的同步函数
-    def _sync_wrapper(activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
+    def _sync_wrapper(activity_uid: str, use_async: bool = True) -> dict[str, Any]:
         """同步包装器，用于直接调用（在非 async 上下文中使用）"""
         # 创建任务模板实例（celery_task=None）
         task_instance = template_class(None, activity_uid, use_async)
@@ -354,7 +352,7 @@ def activity_task(template_class: type):
         return run_async(task_instance._call_async())
 
     # 定义异步包装器，用于在已有事件循环中直接 await 调用
-    async def _async_wrapper(activity_uid: str, use_async: bool = True) -> Dict[str, Any]:
+    async def _async_wrapper(activity_uid: str, use_async: bool = True) -> dict[str, Any]:
         """异步包装器，用于在 async 上下文中直接 await 调用"""
         # 创建任务模板实例（celery_task=None）
         task_instance = template_class(None, activity_uid, use_async)

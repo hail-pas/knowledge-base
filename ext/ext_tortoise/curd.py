@@ -147,7 +147,7 @@ async def create_obj(
     except IntegrityError as e:
         # 安全地提取错误消息
         msg = str(e)
-        if len(e.args) > 0 and hasattr(e.args[0], 'args') and len(e.args[0].args) > 1:
+        if len(e.args) > 0 and hasattr(e.args[0], "args") and len(e.args[0].args) > 1:
             msg = e.args[0].args[1]
 
         if "Duplicate" in msg:

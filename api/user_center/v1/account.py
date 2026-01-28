@@ -43,7 +43,7 @@ async def create_account(request: Request, schema: AccountCreate) -> Resp:
 
 
 @router.put(
-    "/{pk}", description=f"更新{Account.Meta.table_description}", summary=f"更新{Account.Meta.table_description}"
+    "/{pk}", description=f"更新{Account.Meta.table_description}", summary=f"更新{Account.Meta.table_description}",
 )
 async def update_account(request: Request, pk: int, schema: AccountUpdate) -> Resp:
     return await update_view(get_queryset(request), pk, schema)  # type: ignore
@@ -76,7 +76,7 @@ async def get_account_detail(request: Request, pk: int) -> Resp[AccountDetail]:
 
 
 @router.delete(
-    "/{pk}", description=f"删除{Account.Meta.table_description}", summary=f"删除{Account.Meta.table_description}"
+    "/{pk}", description=f"删除{Account.Meta.table_description}", summary=f"删除{Account.Meta.table_description}",
 )
 async def delete_account(request: Request, pk: UUID) -> Resp:
     return await delete_view(pk, get_queryset(request))

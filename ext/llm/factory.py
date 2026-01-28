@@ -19,17 +19,17 @@ class LLMModelFactory:
     负责根据数据库配置动态创建 LLM 模型实例
     """
 
-    _providers: Dict[LLMModelTypeEnum, Type[BaseLLMModel]] = {}
+    _providers: dict[LLMModelTypeEnum, type[BaseLLMModel]] = {}
 
-    _instances: Dict[int, BaseLLMModel] = {}
+    _instances: dict[int, BaseLLMModel] = {}
 
-    _locks: Dict[int, asyncio.Lock] = {}
+    _locks: dict[int, asyncio.Lock] = {}
 
     @classmethod
     def register(
         cls,
         model_type: LLMModelTypeEnum,
-        provider_class: Type[BaseLLMModel],
+        provider_class: type[BaseLLMModel],
     ) -> None:
         """
         注册新的 LLM provider
@@ -71,7 +71,7 @@ class LLMModelFactory:
             >>> model = await LLMModelFactory.create(config)
         """
         logger.debug(
-            f"Creating LLM model - name: {config.name}, type: {config.type.value}, id: {config.id}, use_cache: {use_cache}"
+            f"Creating LLM model - name: {config.name}, type: {config.type.value}, id: {config.id}, use_cache: {use_cache}",
         )
 
         if not config.is_enabled:
@@ -109,7 +109,7 @@ class LLMModelFactory:
     @classmethod
     def _create_instance(
         cls,
-        provider_cls: Type[BaseLLMModel],
+        provider_cls: type[BaseLLMModel],
         config: LLMModelConfig,
     ) -> BaseLLMModel:
         """
@@ -255,7 +255,7 @@ class LLMModelFactory:
         return await cls.create(config, use_cache=use_cache)
 
     @classmethod
-    def get_cache_info(cls) -> Dict[str, Any]:
+    def get_cache_info(cls) -> dict[str, Any]:
         """
         获取缓存信息
 

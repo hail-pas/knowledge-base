@@ -34,7 +34,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             if self.extra_config.signature_version:
                 signature_version_map = {"s3v4": "v4", "s3v2": "v2"}
                 s3_config["signature_version"] = signature_version_map.get(
-                    self.extra_config.signature_version.lower(), "v4"
+                    self.extra_config.signature_version.lower(), "v4",
                 )
 
             config = AioConfig(
@@ -90,7 +90,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             return False
 
     async def list_files(
-        self, prefix: str = "", recursive: bool = False, limit: int | None = None
+        self, prefix: str = "", recursive: bool = False, limit: int | None = None,
     ) -> list[FileMetadata]:
         """列出文件"""
         client = await self.client
@@ -114,7 +114,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
                         file_size=obj["Size"],
                         last_modified=obj["LastModified"],
                         etag=obj["ETag"].strip('"'),
-                    )
+                    ),
                 )
                 if limit is not None and len(files) >= limit:
                     break

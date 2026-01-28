@@ -37,8 +37,8 @@ from ext.workflow.template import activity_task
 class FetchFileInput(BaseModel):
     """获取文件任务的输入"""
     file_path: str = Field(description="文件路径")
-    file_source_config: Dict[str, Any] = Field(
-        default_factory=dict, description="文件源配置"
+    file_source_config: dict[str, Any] = Field(
+        default_factory=dict, description="文件源配置",
     )
 
 
@@ -48,7 +48,7 @@ class FetchFileOutput(BaseModel):
     file_path: str = Field(description="文件路径")
     file_size: int = Field(description="文件大小（字节）")
     file_hash: str = Field(description="文件哈希（MD5）")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
     status: str = Field(description="状态")
 
 
@@ -57,7 +57,7 @@ class LoadFileInput(BaseModel):
     file_content: str = Field(description="文件内容")
     file_path: str = Field(description="文件路径")
     file_size: int = Field(description="文件大小")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
 
 
 class LoadFileOutput(BaseModel):
@@ -68,7 +68,7 @@ class LoadFileOutput(BaseModel):
     line_count: int = Field(description="行数")
     word_count: int = Field(description="单词数")
     char_count: int = Field(description="字符数")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
     status: str = Field(description="状态")
 
 
@@ -76,8 +76,8 @@ class ReplaceContentInput(BaseModel):
     """替换内容任务的输入"""
     file_content: str = Field(description="文件内容")
     file_path: str = Field(description="文件路径")
-    replace_rules: List[Dict[str, str]] = Field(
-        default_factory=list, description="替换规则列表"
+    replace_rules: list[dict[str, str]] = Field(
+        default_factory=list, description="替换规则列表",
     )
 
 
@@ -86,7 +86,7 @@ class ReplaceContentOutput(BaseModel):
     original_content: str = Field(description="原始内容")
     replaced_content: str = Field(description="替换后的内容")
     replace_count: int = Field(description="替换次数")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
     status: str = Field(description="状态")
 
 
@@ -95,34 +95,34 @@ class SplitTextInput(BaseModel):
     file_content: str = Field(description="文件内容")
     chunk_size: int = Field(default=1000, description="每个分块的大小")
     chunk_overlap: int = Field(default=100, description="分块重叠大小")
-    separators: List[str] = Field(
-        default=["\n\n", "\n", "。", "！", "？", ".", "!", "?"], description="分隔符"
+    separators: list[str] = Field(
+        default=["\n\n", "\n", "。", "！", "？", ".", "!", "?"], description="分隔符",
     )
 
 
 class SplitTextOutput(BaseModel):
     """分割文本任务的输出"""
-    chunks: List[str] = Field(description="文本分块列表")
+    chunks: list[str] = Field(description="文本分块列表")
     chunk_count: int = Field(description="分块数量")
     avg_chunk_length: int = Field(description="平均分块长度")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
     status: str = Field(description="状态")
 
 
 class IndexInput(BaseModel):
     """索引任务的输入"""
-    chunks: List[str] = Field(description="文本分块列表")
+    chunks: list[str] = Field(description="文本分块列表")
     chunk_count: int = Field(description="分块数量")
     index_name: str = Field(description="索引名称")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
 
 
 class IndexOutput(BaseModel):
     """索引任务的输出"""
-    ids: List[str] = Field(description="文档 ID 列表")
+    ids: list[str] = Field(description="文档 ID 列表")
     indexed_count: int = Field(description="已索引数量")
     index_name: str = Field(description="索引名称")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
     status: str = Field(description="状态")
 
 
@@ -130,7 +130,7 @@ class SummaryInput(BaseModel):
     """摘要生成任务的输入"""
     file_content: str = Field(description="文件内容")
     max_length: int = Field(default=200, description="摘要最大长度")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
 
 
 class SummaryOutput(BaseModel):
@@ -139,7 +139,7 @@ class SummaryOutput(BaseModel):
     summary_length: int = Field(description="摘要长度")
     original_length: int = Field(description="原始内容长度")
     compression_ratio: float = Field(description="压缩比")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="元数据")
     status: str = Field(description="状态")
 
 
@@ -154,7 +154,7 @@ class FetchFileTask(ActivityTaskTemplate):
     从文件源获取文件内容
     """
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行文件获取逻辑"""
         # 解析输入
         input_data = FetchFileInput(**self.input)
@@ -169,14 +169,14 @@ class FetchFileTask(ActivityTaskTemplate):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             file_content = f.read()
 
         file_size = len(file_content.encode("utf-8"))
         file_hash = hashlib.md5(file_content.encode("utf-8")).hexdigest()
 
         logger.info(
-            f"[{self.activity_name}] File fetched: size={file_size}, hash={file_hash}"
+            f"[{self.activity_name}] File fetched: size={file_size}, hash={file_hash}",
         )
 
         # 返回结果
@@ -202,7 +202,7 @@ class LoadFileTask(ActivityTaskTemplate):
     将文件加载到内存并进行基本分析
     """
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行文件加载逻辑"""
         # 获取上游输出
         upstream_outputs = await self.get_upstream_outputs()
@@ -228,7 +228,7 @@ class LoadFileTask(ActivityTaskTemplate):
 
         logger.info(
             f"[{self.activity_name}] File loaded: lines={line_count}, "
-            f"words={word_count}, chars={char_count}"
+            f"words={word_count}, chars={char_count}",
         )
 
         # 返回结果
@@ -252,7 +252,7 @@ class ReplaceContentTask(ActivityTaskTemplate):
     根据规则替换文件内容
     """
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行内容替换逻辑"""
         # 获取上游输出
         upstream_outputs = await self.get_upstream_outputs()
@@ -312,7 +312,7 @@ class SplitTextTask(ActivityTaskTemplate):
     将文本分割成多个块，用于向量化和索引
     """
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行文本分割逻辑"""
         # 获取上游输出
         upstream_outputs = await self.get_upstream_outputs()
@@ -325,13 +325,13 @@ class SplitTextTask(ActivityTaskTemplate):
         chunk_size = self.input.get("chunk_size", 1000)
         chunk_overlap = self.input.get("chunk_overlap", 100)
         separators = self.input.get(
-            "separators", ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " "]
+            "separators", ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " "],
         )
 
         logger.info(f"[{self.activity_name}] Splitting text into chunks")
         logger.info(
             f"[{self.activity_name}] chunk_size={chunk_size}, "
-            f"chunk_overlap={chunk_overlap}"
+            f"chunk_overlap={chunk_overlap}",
         )
 
         # 模拟异步操作
@@ -365,8 +365,8 @@ class SplitTextTask(ActivityTaskTemplate):
         text: str,
         chunk_size: int,
         chunk_overlap: int,
-        separators: List[str],
-    ) -> List[str]:
+        separators: list[str],
+    ) -> list[str]:
         """分割文本为多个块
 
         Args:
@@ -415,7 +415,7 @@ class IndexIntoMilvusTask(ActivityTaskTemplate):
     将文本块索引到 Milvus 向量数据库
     """
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行 Milvus 索引逻辑"""
         # 获取上游输出
         upstream_outputs = await self.get_upstream_outputs()
@@ -460,7 +460,7 @@ class IndexIntoEsTask(ActivityTaskTemplate):
     将文本块索引到 Elasticsearch 搜索引擎
     """
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行 ES 索引逻辑"""
         # 获取上游输出
         upstream_outputs = await self.get_upstream_outputs()
@@ -506,7 +506,7 @@ class SummaryTask(ActivityTaskTemplate):
     生成文件内容的摘要
     """
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """执行摘要生成逻辑"""
         # 获取上游输出
         upstream_outputs = await self.get_upstream_outputs()
@@ -593,7 +593,7 @@ FILE_PROCESS_WORKFLOW = {
             "replace_rules": [
                 {"pattern": "old", "replacement": "new"},
                 {"pattern": "foo", "replacement": "bar"},
-            ]
+            ],
         },
     },
     "split_text": {

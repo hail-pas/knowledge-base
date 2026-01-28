@@ -30,7 +30,6 @@ class BaseOutputParser(Generic[OutputT], Runnable[str, OutputT]):
         Returns:
             解析后的数据
         """
-        pass
 
     async def ainvoke(self, input: str) -> OutputT:
         """异步调用（解析）
@@ -65,13 +64,13 @@ class StrOutputParser(BaseOutputParser[str]):
         return result
 
 
-class JsonOutputParser(BaseOutputParser[Dict[str, Any]]):
+class JsonOutputParser(BaseOutputParser[dict[str, Any]]):
     """JSON 输出解析器
 
     将 LLM 输出解析为 JSON 对象
     """
 
-    def __init__(self, pydantic_object: Optional[Any] = None):
+    def __init__(self, pydantic_object: Any | None = None):
         """初始化 JSON 解析器
 
         Args:
@@ -79,7 +78,7 @@ class JsonOutputParser(BaseOutputParser[Dict[str, Any]]):
         """
         self.pydantic_object = pydantic_object
 
-    async def parse(self, text: str) -> Dict[str, Any]:
+    async def parse(self, text: str) -> dict[str, Any]:
         """解析 JSON 文本
 
         Args:
@@ -106,7 +105,7 @@ class JsonOutputParser(BaseOutputParser[Dict[str, Any]]):
         if self.pydantic_object is not None:
             try:
                 parsed = self.pydantic_object(**parsed).model_dump()
-                logger.debug(f"JsonOutputParser validated with Pydantic model")
+                logger.debug("JsonOutputParser validated with Pydantic model")
             except Exception as e:
                 logger.error(f"JsonOutputParser Pydantic validation error: {e}")
                 raise ValueError(f"Failed to validate with Pydantic model: {e}")

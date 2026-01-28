@@ -167,7 +167,7 @@ async def create_document_by_upload(
         "source_version_key": source_version_key,
         "short_summary": "",
         "long_summary": "",
-        "status": status
+        "status": status,
     }
 
     await create_obj(Document, document_data)
@@ -242,7 +242,7 @@ async def create_document_by_uri(request: Request, schema: DocumentCreateByUri) 
         "short_summary": "",
         "long_summary": "",
         "source_meta": schema.source_meta or source_meta,
-        "status": DocumentStatusEnum.pending
+        "status": DocumentStatusEnum.pending,
     }
 
     await create_obj(Document, document_data)

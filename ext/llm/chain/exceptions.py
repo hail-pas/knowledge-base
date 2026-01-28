@@ -10,13 +10,11 @@ from typing import Optional
 class ChainError(Exception):
     """Chain 基础异常"""
 
-    pass
 
 
 class AgentError(ChainError):
     """Agent 异常"""
 
-    pass
 
 
 class MaxIterationsError(AgentError):
@@ -39,7 +37,6 @@ class ToolExecutionError(AgentError):
 class ToolError(ChainError):
     """Tool 异常"""
 
-    pass
 
 
 class ToolNotFoundError(ToolError):
@@ -53,13 +50,12 @@ class ToolNotFoundError(ToolError):
 class MemoryError(ChainError):
     """Memory 异常"""
 
-    pass
 
 
 class MemoryLoadError(MemoryError):
     """Memory 加载异常"""
 
-    def __init__(self, message: str, original_error: Optional[Exception] = None):
+    def __init__(self, message: str, original_error: Exception | None = None):
         self.original_error = original_error
         super().__init__(message)
 
@@ -67,7 +63,7 @@ class MemoryLoadError(MemoryError):
 class MemorySaveError(MemoryError):
     """Memory 保存异常"""
 
-    def __init__(self, message: str, original_error: Optional[Exception] = None):
+    def __init__(self, message: str, original_error: Exception | None = None):
         self.original_error = original_error
         super().__init__(message)
 

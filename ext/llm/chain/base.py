@@ -5,7 +5,8 @@ Chain 模块基础抽象
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Generic, List, TypeVar
+from typing import Any, Generic, List, TypeVar
+from collections.abc import AsyncIterator
 
 from ext.llm.chain.exceptions import ChainError
 
@@ -32,9 +33,8 @@ class Runnable(Generic[InputT, OutputT], ABC):
         Raises:
             ChainError: 执行失败时抛出
         """
-        pass
 
-    async def abatch(self, inputs: List[InputT]) -> List[OutputT]:
+    async def abatch(self, inputs: list[InputT]) -> list[OutputT]:
         """批量调用
 
         Args:

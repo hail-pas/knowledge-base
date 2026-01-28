@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Body, Query
 from pydantic import BaseModel, PositiveInt, conint

@@ -16,8 +16,8 @@ class CollectionList(
     pydantic_model_creator(  # type: ignore
         Collection,
         name="CollectionList",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -25,8 +25,8 @@ class CollectionDetail(
     pydantic_model_creator(  # type: ignore
         Collection,
         name="CollectionDetail",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -35,8 +35,8 @@ class CollectionCreate(
         Collection,
         name="CollectionCreate",
         exclude_readonly=True,
-        exclude=("is_temp", )
-    )
+        exclude=("is_temp", ),
+    ),
 ): ...
 
 
@@ -46,8 +46,8 @@ class CollectionUpdate(
         Collection,
         name="CollectionUpdate",
         exclude_readonly=True,
-        include=("name", "description", "is_public")
-    )
+        include=("name", "description", "is_public"),
+    ),
 ): ...
 
 

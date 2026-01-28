@@ -18,4 +18,4 @@ _ = workflow_tasks
 _ = file_process_tasks
 
 
-__all__ = ['celery_app']
+__all__ = ["celery_app"]

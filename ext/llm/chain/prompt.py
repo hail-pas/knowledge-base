@@ -11,13 +11,13 @@ from ext.llm.types import ChatMessage
 from ext.llm.chain.base import Runnable
 
 
-class PromptTemplate(Runnable[Dict[str, Any], str]):
+class PromptTemplate(Runnable[dict[str, Any], str]):
     """提示词模板
 
     使用 Python f-string 风格的模板语法
     """
 
-    def __init__(self, template: str, input_variables: Optional[List[str]] = None):
+    def __init__(self, template: str, input_variables: list[str] | None = None):
         """初始化提示词模板
 
         Args:
@@ -39,7 +39,7 @@ class PromptTemplate(Runnable[Dict[str, Any], str]):
         """
         return cls(template)
 
-    def _extract_variables(self, template: str) -> List[str]:
+    def _extract_variables(self, template: str) -> list[str]:
         """从模板中提取变量名
 
         Args:
@@ -72,7 +72,7 @@ class PromptTemplate(Runnable[Dict[str, Any], str]):
         # 格式化模板
         return self.template.format(**kwargs)
 
-    async def ainvoke(self, input: Dict[str, Any]) -> str:
+    async def ainvoke(self, input: dict[str, Any]) -> str:
         """异步调用（格式化模板）
 
         Args:
@@ -87,13 +87,13 @@ class PromptTemplate(Runnable[Dict[str, Any], str]):
         return result
 
 
-class ChatPromptTemplate(Runnable[Dict[str, Any], List[ChatMessage]]):
+class ChatPromptTemplate(Runnable[dict[str, Any], list[ChatMessage]]):
     """聊天提示词模板
 
     支持构建多消息的聊天提示词
     """
 
-    def __init__(self, messages: List[Union[str, PromptTemplate, "MessagesPlaceholder"]]):
+    def __init__(self, messages: list[Union[str, PromptTemplate, "MessagesPlaceholder"]]):
         """初始化聊天提示词模板
 
         Args:
@@ -113,7 +113,7 @@ class ChatPromptTemplate(Runnable[Dict[str, Any], List[ChatMessage]]):
         """
         return cls(list(messages))
 
-    async def ainvoke(self, input: Dict[str, Any]) -> List[ChatMessage]:
+    async def ainvoke(self, input: dict[str, Any]) -> list[ChatMessage]:
         """异步调用（构建聊天消息）
 
         Args:
@@ -123,7 +123,7 @@ class ChatPromptTemplate(Runnable[Dict[str, Any], List[ChatMessage]]):
             聊天消息列表
         """
         logger.debug(
-            f"ChatPromptTemplate ainvoke - template messages: {len(self.messages)}, variables: {list(input.keys())}"
+            f"ChatPromptTemplate ainvoke - template messages: {len(self.messages)}, variables: {list(input.keys())}",
         )
 
         result = []

@@ -4,7 +4,8 @@ Azure OpenAI LLM Provider
 使用 OpenAI SDK 的 Azure 扩展实现
 """
 
-from typing import AsyncIterator, Any
+from typing import Any
+from collections.abc import AsyncIterator
 from loguru import logger
 
 from openai import AsyncAzureOpenAI
@@ -35,7 +36,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
 
         logger.debug(
             f"Initializing Azure OpenAI client - deployment: {deployment_name}, "
-            f"api_version: {api_version}, endpoint: {self.base_url}"
+            f"api_version: {api_version}, endpoint: {self.base_url}",
         )
 
         self._client = AsyncAzureOpenAI(
@@ -93,7 +94,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
                         "description": tool.function.description,
                         "parameters": tool.function.parameters,
                     },
-                }
+                },
             )
 
         return converted
@@ -123,7 +124,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
         logger.debug(
             f"Azure OpenAI chat request - deployment: {self._deployment_name}, "
             f"messages: {len(request.messages)}, "
-            f"temperature: {request.temperature or self.default_temperature}"
+            f"temperature: {request.temperature or self.default_temperature}",
         )
 
         try:
@@ -147,7 +148,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
 
             logger.debug(
                 f"Azure OpenAI chat response - content: {truncate_content(parsed_response.content)}, "
-                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}"
+                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}",
             )
 
             return parsed_response
@@ -216,7 +217,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
             流式响应块
         """
         logger.debug(
-            f"Azure OpenAI chat stream request - deployment: {self._deployment_name}, messages: {len(request.messages)}"
+            f"Azure OpenAI chat stream request - deployment: {self._deployment_name}, messages: {len(request.messages)}",
         )
 
         try:

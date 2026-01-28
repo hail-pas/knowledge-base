@@ -86,7 +86,7 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
                     file_size=obj.size,
                     last_modified=obj.last_modified,
                     etag=obj.etag,
-                )
+                ),
             )
             count += 1
 

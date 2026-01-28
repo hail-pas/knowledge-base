@@ -147,7 +147,7 @@ roster = [
                 RequestIdPlugin(),
                 RequestStartTimestampPlugin(),
                 RequestProcessInfoPlugin(),
-            ]
+            ],
         },
     ),
     (GZipMiddleware, {"minimum_size": 1000}),

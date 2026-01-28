@@ -83,7 +83,7 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
                     file_size=stat.st_size,
                     last_modified=datetime.fromtimestamp(stat.st_mtime),
                     etag=self._compute_etag(file_path),
-                )
+                ),
             )
             count += 1
 

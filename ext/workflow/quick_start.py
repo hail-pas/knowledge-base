@@ -35,7 +35,7 @@ def setup_logger():
 def create_temp_file(content: str) -> str:
     """创建临时文件"""
     fd, path = tempfile.mkstemp(suffix=".txt", text=True)
-    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(content)
     return path
 
@@ -64,22 +64,22 @@ The system will process this file through multiple tasks:
         "fetch_file": {
             "input": {"file_path": file_path},
             "execute_params": {"task_name": "workflow_activity.FetchFileTask"},
-            "depends_on": []
+            "depends_on": [],
         },
         "load_file": {
             "execute_params": {"task_name": "workflow_activity.LoadFileTask"},
-            "depends_on": ["fetch_file"]
+            "depends_on": ["fetch_file"],
         },
         "replace_content": {
             "execute_params": {"task_name": "workflow_activity.ReplaceContentTask"},
             "depends_on": ["load_file"],
-            "input": {"replace_rules": []}
+            "input": {"replace_rules": []},
         },
         "summary": {
             "execute_params": {"task_name": "workflow_activity.SummaryTask"},
             "depends_on": ["replace_content"],
-            "input": {"max_length": 100}
-        }
+            "input": {"max_length": 100},
+        },
     }
 
     logger.success("✓ Workflow configured (4 tasks)")
@@ -112,7 +112,7 @@ The system will process this file through multiple tasks:
             config=workflow_config,
             config_format="dict",
             initial_inputs={},
-            use_async=False
+            use_async=False,
         )
 
         logger.success(f"✓ Workflow started: {workflow_uid}")

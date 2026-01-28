@@ -1,5 +1,6 @@
 import traceback
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 from fastapi import Request, WebSocket
 from pydantic import BaseModel

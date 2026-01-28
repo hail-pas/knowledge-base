@@ -90,7 +90,7 @@ def gen_tortoise_config_dict() -> dict:
                 "models": (
                     [
                         f"ext.ext_tortoise.models.{k.value}",
-                        "aerich.models"
+                        "aerich.models",
                     ]
                     # + [
                     #     "aerich.models",

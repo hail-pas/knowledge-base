@@ -5,7 +5,8 @@ Anthropic LLM Provider
 """
 
 import orjson
-from typing import AsyncIterator, Any
+from typing import Any
+from collections.abc import AsyncIterator
 from loguru import logger
 
 import anthropic
@@ -38,7 +39,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         logger.debug(
-            f"Initializing Anthropic client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}"
+            f"Initializing Anthropic client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}",
         )
         self._client = AsyncAnthropic(
             api_key=self.api_key,
@@ -95,7 +96,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                                     if "," in item.get("image_url", {}).get("url", "")
                                     else "",
                                 },
-                            }
+                            },
                         )
                 converted_msg["content"] = content_blocks  # type: ignore
             else:
@@ -128,7 +129,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                     "name": tool.function.name,
                     "description": tool.function.description,
                     "input_schema": tool.function.parameters or {"type": "object", "properties": {}},
-                }
+                },
             )
 
         return converted
@@ -168,7 +169,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
             f"messages: {len(request.messages)}, "
             f"temperature: {request.temperature or self.default_temperature}, "
             f"max_tokens: {request.max_tokens or self.max_tokens}, "
-            f"tools: {len(request.tools) if request.tools else 0}"
+            f"tools: {len(request.tools) if request.tools else 0}",
         )
 
         try:
@@ -200,7 +201,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
 
             logger.debug(
                 f"Anthropic chat response - content: {truncate_content(parsed_response.content)}, "
-                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}"
+                f"tokens: {parsed_response.usage.total_tokens}, finish_reason: {parsed_response.finish_reason}",
             )
 
             return parsed_response
@@ -272,7 +273,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
         """
         logger.debug(
             f"Anthropic chat stream request - model: {request.model or self.model_name}, "
-            f"messages: {len(request.messages)}"
+            f"messages: {len(request.messages)}",
         )
 
         try:

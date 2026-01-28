@@ -22,8 +22,8 @@ class EmbeddingModelConfigList(
     pydantic_model_creator(  # type: ignore
         EmbeddingModelConfig,
         name="EmbeddingModelConfigList",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -31,8 +31,8 @@ class EmbeddingModelConfigDetail(
     pydantic_model_creator(  # type: ignore
         EmbeddingModelConfig,
         name="EmbeddingModelConfigDetail",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -40,8 +40,8 @@ class EmbeddingModelConfigCreate(
     pydantic_model_creator(  # type: ignore
         EmbeddingModelConfig,
         name="EmbeddingModelConfigCreate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 
@@ -50,8 +50,8 @@ class EmbeddingModelConfigUpdate(
     pydantic_model_creator(  # type: ignore
         EmbeddingModelConfig,
         name="EmbeddingModelConfigUpdate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 
@@ -71,8 +71,8 @@ class IndexingBackendConfigList(
     pydantic_model_creator(  # type: ignore
         IndexingBackendConfig,
         name="IndexingBackendConfigList",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -80,8 +80,8 @@ class IndexingBackendConfigDetail(
     pydantic_model_creator(  # type: ignore
         IndexingBackendConfig,
         name="IndexingBackendConfigDetail",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -89,8 +89,8 @@ class IndexingBackendConfigCreate(
     pydantic_model_creator(  # type: ignore
         IndexingBackendConfig,
         name="IndexingBackendConfigCreate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 
@@ -99,8 +99,8 @@ class IndexingBackendConfigUpdate(
     pydantic_model_creator(  # type: ignore
         IndexingBackendConfig,
         name="IndexingBackendConfigUpdate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 
@@ -120,8 +120,8 @@ class LLMModelConfigList(
     pydantic_model_creator(  # type: ignore
         LLMModelConfig,
         name="LLMModelConfigList",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -129,8 +129,8 @@ class LLMModelConfigDetail(
     pydantic_model_creator(  # type: ignore
         LLMModelConfig,
         name="LLMModelConfigDetail",
-        meta_override=OverridePydanticMeta
-    )
+        meta_override=OverridePydanticMeta,
+    ),
 ): ...
 
 
@@ -138,8 +138,8 @@ class LLMModelConfigCreate(
     pydantic_model_creator(  # type: ignore
         LLMModelConfig,
         name="LLMModelConfigCreate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 
@@ -148,8 +148,8 @@ class LLMModelConfigUpdate(
     pydantic_model_creator(  # type: ignore
         LLMModelConfig,
         name="LLMModelConfigUpdate",
-        exclude_readonly=True
-    )
+        exclude_readonly=True,
+    ),
 ): ...
 
 
