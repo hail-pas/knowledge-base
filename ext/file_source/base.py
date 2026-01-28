@@ -8,7 +8,7 @@ import aiofiles
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from datetime import datetime
 from loguru import logger

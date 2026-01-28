@@ -1,23 +1,23 @@
-"""
-Indexing 模块 - RAG 系统索引抽象层
+"""Indexing ORM 模块入口"""
 
-提供统一的索引管理接口，支持多种后端（Elasticsearch、Milvus等）。
-"""
-
-from ext.indexing.base import (
-    BaseIndexModel,
-    BaseProvider,
-    SearchQuery,
-    SearchResult,
-    QueryCondition,
+from ext.indexing.base import BaseIndexModel
+from ext.indexing.types import (
+    QueryClause,
+    DenseSearchClause,
+    SparseSearchClause,
+    HybridSearchClause,
+    FilterClause,
+    SearchCursor,
 )
-from ext.indexing.factory import ProviderFactory
+from ext.indexing.factory import IndexingProviderFactory
 
 __all__ = [
     "BaseIndexModel",
-    "BaseProvider",
-    "SearchQuery",
-    "SearchResult",
-    "QueryCondition",
-    "ProviderFactory",
+    "QueryClause",
+    "DenseSearchClause",
+    "SparseSearchClause",
+    "HybridSearchClause",
+    "FilterClause",
+    "SearchCursor",
+    "IndexingProviderFactory",
 ]

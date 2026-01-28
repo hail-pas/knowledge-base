@@ -64,3 +64,56 @@ def flatten_list(element: Iterable) -> list[Any]:
     _flatten_list(element)
 
     return flat_list
+
+
+def truncate_content(content: str | None, truncate: bool = True, max_length: int = 100) -> str:
+    """Truncate content for logging
+
+    Args:
+        content: Content to truncate
+        truncate: Whether to truncate
+        max_length: Maximum length before truncation
+
+    Returns:
+        Truncated or original content
+    """
+    if not content:
+        return ""
+
+    if not truncate or len(content) <= max_length:
+        return content
+
+    return content[:max_length] + f"... (truncated, total {len(content)} chars)"
+
+
+def format_dict_for_log(data: dict[str, Any] | None, max_items: int = 10, max_value_length: int = 100) -> str:
+    """Format dictionary for logging
+
+    Args:
+        data: Dictionary to format
+        max_items: Maximum number of items to show
+        max_value_length: Maximum length for values
+
+    Returns:
+        Formatted string representation
+    """
+    if not data:
+        return "{}"
+
+    items = list(data.items())[:max_items]
+    formatted = {}
+
+    for key, value in items:
+        if isinstance(value, str):
+            formatted[key] = truncate_content(value, True, max_value_length)
+        elif isinstance(value, dict):
+            formatted[key] = format_dict_for_log(value, max_items, max_value_length)
+        elif isinstance(value, list):
+            formatted[key] = f"[{len(value)} items]"
+        else:
+            formatted[key] = str(value)[:max_value_length]
+
+    if len(data) > max_items:
+        return f"{formatted} ... and {len(data) - max_items} more items"
+
+    return str(formatted)
