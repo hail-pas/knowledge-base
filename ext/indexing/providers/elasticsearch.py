@@ -119,7 +119,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 raise RuntimeError(f"Unknow field type {field_name}-{field_info.annotation}")
 
         if model_class.Meta.partition_key:
-            mapping["properties"]["_routing"] = {"type": "keyword"}
+            mapping["_routing"] = {"required": True}
 
         return mapping
 
@@ -170,8 +170,19 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         """获取文档"""
         index_name = self.build_collection_name(model_class)
 
-        docs = [{"_id": doc_id} for doc_id in ids]
+        # 如果有 partition_key，使用 ids 查询而不是 mget
+        if model_class.Meta.partition_key:
+            search_body = {"size": len(ids), "query": {"ids": {"values": ids}}}
+            response = await self._client.search(index=index_name, body=search_body)
+            result: List[Dict] = []
+            for hit in response["hits"]["hits"]:
+                doc_data = hit["_source"]
+                doc_data["id"] = hit["_id"]
+                result.append(doc_data)
+            return result
 
+        # 无 partition_key，使用 mget
+        docs = [{"_id": doc_id} for doc_id in ids]
         response = await self._client.mget(index=index_name, docs=docs)
         result: List[Dict] = []
         for doc in response["docs"]:
@@ -239,8 +250,19 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             if doc_id and not model_class.Meta.auto_generate_id:
                 op["index"]["_id"] = doc_id
 
+            # 添加 routing（如果有 partition_key）
+            if model_class.Meta.partition_key:
+                routing_value = self._get_routing_value(model_class, doc)
+                if routing_value:
+                    op["index"]["routing"] = routing_value  # type: ignore
+
+            # 如果 auto_generate_id=True，从文档中移除空的 id 字段
+            doc_to_insert = doc.copy()
+            if model_class.Meta.auto_generate_id:
+                doc_to_insert.pop("id", None)
+
             bulk_data.append(op)
-            bulk_data.append(doc)
+            bulk_data.append(doc_to_insert)
 
         response = await self._client.bulk(operations=bulk_data, refresh=True)
 
@@ -282,9 +304,20 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 routing_value = self._get_routing_value(model_class, doc)
                 if routing_value:
                     op["update"]["routing"] = routing_value
+
+            # 移除 doc 中的空 id 字段，避免覆盖 ES 的 _id
+            doc_to_update = {k: v for k, v in doc.items() if k != "id" or v}
             bulk_data.append(op)
-            bulk_data.append({"doc": doc})
-        await self._client.bulk(operations=bulk_data)
+            bulk_data.append({"doc": doc_to_update})
+        response = await self._client.bulk(operations=bulk_data, refresh=True)
+
+        # 检查 bulk 更新错误
+        if response.get("errors", False):
+            items = response.get("items", [])
+            for i, item in enumerate(items):
+                update_result = item.get("update", {})
+                if "error" in update_result:
+                    logger.warning(f"update encounter error: {update_result['error']}")
 
     async def bulk_upsert(
         self, model_class: Type[BaseIndexModel], documents: List[Dict[str, Any]]
@@ -340,18 +373,44 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             await self._client.bulk(operations=operations)
             return
 
-        await self._client.delete_by_query(index=index_name, query={"terms": {"id": ids}})
+        # 有 partition_key，先查询获取文档及其 routing 值
+        search_body = {"size": len(ids), "query": {"ids": {"values": ids}}}
+        response = await self._client.search(index=index_name, body=search_body)
+        hits = response.get("hits", {}).get("hits", [])
+
+        # 按 routing 分组删除
+        for hit in hits:
+            doc_id = hit["_id"]
+            routing_value = hit.get("_routing")
+
+            if routing_value:
+                # 删除指定 routing 的文档
+                await self._client.delete(index=index_name, id=doc_id, routing=routing_value, refresh=True)
+            else:
+                # 没有 routing 值，尝试直接删除（可能会失败）
+                try:
+                    await self._client.delete(index=index_name, id=doc_id, refresh=True)
+                except Exception as e:
+                    logger.warning(f"Failed to delete document {doc_id} without routing: {e}")
 
     async def delete_by_query(self, model_class: Type[BaseIndexModel], filter_clause: FilterClause):
         """根据条件删除（支持 routing）"""
         index_name = self.build_collection_name(model_class)
         query = self._convert_filter(model_class, filter_clause)
 
-        routing_value = None
-        if model_class.Meta.partition_key:
-            routing_value = self._get_routing_value_from_filter(filter_clause, model_class.Meta.partition_key)
+        if not model_class.Meta.partition_key:
+            await self._client.delete_by_query(index=index_name, query=query)
+            return
 
-        await self._client.delete_by_query(index=index_name, query=query, routing=routing_value)
+        # 如果有 partition_key，必须从 filter_clause 中获取 routing 值
+        routing_value = self._get_routing_value_from_filter(filter_clause, model_class.Meta.partition_key)
+        if not routing_value:
+            raise ValueError(
+                f"Cannot delete documents with partition key '{model_class.Meta.partition_key}'. "
+                f"Please include the partition key value in the filter_clause."
+            )
+
+        await self._client.delete_by_query(index=index_name, query=query, routing=routing_value, refresh=True)
 
     async def count(self, model_class: Type[BaseIndexModel], filter_clause: Optional[FilterClause]) -> int:
         """统计文档数量"""
@@ -554,6 +613,14 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     async def exists(self, model_class: Type[BaseIndexModel], id: str) -> bool:
         """检查文档是否存在"""
         index_name = self.build_collection_name(model_class)
+
+        # 如果有 partition_key，使用 count 而不是 exists
+        if model_class.Meta.partition_key:
+            search_body = {"query": {"ids": {"values": [id]}}}
+            response = await self._client.count(index=index_name, body=search_body)
+            return response.get("count", 0) > 0
+
+        # 无 partition_key，使用 exists
         return (await self._client.exists(index=index_name, id=id)).body
 
     async def health_check(self) -> bool:

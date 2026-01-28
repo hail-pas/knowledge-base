@@ -87,7 +87,7 @@ class TestElasticSearchBaseIndexModel:
                 category=["page_test"],
                 embedding=[0.1 * i] * 1536,
             )
-            for i in range(10)
+            for i in range(1, 11)
         ]
         for doc in docs:
             await doc.save()
@@ -177,7 +177,10 @@ class TestElasticSearchBaseIndexModel:
         from ext.indexing.types import FilterClause
 
         await test_es_index_model.bulk_insert(docs, batch_size=5, concurrent_batches=2)
-        assert len(await test_es_index_model.filter(filter_clause=FilterClause(equals={"category": "bulk"}), limit=30)) == 20
+        assert (
+            len(await test_es_index_model.filter(filter_clause=FilterClause(equals={"category": "bulk"}), limit=30))
+            == 20
+        )
 
     @pytest.mark.asyncio
     async def test_bulk_update(self, test_es_index_model):
@@ -230,7 +233,7 @@ class TestElasticSearchBaseIndexModel:
                 category=["delete"],
                 embedding=[0.1 * i] * 1536,
             )
-            for i in range(5)
+            for i in range(1, 6)
         ]
         await test_es_index_model.bulk_insert(docs)
 
@@ -261,7 +264,6 @@ class TestElasticSearchBaseIndexModel:
 
         assert len(await test_es_index_model.get([docs[0].id])) == 0
         assert len(await test_es_index_model.get([docs[3].id])) != 0
-
 
     @pytest.mark.asyncio
     async def test_count(self, test_es_index_model):
@@ -323,7 +325,7 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
             title="Test Document",
             content="Test content",
             category=["test"],
-            embedding=[0.1] * 1536
+            embedding=[0.1] * 1536,
         )
         assert not doc.id
         await doc.save()
@@ -376,7 +378,7 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
                 category=["page_test"],
                 embedding=[0.1 * i] * 1536,
             )
-            for i in range(10)
+            for i in range(1, 11)
         ]
         for doc in docs:
             await doc.save()
@@ -428,8 +430,7 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
         assert isinstance(results, list)
         assert all(isinstance(result, tuple) and len(result) == 2 for result in results)
         assert all(
-            isinstance(doc, test_es_index_model_with_partition) and isinstance(score, float)
-            for doc, score in results
+            isinstance(doc, test_es_index_model_with_partition) and isinstance(score, float) for doc, score in results
         )
 
     @pytest.mark.asyncio
@@ -453,9 +454,7 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
         from ext.indexing.types import DenseSearchClause
 
         query_clause = DenseSearchClause(vector=sample_query_vector, top_k=10)
-        cursor = await test_es_index_model_with_partition.search_cursor(
-            query_clause=query_clause, page_size=3
-        )
+        cursor = await test_es_index_model_with_partition.search_cursor(query_clause=query_clause, page_size=3)
 
         assert cursor.results is not None
         assert len(cursor.results) <= 3
@@ -541,7 +540,7 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
                 category=["delete"],
                 embedding=[0.1 * i] * 1536,
             )
-            for i in range(5)
+            for i in range(1, 6)
         ]
         await test_es_index_model_with_partition.bulk_insert(docs)
 
@@ -568,7 +567,7 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
 
         from ext.indexing.types import FilterClause
 
-        filter_clause = FilterClause(equals={"category": "del_target"})
+        filter_clause = FilterClause(equals={"category": "del_target", "tenant_id": "tenant_1"})
         await test_es_index_model_with_partition.delete_by_query(filter_clause)
 
         assert len(await test_es_index_model_with_partition.get([docs[0].id])) == 0
