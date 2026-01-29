@@ -110,7 +110,7 @@ class TestElasticSearchBaseIndexModel:
             test_es_index_model(
                 title="Sort",
                 content=f"Content {i}",
-                category=[f"sort_test {10 - i}"],
+                category=[f"sort_test {i}"],
                 embedding=[0.1 * i] * 1536,
             )
             for i in range(1, 6)
@@ -121,7 +121,7 @@ class TestElasticSearchBaseIndexModel:
         from ext.indexing.types import FilterClause
 
         results = await test_es_index_model.filter(
-            filter_clause=FilterClause(equals={"title.keyword": "Sort"}), limit=10, sort="category:asc"
+            filter_clause=FilterClause(equals={"title.keyword": "Sort"}), limit=10, sort="category:desc"
         )
         assert len(results) >= 5  # i=0 has zero vector, fails to insert
         assert results[0].category[0].startswith("sort_test 5")
@@ -131,7 +131,7 @@ class TestElasticSearchBaseIndexModel:
         """测试稠密向量搜索"""
         from ext.indexing.types import DenseSearchClause
 
-        query_clause = DenseSearchClause(vector=sample_query_vector, top_k=5, metric="cosine")
+        query_clause = DenseSearchClause(vector=sample_query_vector, top_k=5)
         results = await test_es_index_model.search(query_clause=query_clause, limit=5)
 
         assert len(results) != 0
@@ -148,6 +148,7 @@ class TestElasticSearchBaseIndexModel:
         filter_clause = FilterClause(equals={"category": "tech"})
         results = await test_es_index_model.search(query_clause=query_clause, filter_clause=filter_clause, limit=5)
 
+        assert len(results) != 0
         assert isinstance(results, list)
         for doc, score in results:
             assert doc.category == ["tech"]
@@ -181,6 +182,7 @@ class TestElasticSearchBaseIndexModel:
             len(await test_es_index_model.filter(filter_clause=FilterClause(equals={"category": "bulk"}), limit=30))
             == 20
         )
+
 
     @pytest.mark.asyncio
     async def test_bulk_update(self, test_es_index_model):
@@ -217,11 +219,23 @@ class TestElasticSearchBaseIndexModel:
 
         await test_es_index_model.bulk_upsert(docs)
 
+        docs.append(
+            test_es_index_model(
+                title=f"Upsert 6",
+                content=f"Content 6",
+                category=["upsert"],
+                embedding=[0.1 * 6] * 1536,
+            )
+        )
+
         docs[0].title = "Updated Upsert 0"
         await test_es_index_model.bulk_upsert(docs)
 
+        assert len(docs) == len(await test_es_index_model.get([i.id for i in docs]))
+
         docs = await test_es_index_model.get([docs[0].id])
         assert docs[0].title == "Updated Upsert 0"
+
 
     @pytest.mark.asyncio
     async def test_bulk_delete(self, test_es_index_model):
@@ -304,6 +318,11 @@ class TestElasticSearchBaseIndexModel:
 
         not_exists = await test_es_index_model.exists("nonexistent_exists")
         assert not_exists is False
+
+
+    @pytest.mark.asyncio
+    async def test_delete_schema(self, test_es_index_model):
+        await test_es_index_model.drop_schema()
 
 
 @skip_if_no_es
@@ -423,7 +442,7 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
         """测试稠密向量搜索"""
         from ext.indexing.types import DenseSearchClause
 
-        query_clause = DenseSearchClause(vector=sample_query_vector, top_k=5, metric="cosine")
+        query_clause = DenseSearchClause(vector=sample_query_vector, top_k=5)
         results = await test_es_index_model_with_partition.search(query_clause=query_clause, limit=5)
 
         assert len(results) != 0
@@ -523,10 +542,23 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
 
         await test_es_index_model_with_partition.bulk_upsert(docs)
 
+        docs.append(
+            test_es_index_model_with_partition(
+                tenant_id="tenant_1",
+                title="Upsert 6",
+                content="Content 6",
+                category=["upsert"],
+                embedding=[0.1 * 6] * 1536,
+            )
+        )
+
         docs[0].title = "Updated Upsert 0"
         await test_es_index_model_with_partition.bulk_upsert(docs)
 
+        assert len(docs) == len(await test_es_index_model_with_partition.get([i.id for i in docs]))
+
         docs = await test_es_index_model_with_partition.get([docs[0].id])
+
         assert docs[0].title == "Updated Upsert 0"
 
     @pytest.mark.asyncio
@@ -614,3 +646,8 @@ class TestElasticSearchBaseIndexModelWithPartitionKey:
 
         not_exists = await test_es_index_model_with_partition.exists("nonexistent_exists")
         assert not_exists is False
+
+
+    @pytest.mark.asyncio
+    async def test_delete_schema(self, test_es_index_model_with_partition):
+        await test_es_index_model_with_partition.drop_schema()

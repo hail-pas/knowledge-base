@@ -30,24 +30,14 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
             model_class.Meta.dense_vector_field
             and model_class.Meta.dense_vector_field not in model_class.__pydantic_fields__
         ):
-            raise ValueError(f"Model {model_class.__name__} must have an '{model_class.Meta.dense_vector_field}' field when enable dense search")
-
-        # 验证稀疏向量字段（可选）
-        # 只有当 sparse_vector_field 不为 None 且字段存在于模型中时才验证
-        if (
-            model_class.Meta.sparse_vector_field
-            and model_class.Meta.sparse_vector_field in model_class.__pydantic_fields__
-        ):
-            pass  # 字段存在，验证通过
-        elif (
-            model_class.Meta.sparse_vector_field
-            and model_class.Meta.sparse_vector_field not in model_class.__pydantic_fields__
-        ):
-            # 字段不存在，但这是允许的（稀疏向量是可选的）
-            pass
+            raise ValueError(
+                f"Model {model_class.__name__} must have an '{model_class.Meta.dense_vector_field}' field when enable dense search"
+            )
 
         if model_class.Meta.partition_key and model_class.Meta.partition_key not in model_class.__pydantic_fields__:
-            raise ValueError(f"Model {model_class.__name__} must have an '{model_class.Meta.partition_key}' field when enable partition")
+            raise ValueError(
+                f"Model {model_class.__name__} must have an '{model_class.Meta.partition_key}' field when enable partition"
+            )
 
         if model_class.Meta.dense_vector_field and (
             not model_class.Meta.dense_vector_dimension or model_class.Meta.dense_vector_dimension <= 0
@@ -94,12 +84,14 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
 
     @abstractmethod
     async def insert(
-        self, model_class: type["BaseIndexModel"], documents: list[dict[str, Any]],
+        self,
+        model_class: type["BaseIndexModel"],
+        documents: list[dict[str, Any]],
     ) -> list[dict[str, Any]] | None:
         """插入文档（支持批量）"""
 
     @abstractmethod
-    async def update(self, model_class: type["BaseIndexModel"], documents: list[dict[str, Any]]):
+    async def update(self, model_class: type["BaseIndexModel"], documents: list[dict[str, Any]]) -> list:
         """更新文档"""
 
     @abstractmethod
@@ -138,7 +130,9 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
 
     @abstractmethod
     async def bulk_upsert(
-        self, model_class: type["BaseIndexModel"], documents: list[dict[str, Any]],
+        self,
+        model_class: type["BaseIndexModel"],
+        documents: list[dict[str, Any]],
     ) -> list[dict[str, Any]] | None:
         """批量插入或更新（upsert）"""
 
@@ -167,7 +161,6 @@ class BaseIndexModelMeta:
     """
 
     index_name: str
-    sparse_vector_field: str | None
     dense_vector_field: str | None
     dense_vector_dimension: int | None
     partition_key: str | None
@@ -184,7 +177,6 @@ class BaseIndexModel(BaseModel):
         子类可以覆盖以下字段：
         - index_name: 索引名称
         - dense_vector_field: 稠密向量字段名（默认 "dense_vector"）
-        - sparse_vector_field: 稀疏向量字段名（默认 "sparse_vector"）
         - dense_vector_dimension: 向量维度
         - partition_key: 分区键字段名
         - auto_generate_id: 是否自动生成 ID
@@ -192,7 +184,6 @@ class BaseIndexModel(BaseModel):
         """
 
         index_name: str = "default_index"
-        sparse_vector_field: str | None = "sparse_vector"
         dense_vector_field: str | None = "dense_vector"
         dense_vector_dimension: int | None = None
         partition_key: str | None = None
@@ -212,7 +203,7 @@ class BaseIndexModel(BaseModel):
                     if not attr_name.startswith("_") and not hasattr(cls.Meta, attr_name):
                         setattr(cls.Meta, attr_name, attr_value)
 
-    id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={}) # type: ignore
+    id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={})  # type: ignore
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
 
@@ -260,7 +251,11 @@ class BaseIndexModel(BaseModel):
 
     @classmethod
     async def filter(
-        cls, filter_clause: FilterClause | None = None, limit: int = 10, offset: int = 0, sort: str | None = None,
+        cls,
+        filter_clause: FilterClause | None = None,
+        limit: int = 10,
+        offset: int = 0,
+        sort: str | None = None,
     ) -> list[Self]:
         """过滤查询"""
         provider = cls.get_provider()
@@ -278,7 +273,11 @@ class BaseIndexModel(BaseModel):
         """搜索（Provider 自动转换）"""
         provider = cls.get_provider()
         results = await provider.search(
-            cls, query_clause=query_clause, filter_clause=filter_clause, limit=limit, offset=offset,
+            cls,
+            query_clause=query_clause,
+            filter_clause=filter_clause,
+            limit=limit,
+            offset=offset,
         )
         return [(cls.model_validate(r), score) for r, score in results]  # type: ignore
 
@@ -293,7 +292,11 @@ class BaseIndexModel(BaseModel):
         """搜索（Cursor 方式）"""
         provider = cls.get_provider()
         results, next_cursor = await provider.search_cursor(
-            cls, query_clause=query_clause, filter_clause=filter_clause, page_size=page_size, cursor=cursor,
+            cls,
+            query_clause=query_clause,
+            filter_clause=filter_clause,
+            page_size=page_size,
+            cursor=cursor,
         )
 
         converted_results = [(cls.model_validate(r), score) for r, score in results]
@@ -308,8 +311,14 @@ class BaseIndexModel(BaseModel):
         if not self.__class__.Meta.auto_generate_id and not self.id:
             raise RuntimeError("Must specify id")
 
+        self.updated_at = datetime.now()
+
         provider = self.get_provider()
-        result = await provider.insert(self.__class__, documents=[self.model_dump(mode="json")])
+        doc_data = self.model_dump(mode="json")
+        if self.__class__.Meta.auto_generate_id:
+            doc_data.pop("id", None)
+
+        result = await provider.insert(self.__class__, documents=[doc_data])
         if result and len(result) > 0:
             self.id = result[0].get("id", self.id)
 
@@ -325,7 +334,14 @@ class BaseIndexModel(BaseModel):
 
         async def insert_batch(batch: list[Self]):
             async with semaphore:
-                result = await provider.insert(cls, documents=[d.model_dump(mode="json") for d in batch])
+                batch_docs = []
+                for doc in batch:
+                    doc_data = doc.model_dump(mode="json")
+                    if cls.Meta.auto_generate_id:
+                        doc_data.pop("id", None)
+                    batch_docs.append(doc_data)
+
+                result = await provider.bulk_upsert(cls, documents=batch_docs)
                 # Update each document with the actual id from the result
                 if result and len(result) > 0:
                     for i, doc in enumerate(batch):
@@ -337,8 +353,15 @@ class BaseIndexModel(BaseModel):
     @classmethod
     async def bulk_update(cls, documents: list[Self]):
         """批量更新"""
+        assert all([isinstance(doc, cls) for doc in documents])
+
         provider = cls.get_provider()
-        await provider.update(cls, documents=[d.model_dump(mode="json") for d in documents])
+        ids = await provider.update(cls, documents=[d.model_dump(mode="json") for d in documents])
+
+        # milvus 会更新id
+        for doc, id in zip(documents, ids):
+            if id:
+                doc.id = id
 
     @classmethod
     async def bulk_upsert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5):
@@ -352,7 +375,18 @@ class BaseIndexModel(BaseModel):
 
         async def upsert_batch(batch: list[Self]):
             async with semaphore:
-                result = await provider.bulk_upsert(cls, documents=[d.model_dump(mode="json") for d in batch])
+                batch_docs = []
+                for doc in batch:
+                    doc_data = doc.model_dump(mode="json")
+                    # 如果 auto_generate_id 为 True，只在 id 无效时移除（用于插入）
+                    # id 有效则保留（用于更新）
+                    if cls.Meta.auto_generate_id:
+                        doc_id = doc_data.get("id")
+                        if not doc_id:
+                            doc_data.pop("id", None)
+                    batch_docs.append(doc_data)
+
+                result = await provider.bulk_upsert(cls, documents=batch_docs)
                 # Update each document with the actual id from the result
                 if result and len(result) > 0:
                     for i, doc in enumerate(batch):

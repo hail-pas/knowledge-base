@@ -6,6 +6,7 @@
 import os
 from datetime import datetime
 import pytest
+from pydantic import Field
 
 from ext.indexing.base import BaseIndexModel
 from ext.ext_tortoise.enums import IndexingBackendTypeEnum
@@ -81,7 +82,7 @@ def milvus_config_dict():
         "extra_config": {
             "db_name": MILVUS_DATABASE or "default",
             "index_type": "HNSW",
-            "metric_type": "COSINE",
+            "metric_type": "IP",
             "M": 16,
             "ef_construction": 64,
         },
@@ -136,10 +137,10 @@ def sample_filter_clauses():
     return {
         "simple_equals": FilterClause(equals={"category": "tech"}),
         "in_list": FilterClause(in_list={"status": ["active", "pending"]}),
-        "range": FilterClause(range={"created_at": {"gte": "2024-01-01"}}), # type: ignore
+        "range": FilterClause(range={"created_at": {"gte": "2024-01-01"}}),  # type: ignore
         "complex_and": FilterClause(
             equals={"category": "tech"},
-            range={"created_at": {"gte": "2024-01-01"}}, # type: ignore
+            range={"created_at": {"gte": "2024-01-01"}},  # type: ignore
         ),
         "complex_or": FilterClause(
             or_conditions=[
@@ -154,10 +155,10 @@ def sample_filter_clauses():
 def sample_search_clauses():
     """示例搜索条件"""
     return {
-        "dense": DenseSearchClause(vector=[0.1, 0.2, 0.3] + [0.0] * 1533, top_k=10, metric="cosine"),
+        "dense": DenseSearchClause(vector=[0.1, 0.2, 0.3] + [0.0] * 1533, top_k=10),
         "sparse": SparseSearchClause(query_text="machine learning", top_k=10, min_score=0.5),
         "hybrid": HybridSearchClause(
-            dense=DenseSearchClause(vector=[0.1, 0.2, 0.3] + [0.0] * 1533, top_k=10, metric="cosine"),
+            dense=DenseSearchClause(vector=[0.1, 0.2, 0.3] + [0.0] * 1533, top_k=10),
             sparse=SparseSearchClause(query_text="machine learning", top_k=10, min_score=0.5),
             weight_dense=0.7,
             weight_sparse=0.3,
@@ -170,14 +171,14 @@ def test_index_model():
     """测试用索引模型类"""
 
     class TestIndexModel(BaseIndexModel):
-        title: str
+        title: str = Field(index_metadata={"enable_keyword": True}) # type: ignore
         content: str
         category: list[str]
         embedding: list[float]
         created_at: datetime = datetime.now()
         updated_at: datetime = datetime.now()
 
-        class Meta: # type: ignore
+        class Meta:  # type: ignore
             index_name: str = "test_es_indexing"
             dense_vector_field: str = "embedding"
             dense_vector_dimension: int = 1536
@@ -191,14 +192,14 @@ def test_index_model_with_partition():
 
     class TestIndexModelWithPartition(BaseIndexModel):
         tenant_id: str
-        title: str
+        title: str = Field(index_metadata={"enable_keyword": True}) # type: ignore
         content: str
         category: list[str]
         embedding: list[float]
         created_at: datetime = datetime.now()
         updated_at: datetime = datetime.now()
 
-        class Meta: # type: ignore
+        class Meta:  # type: ignore
             index_name: str = "test_es_indexing"
             dense_vector_field: str = "embedding"
             dense_vector_dimension: int = 1536

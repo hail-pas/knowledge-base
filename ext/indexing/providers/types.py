@@ -20,6 +20,7 @@ class ElasticsearchConfig(ProviderConfig):
 
     text_analyzer: str = Field(default="ik_smart", description="文本分析器")
     search_analyzer: str = Field(default="ik_smart", description="文本分析器")
+    auto_flush: bool = Field(default=True, description="是否自动flush")
 
 
 class MilvusConfig(ProviderConfig):
@@ -28,9 +29,15 @@ class MilvusConfig(ProviderConfig):
     db_name: str = Field(default="default", description="数据库名称")
 
     index_type: str = Field(default="HNSW", description="索引类型：HNSW/IVF_FLAT")
-    metric_type: str = Field(default="COSINE", description="距离度量：COSINE/L2/IP")
+    metric_type: str = Field(default="IP", description="距离度量：IP")
 
     M: int = Field(default=16, description="HNSW M 参数")
     ef_construction: int = Field(default=64, description="HNSW ef_construction 参数")
 
-    inverted_index_algo: str = Field(default="DAAT_MAXSCORE", description="距离度量：COSINE/L2/IP")
+    inverted_index_algo: str = Field(default="DAAT_MAXSCORE", description="倒排索引算法")
+    analyzer_params: dict = Field(
+        default={"tokenizer": "standard", "filter": ["lowercase"]},
+        description="默认文本分析器配置",
+    )
+    enable_hybrid_search: bool = Field(default=True, description="是否使用原生混合搜索（RRFRanker）")
+    auto_flush: bool = Field(default=True, description="是否自动flush")
