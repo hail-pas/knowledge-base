@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
 """
-快速启动脚本
+Quick start script
 
-快速启动并运行一个简单的工作流示例
-无需配置，开箱即用
+Quickly start and run a simple workflow example.
+No configuration required, works out of the box.
 """
+
+import argparse
 import asyncio
 import os
 import sys
 import tempfile
 from pathlib import Path
 
-# 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from core.context import ctx
-from ext.workflow import WorkflowManager
-from ext.workflow.tasks import schedule_workflow_start, schedule_workflow_resume
-from ext.ext_tortoise.models.knowledge_base import Workflow
+from ext.workflow import schedule_workflow, WorkflowManager
+from ext.workflow import demo_tasks  # Import demo tasks to register them
 from ext.ext_tortoise.enums import WorkflowStatusEnum
 from loguru import logger
 
 
 def setup_logger():
-    """配置简单的日志"""
+    """Configure simple logger"""
     logger.remove()
     logger.add(
         sys.stdout,
@@ -33,22 +33,25 @@ def setup_logger():
 
 
 def create_temp_file(content: str) -> str:
-    """创建临时文件"""
+    """Create temporary file"""
     fd, path = tempfile.mkstemp(suffix=".txt", text=True)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(content)
     return path
 
 
-async def quick_start():
-    """快速启动工作流"""
+async def quick_start(execute_mode: str = "direct"):
+    """Quick start workflow
+
+    Args:
+        execute_mode: Execution mode (direct/celery)
+    """
     setup_logger()
 
     logger.info("=" * 60)
     logger.info("Workflow Quick Start")
     logger.info("=" * 60)
 
-    # 1. 创建临时文件
     sample_text = """Hello, Workflow System!
 This is a quick demonstration of the workflow engine.
 The system will process this file through multiple tasks:
@@ -59,7 +62,6 @@ The system will process this file through multiple tasks:
     file_path = create_temp_file(sample_text)
     logger.success(f"✓ Created sample file: {file_path}")
 
-    # 2. 配置简单的串行工作流
     workflow_config = {
         "fetch_file": {
             "input": {"file_path": file_path},
@@ -85,39 +87,33 @@ The system will process this file through multiple tasks:
     logger.success("✓ Workflow configured (4 tasks)")
     logger.info("  Task flow: fetch_file → load_file → replace_content → summary")
 
-    # 3. 启动工作流
     logger.info("\n" + "=" * 60)
     logger.info("Starting Workflow")
     logger.info("=" * 60)
 
-    logger.info("\n🚀 Starting workflow...")
-    logger.info("Note: Celery Worker must be running in another terminal")
-    logger.info("If workflow stalls, check if worker is running:")
-    logger.info("  uv run celery -A ext.ext_celery.worker worker -l info\n")
+    logger.info(f"\n🚀 Starting workflow in {execute_mode} mode...")
+
+    if execute_mode == "celery":
+        logger.info("Note: Celery Worker must be running in another terminal")
+        logger.info("If workflow stalls, check if worker is running:")
+        logger.info("  uv run celery -A ext.ext_celery.worker worker -l info\n")
+    else:
+        logger.info("Note: Tasks will execute directly in the same process.\n")
+
     try:
-
-        import uuid
-        workflow_uid = uuid.uuid4()
-
-        # 创建工作流记录
-        workflow = await Workflow.create(
-            uid=workflow_uid,
-            config=workflow_config,
-            config_format="dict",
-            status=WorkflowStatusEnum.pending.value,
-        )
-
-        await schedule_workflow_start(
-            workflow_uid=workflow_uid,
+        workflow_uid = await schedule_workflow(
             config=workflow_config,
             config_format="dict",
             initial_inputs={},
-            use_async=False,
+            execute_mode=execute_mode, # type: ignore
         )
 
         logger.success(f"✓ Workflow started: {workflow_uid}")
-
-        # workflow_uid = await schedule_workflow_resume(workflow_uid, use_async=False)
+        logger.info(f"  Mode: {execute_mode}")
+        if execute_mode == "celery":
+            logger.info("  Execution: Tasks will be processed by Celery worker")
+        else:
+            logger.info("  Execution: Tasks will execute directly and wait for completion")
     except Exception as e:
         logger.error(f"\n✗ Failed to start workflow: {e}")
         logger.error("\n" + "=" * 60)
@@ -135,42 +131,42 @@ The system will process this file through multiple tasks:
         logger.error("\n" + "=" * 60)
         return
 
-    # 4. 等待完成
     logger.info("\n⏳ Waiting for workflow to complete...")
     logger.info("Press Ctrl+C to stop waiting\n")
 
-    max_wait = 60  # 最多等待 60 秒
+    max_wait = 60
     for i in range(max_wait):
         await asyncio.sleep(1)
 
-        workflow = await WorkflowManager.get_workflow_by_uid(workflow_uid)
+        import uuid
+
+        workflow = await WorkflowManager.get_workflow_by_uid(uuid.UUID(workflow_uid))
         if not workflow:
             logger.error("✗ Workflow not found")
             return
 
-        if workflow.status.value in ["completed", "failed"]:
+        if workflow.status in ["completed", "failed"]:
             break
 
-        # 每 5 秒显示一次进度
         if (i + 1) % 5 == 0:
-            activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
+            activities = await WorkflowManager.get_activities_by_workflow(workflow.uid)
             completed = sum(1 for a in activities if a.status.value == "completed")
             total = len(activities)
             logger.info(f"  Progress: {completed}/{total} tasks completed")
 
-    # 5. 显示结果
     logger.info("\n" + "=" * 60)
     logger.info("Workflow Result")
     logger.info("=" * 60)
 
-    workflow = await WorkflowManager.get_workflow_by_uid(workflow_uid)
+    import uuid
+
+    workflow = await WorkflowManager.get_workflow_by_uid(uuid.UUID(workflow_uid))
     logger.info(f"\nStatus: {workflow.status.value}")
 
     if workflow.status.value == "completed":
         logger.success("✅ Workflow completed successfully!")
 
-        # 显示每个任务的结果
-        activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
+        activities = await WorkflowManager.get_activities_by_workflow(workflow.uid)
         logger.info("\nTask Results:")
 
         for activity in activities:
@@ -187,13 +183,11 @@ The system will process this file through multiple tasks:
     else:
         logger.error("✗ Workflow failed!")
 
-        # 显示错误信息
-        activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
+        activities = await WorkflowManager.get_activities_by_workflow(workflow.uid)
         for activity in activities:
             if activity.status.value == "failed" and activity.error_message:
                 logger.error(f"\n  ❌ {activity.name}: {activity.error_message}")
 
-    # 6. 清理
     logger.info("\n" + "=" * 60)
     logger.info("Cleanup")
     logger.info("=" * 60)
@@ -214,9 +208,25 @@ The system will process this file through multiple tasks:
     logger.info("\n")
 
 
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="Quick start workflow demo",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["direct", "celery"],
+        default="direct",
+        help="Execution mode: direct (execute in process) or celery (execute via Celery worker:\nuv run celery -A ext.ext_celery.worker worker -Q workflow_handoff -c 1\nuv run celery -A ext.ext_celery.worker worker -c 8)",
+    )
+    return parser.parse_args()
+
+
 async def main():
+    args = parse_args()
     async with ctx():
-        await quick_start()
+        await quick_start(execute_mode=args.mode)
 
 
 if __name__ == "__main__":

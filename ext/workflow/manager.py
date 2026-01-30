@@ -1,25 +1,23 @@
-"""
-工作流管理器
-
-处理工作流的核心逻辑，包括工作流创建、状态管理、任务调度等
-"""
-
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
+
 from loguru import logger
 
 from ext.ext_tortoise.enums import (
     ActivityStatusEnum,
-    WorkflowConfigFormatEnum,
     WorkflowStatusEnum,
 )
 from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
+from ext.workflow.exceptions import (
+    WorkflowNotFoundError,
+    ActivityNotFoundError,
+)
 from util.graph import GraphUtil
 
 
 class WorkflowManager:
-    """工作流管理器"""
+    """Workflow and activity state management"""
 
     @staticmethod
     async def create_workflow(
@@ -27,135 +25,153 @@ class WorkflowManager:
         config_format: str = "dict",
         initial_inputs: dict[str, Any] | None = None,
     ) -> Workflow:
-        """创建工作流和所有活动记录
+        """Create workflow and all activity records
 
         Args:
-            config: 工作流配置（DAG 结构）
-            config_format: 配置格式（yaml/json/dict）
-            initial_inputs: 初始输入数据
+            config: Workflow DAG configuration
+            config_format: Configuration format (yaml/json/dict)
+            initial_inputs: Initial input data for activities
 
         Returns:
-            创建的 Workflow 实例
+            Created Workflow instance
         """
         workflow_uid = uuid.uuid4()
 
-        # 创建工作流记录
-        workflow = await Workflow.create(
-            uid=workflow_uid,
-            config=config,
-            config_format=config_format,
-            status=WorkflowStatusEnum.pending.value,
-        )
+        with logger.contextualize(trace_id=str(workflow_uid)):
+            workflow = await Workflow.create(
+                uid=workflow_uid,
+                config=config,
+                config_format=config_format,  # type: ignore
+                status=WorkflowStatusEnum.pending.value,
+            )
 
-        # 解析 DAG 配置
-        graph = GraphUtil(config=config, config_format=config_format)
+            await WorkflowManager.create_activities(
+                workflow_uid=workflow_uid,
+                config=config,
+                config_format=config_format,  # type: ignore
+                initial_inputs=initial_inputs,
+            )
 
-        # 创建所有活动记录
-
-        await WorkflowManager.create_activities_for_workflow(
-            workflow_uid,
-            config,
-            config_format,
-            initial_inputs,
-        )
-
-        return workflow
+            logger.info(f"Created workflow {workflow_uid} with {len(config)} activities")
+            return workflow
 
     @staticmethod
-    async def create_activities_for_workflow(
+    async def create_activities(
         workflow_uid: uuid.UUID,
         config: dict[str, Any],
         config_format: str = "dict",
         initial_inputs: dict[str, Any] | None = None,
     ) -> list[Activity]:
-        """为已存在的工作流创建所有活动记录
+        """Create activity records for existing workflow
 
         Args:
-            workflow_uid: 已存在的 workflow UID
-            config: 工作流配置（DAG 结构）
-            config_format: 配置格式（yaml/json/dict）
-            initial_inputs: 初始输入数据
+            workflow_uid: Workflow UID
+            config: Workflow DAG configuration
+            config_format: Configuration format
+            initial_inputs: Initial input data
 
         Returns:
-            创建的 Activity 列表
+            Created Activity list
         """
-        # 解析 DAG 配置
-        graph = GraphUtil(config=config, config_format=config_format)
+        with logger.contextualize(trace_id=str(workflow_uid)):
+            graph = GraphUtil(config=config, config_format=config_format)  # type: ignore
 
-        # 创建所有活动记录
-        activities = []
-        for node_name, node_config in graph.config.items():
-            node_info = graph.get_node_info(node_name)
+            activities = []
+            for node_name, node_config in graph.config.items():
+                node_info = graph.get_node_info(node_name)
 
-            # 合并初始输入
-            activity_input = {}
-            if initial_inputs:
-                activity_input.update(initial_inputs.get(node_name, {}))
-            activity_input.update(node_config.input)
+                activity_input = {}
+                if initial_inputs:
+                    activity_input.update(initial_inputs.get(node_name, {}))
+                activity_input.update(node_config.input)
 
-            activity = await Activity.create(
-                workflow_uid=workflow_uid,
-                uid=uuid.uuid4(),
-                name=node_name,
-                input=activity_input,
-                output={},
-                retry_count=0,
-                execute_params=node_config.execute_params,
-                status=ActivityStatusEnum.pending.value,
-            )
-            activities.append(activity)
+                activity = await Activity.create(
+                    workflow_uid=workflow_uid,
+                    uid=uuid.uuid4(),
+                    name=node_name,
+                    input=activity_input,
+                    output={},
+                    retry_count=0,
+                    execute_params=node_config.execute_params,
+                    status=ActivityStatusEnum.pending.value,
+                )
+                activities.append(activity)
 
-        return activities
+            logger.debug(f"Created {len(activities)} activities for workflow {workflow_uid}")
+            return activities
 
     @staticmethod
-    async def get_workflow_by_uid(workflow_uid: uuid.UUID) -> Workflow | None:
-        """根据 UID 获取工作流
+    async def get_workflow_by_uid(workflow_uid: uuid.UUID) -> Workflow:
+        """Get workflow by UID
 
         Args:
-            workflow_uid: 工作流 UID
+            workflow_uid: Workflow UID
 
         Returns:
-            Workflow 实例，如果不存在则返回 None
+            Workflow instance
+
+        Raises:
+            WorkflowNotFoundError: If workflow not found
         """
-        return await Workflow.filter(uid=workflow_uid).first()
+        with logger.contextualize(trace_id=str(workflow_uid)):
+            workflow = await Workflow.filter(uid=workflow_uid).first()
+            if not workflow:
+                raise WorkflowNotFoundError(f"Workflow not found: {workflow_uid}")
+            return workflow
 
     @staticmethod
     async def get_activities_by_workflow(workflow_uid: uuid.UUID) -> list[Activity]:
-        """获取工作流的所有活动
+        """Get all activities for workflow
 
-        如果活动不存在，会自动根据 workflow 的配置创建所有活动
+        Auto-creates activities if they don't exist.
 
         Args:
-            workflow_uid: 工作流 UID
+            workflow_uid: Workflow UID
 
         Returns:
-            活动列表
+            Activity list
         """
-        # 获取所有活动
-        activities = await Activity.filter(workflow_uid=workflow_uid)
+        with logger.contextualize(trace_id=str(workflow_uid)):
+            activities = await Activity.filter(workflow_uid=workflow_uid)
 
-        # 如果活动不存在，则自动创建
-        if not activities:
-            # 获取 workflow 信息
-            workflow = await WorkflowManager.get_workflow_by_uid(workflow_uid)
-            if workflow:
-                logger.info(f"No activities found for workflow {workflow_uid}, creating activities...")
-                config = workflow.config
-                config_format = workflow.config_format or "dict"
+            if not activities:
+                workflow = await WorkflowManager.get_workflow_by_uid(workflow_uid)
+                logger.info(f"No activities found for {workflow_uid}, creating from config")
 
-                # 创建所有活动
-                await WorkflowManager.create_activities_for_workflow(
+                await WorkflowManager.create_activities(
                     workflow_uid=workflow_uid,
-                    config=config,
-                    config_format=config_format,
+                    config=workflow.config,
+                    config_format=workflow.config_format.value
+                    if isinstance(workflow.config_format, WorkflowStatusEnum)
+                    else workflow.config_format,  # type: ignore
                     initial_inputs=None,
                 )
 
-                # 重新获取活动列表
                 activities = await Activity.filter(workflow_uid=workflow_uid)
-                logger.info(f"Created {len(activities)} activities for workflow {workflow_uid}")
+                logger.info(f"Created {len(activities)} activities for {workflow_uid}")
 
-        return activities
+            return activities
+
+    @staticmethod
+    async def get_activity_by_uid(activity_uid: uuid.UUID) -> Activity:
+        """Get activity by UID
+
+        Args:
+            activity_uid: Activity UID
+
+        Returns:
+            Activity instance
+
+        Raises:
+            ActivityNotFoundError: If activity not found
+        """
+        activity = await Activity.filter(uid=activity_uid).first()
+        if not activity:
+            with logger.contextualize(activity_uid=str(activity_uid)):
+                raise ActivityNotFoundError(f"Activity not found: {activity_uid}")
+
+        with logger.contextualize(trace_id=str(activity.workflow_uid), activity_uid=str(activity_uid)):
+            return activity
 
     @staticmethod
     async def update_workflow_status(
@@ -165,33 +181,35 @@ class WorkflowManager:
         completed_at: datetime | None = None,
         canceled_at: datetime | None = None,
     ) -> bool:
-        """更新工作流状态
+        """Update workflow status
 
         Args:
-            workflow_uid: 工作流 UID
-            status: 新状态
-            started_at: 开始时间
-            completed_at: 完成时间
-            canceled_at: 取消时间
+            workflow_uid: Workflow UID
+            status: New status
+            started_at: Start time
+            completed_at: Completion time
+            canceled_at: Cancel time
 
         Returns:
-            是否更新成功
+            True if updated successfully
         """
-        update_data: dict[str, Any] = {"status": status.value}
+        with logger.contextualize(trace_id=str(workflow_uid)):
+            update_data: dict[str, Any] = {"status": status.value}
 
-        if started_at:
-            update_data["started_at"] = started_at
-        if completed_at:
-            update_data["completed_at"] = completed_at
-        if canceled_at:
-            update_data["canceled_at"] = canceled_at
+            if started_at:
+                update_data["started_at"] = started_at
+            if completed_at:
+                update_data["completed_at"] = completed_at
+            if canceled_at:
+                update_data["canceled_at"] = canceled_at
 
-        result = await Workflow.filter(uid=workflow_uid).update(**update_data)
-        return result > 0
+            result = await Workflow.filter(uid=workflow_uid).update(**update_data)
+            logger.debug(f"Updated workflow {workflow_uid} status to {status.value}")
+            return result > 0
 
     @staticmethod
     async def update_activity_status(
-        activity_uid: str,
+        activity_uid: uuid.UUID,
         status: ActivityStatusEnum,
         output: dict[str, Any] | None = None,
         error_message: str | None = None,
@@ -202,198 +220,236 @@ class WorkflowManager:
         celery_task_id: str | None = None,
         increment_retry: bool = False,
     ) -> bool:
-        """更新活动状态
+        """Update activity status
 
         Args:
-            activity_uid: 活动 UID
-            status: 新状态
-            output: 输出数据
-            error_message: 错误信息
-            stack_trace: 堆栈跟踪
-            started_at: 开始时间
-            completed_at: 完成时间
-            canceled_at: 取消时间
-            celery_task_id: Celery 任务 ID
-            increment_retry: 是否增加重试次数
+            activity_uid: Activity UID
+            status: New status
+            output: Output data
+            error_message: Error message
+            stack_trace: Stack trace
+            started_at: Start time
+            completed_at: Completion time
+            canceled_at: Cancel time
+            celery_task_id: Celery task ID
+            increment_retry: Increment retry count
 
         Returns:
-            是否更新成功
+            True if updated successfully
         """
-        update_data: dict[str, Any] = {"status": status.value}
+        with logger.contextualize(activity_uid=str(activity_uid)):
+            update_data: dict[str, Any] = {"status": status.value}
 
-        if output is not None:
-            update_data["output"] = output
-        if error_message is not None:
-            update_data["error_message"] = error_message
-        if stack_trace is not None:
-            update_data["stack_trace"] = stack_trace
-        if started_at:
-            update_data["started_at"] = started_at
-        if completed_at:
-            update_data["completed_at"] = completed_at
-        if canceled_at:
-            update_data["canceled_at"] = canceled_at
-        if celery_task_id:
-            update_data["celery_task_id"] = celery_task_id
-        if increment_retry:
-            # 使用 F 表达式增加重试次数
-            from tortoise.expressions import F
-            update_data["retry_count"] = F("retry_count") + 1
+            if output is not None:
+                update_data["output"] = output
+            if error_message is not None:
+                update_data["error_message"] = error_message
+            if stack_trace is not None:
+                update_data["stack_trace"] = stack_trace
+            if started_at:
+                update_data["started_at"] = started_at
+            if completed_at:
+                update_data["completed_at"] = completed_at
+            if canceled_at:
+                update_data["canceled_at"] = canceled_at
+            if celery_task_id:
+                update_data["celery_task_id"] = celery_task_id
+            if increment_retry:
+                from tortoise.expressions import F
 
-        result = await Activity.filter(uid=activity_uid).update(**update_data)
-        return result > 0
+                update_data["retry_count"] = F("retry_count") + 1
+
+            result = await Activity.filter(uid=activity_uid).update(**update_data)
+            logger.debug(f"Updated activity {activity_uid} status to {status.value}")
+            return result > 0
 
     @staticmethod
     async def get_ready_activities(
-        workflow_uid: uuid.UUID, graph: GraphUtil,
+        workflow_uid: uuid.UUID,
+        graph: GraphUtil,
     ) -> list[Activity]:
-        """获取准备执行的活动
+        """Get activities ready for execution
 
         Args:
-            workflow_uid: 工作流 UID
-            graph: DAG 图实例
+            workflow_uid: Workflow UID
+            graph: DAG graph
 
         Returns:
-            准备执行的活动列表
+            Ready activities list
         """
-        # 获取所有活动
-        all_activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
+        with logger.contextualize(trace_id=str(workflow_uid)):
+            all_activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
 
-        # 构建已完成的活动名称集合
-        completed_activities: set[str] = {
-            act.name
-            for act in all_activities
-            if act.status == ActivityStatusEnum.completed.value
-        }
+            completed_activities: set[str] = {
+                act.name for act in all_activities if act.status == ActivityStatusEnum.completed.value
+            }
 
-        # 获取待执行的活动
-        pending_activities = [
-            act
-            for act in all_activities
-            if act.status in [ActivityStatusEnum.pending, ActivityStatusEnum.failed, ActivityStatusEnum.canceled]
-        ]
+            pending_activities = [
+                act
+                for act in all_activities
+                if act.status
+                in [
+                    ActivityStatusEnum.pending.value,
+                    ActivityStatusEnum.failed.value,
+                    ActivityStatusEnum.canceled.value,
+                ]
+            ]
 
-        # 检查哪些待执行的活动可以执行
-        ready_activities: list[Activity] = []
-        for activity in pending_activities:
-            if graph.is_node_ready(activity.name, completed_activities):
-                ready_activities.append(activity)
+            ready_activities: list[Activity] = []
+            for activity in pending_activities:
+                if graph.is_node_ready(activity.name, completed_activities):
+                    ready_activities.append(activity)
 
-
-
-        return ready_activities
+            logger.debug(f"Found {len(ready_activities)} ready activities for {workflow_uid}")
+            return ready_activities
 
     @staticmethod
-    async def check_workflow_completion(workflow_uid: uuid.UUID) -> bool:
-        """检查工作流是否完成
+    async def is_workflow_completed(workflow_uid: uuid.UUID) -> bool:
+        """Check if workflow is completed and update status
 
         Args:
-            workflow_uid: 工作流 UID
+            workflow_uid: Workflow UID
 
         Returns:
-            是否完成
+            True if workflow is completed
         """
-        activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
+        with logger.contextualize(trace_id=str(workflow_uid)):
+            activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
 
-        # 检查是否有失败的活动
-        has_failed = any(
-            act.status in [ActivityStatusEnum.failed.value, ActivityStatusEnum.canceled.value]
-            for act in activities
-        )
+            has_failed = any(WorkflowManager.is_failed_status(ActivityStatusEnum(act.status)) for act in activities)
 
-        # 检查是否所有活动都已完成（成功或失败）
-        all_finished = all(
-            act.status in [
-                ActivityStatusEnum.completed.value,
-                ActivityStatusEnum.failed.value,
-                ActivityStatusEnum.canceled.value,
-            ]
-            for act in activities
-        )
+            all_finished = all(WorkflowManager.is_terminal_status(ActivityStatusEnum(act.status)) for act in activities)
 
-        if not all_finished:
-            return False
+            if not all_finished:
+                return False
 
-        # 更新工作流状态
-        if has_failed:
+            # Check if workflow is already in terminal state
+            workflow = await WorkflowManager.get_workflow_by_uid(workflow_uid)
+            current_status = WorkflowStatusEnum(workflow.status)
+
+            if current_status in [
+                WorkflowStatusEnum.completed,
+                WorkflowStatusEnum.failed,
+                WorkflowStatusEnum.canceled,
+            ]:
+                return True
+
+            # Update workflow status
+            if has_failed:
+                await WorkflowManager.update_workflow_status(
+                    workflow_uid,
+                    WorkflowStatusEnum.failed,
+                    completed_at=datetime.now(),
+                )
+                logger.info(f"Workflow {workflow_uid} marked as failed")
+            else:
+                await WorkflowManager.update_workflow_status(
+                    workflow_uid,
+                    WorkflowStatusEnum.completed,
+                    completed_at=datetime.now(),
+                )
+
+            return True
+
+    @staticmethod
+    async def mark_workflow_failed(workflow_uid: uuid.UUID, reason: str) -> None:
+        """Mark workflow as failed and cancel pending activities
+
+        Args:
+            workflow_uid: Workflow UID
+            reason: Failure reason
+        """
+        with logger.contextualize(trace_id=str(workflow_uid)):
             await WorkflowManager.update_workflow_status(
                 workflow_uid,
                 WorkflowStatusEnum.failed,
                 completed_at=datetime.now(),
             )
-        else:
-            await WorkflowManager.update_workflow_status(
-                workflow_uid,
-                WorkflowStatusEnum.completed,
-                completed_at=datetime.now(),
+
+            await Activity.filter(
+                workflow_uid=workflow_uid,
+                status=ActivityStatusEnum.pending.value,
+            ).update(
+                status=ActivityStatusEnum.canceled.value,
+                canceled_at=datetime.now(),
+                error_message=f"Workflow failed: {reason}",
             )
 
-        return True
-
-    @staticmethod
-    async def mark_workflow_failed(workflow_uid: uuid.UUID, reason: str) -> None:
-        """标记工作流为失败状态
-
-        Args:
-            workflow_uid: 工作流 UID
-            reason: 失败原因
-        """
-        # 更新工作流状态
-        await WorkflowManager.update_workflow_status(
-            workflow_uid,
-            WorkflowStatusEnum.failed,
-            completed_at=datetime.now(),
-        )
-
-        # 取消所有待执行的活动
-        await Activity.filter(
-            workflow_uid=workflow_uid,
-            status=ActivityStatusEnum.pending.value,
-        ).update(
-            status=ActivityStatusEnum.canceled.value,
-            canceled_at=datetime.now(),
-            error_message=f"Workflow failed: {reason}",
-        )
+            logger.warning(f"Workflow {workflow_uid} failed: {reason}")
 
     @staticmethod
     def build_graph(workflow: Workflow) -> GraphUtil:
-        """根据工作流配置构建 DAG 图
+        """Build DAG graph from workflow config
 
         Args:
-            workflow: Workflow 实例
+            workflow: Workflow instance
 
         Returns:
-            GraphUtil 实例
+            GraphUtil instance
         """
         config_format = (
             workflow.config_format.value
-            if isinstance(workflow.config_format, WorkflowConfigFormatEnum)
+            if isinstance(workflow.config_format, WorkflowStatusEnum)
             else workflow.config_format
         )
-        return GraphUtil(config=workflow.config, config_format=config_format)
+        return GraphUtil(config=workflow.config, config_format=config_format)  # type: ignore
 
     @staticmethod
     async def propagate_output_to_downstream(
-        activity: Activity, graph: GraphUtil,
+        activity: Activity,
+        graph: GraphUtil,
     ) -> None:
-        """将活动输出传播到下游活动的输入
+        """Propagate activity output to downstream activities
 
         Args:
-            activity: 完成的活动
-            graph: DAG 图实例
+            activity: Completed activity
+            graph: DAG graph
         """
-        node_info = graph.get_node_info(activity.name)
-        output = activity.output
+        with logger.contextualize(trace_id=str(activity.workflow_uid), activity_uid=str(activity.uid)):
+            node_info = graph.get_node_info(activity.name)
+            output = activity.output
 
-        # 获取所有下游活动
-        downstream_activities = await Activity.filter(
-            workflow_uid=activity.workflow_uid,
-            name__in=node_info.children,
-            status=ActivityStatusEnum.pending.value,
-        )
+            downstream_activities = await Activity.filter(
+                workflow_uid=activity.workflow_uid,
+                name__in=node_info.children,
+                status=ActivityStatusEnum.pending.value,
+            )
 
-        # 更新下游活动的输入
-        for downstream in downstream_activities:
-            # 合并输出到下游活动的输入
-            downstream.input.update(output)
-            await downstream.save()
+            for downstream in downstream_activities:
+                downstream.input.update(output)
+                await downstream.save()
+
+            logger.debug(
+                f"Propagated output from {activity.name} to {len(downstream_activities)} downstream activities"
+            )
+
+    @staticmethod
+    def is_terminal_status(status: ActivityStatusEnum) -> bool:
+        """Check if status is terminal (cannot transition further)
+
+        Args:
+            status: Activity status
+
+        Returns:
+            True if terminal
+        """
+        return status in [
+            ActivityStatusEnum.completed,
+            ActivityStatusEnum.failed,
+            ActivityStatusEnum.canceled,
+        ]
+
+    @staticmethod
+    def is_failed_status(status: ActivityStatusEnum) -> bool:
+        """Check if status indicates failure
+
+        Args:
+            status: Activity status
+
+        Returns:
+            True if failed
+        """
+        return status in [
+            ActivityStatusEnum.failed,
+            ActivityStatusEnum.canceled,
+        ]

@@ -106,7 +106,7 @@ class WorkflowStatusEnum(StrEnum):
 
 class ActivityStatusEnum(StrEnum):
     pending = ("pending", "待执行")
-    running = ("running", "运行中")
+    running = ("running", "运行中") # activity 实际执行时设置
     completed = ("completed", "已完成")
     failed = ("failed", "失败")
     canceled = ("canceled", "已取消")

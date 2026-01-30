@@ -1,98 +1,113 @@
 """
-Workflow 模块
+from ext.workflow import schedule_workflow, ActivityTaskTemplate, activity_task
 
-提供通用工作流调度系统，基于 Celery 任务和 DAG 调度
+# Define a custom task
+@activity_task
+class MyTask(ActivityTaskTemplate):
+    async def execute(self) -> dict[str, Any]:
+        return {"result": "success"}
 
-核心组件：
-- WorkflowManager: 工作流管理器，提供 CRUD 和状态管理
-- ActivityTaskTemplate: 任务模板基类，用户只需实现 execute 方法
-- activity_task: 任务装饰器，将任务类转换为 Celery 任务
-- 调度任务: schedule_workflow_start, schedule_workflow_resume, schedule_activity_handoff
-- 文件处理工作流: 完整的文件处理示例
-
-使用方式：
-    from ext.workflow import WorkflowManager, ActivityTaskTemplate, activity_task
-    from ext.workflow.tasks import schedule_workflow_start
-
-    # 定义自定义任务
-    class MyTask(ActivityTaskTemplate):
-        async def execute(self) -> Dict[str, Any]:
-            return {"result": "success"}
-
-    # 注册任务
-    my_task = activity_task(MyTask)
-
-    # 启动工作流
-    workflow_uid = schedule_workflow_start(
-        config={"task1": {"execute_params": {"task_name": my_task.name}, "depends_on": []}},
-        config_format="dict"
-    )
+# Schedule workflow
+workflow_uid = await schedule_workflow(
+    config=workflow_config,
+    execute_mode="direct",  # or "celery"
+)
 """
 
-# 核心组件
-from .manager import WorkflowManager
-from .template import ActivityTaskTemplate, activity_task
+from typing import Literal
 
-# 调度任务（支持直接调用和 Celery apply_async）
-from .tasks import (
-    schedule_workflow_start,
-    schedule_workflow_resume,
-    schedule_activity_handoff,
+# Core scheduling functions
+from ext.workflow.scheduler import (
+    WorkflowScheduler,
 )
 
-# 文件处理工作流（示例实现）
-from .file_process_tasks import (
-    # 任务类
-    FetchFileTask,
-    LoadFileTask,
-    ReplaceContentTask,
-    SplitTextTask,
-    IndexIntoMilvusTask,
-    IndexIntoEsTask,
-    SummaryTask,
-    # 任务函数
-    fetch_file_task,
-    load_file_task,
-    replace_content_task,
-    split_text_task,
-    index_into_milvus_task,
-    index_into_es_task,
-    summary_task,
-    # 工作流配置
-    FILE_PROCESS_WORKFLOW,
-    # 任务注册表
-    TASK_REGISTRY,
-    get_task_by_name,
-)
+# Task template
+from ext.workflow.template import ActivityTaskTemplate, activity_task
+
+# Manager
+from ext.workflow.manager import WorkflowManager
+
+
+from ext.workflow.scheduler import schedule_activity_handoff_celery_entry, schedule_workflow_celery_entry
+
+
+async def schedule_workflow(
+    workflow_uid: str | None = None,
+    config: dict | None = None,
+    config_format: str = "dict",
+    initial_inputs: dict | None = None,
+    execute_mode: Literal["celery", "direct"] = "direct",
+) -> str:
+    """Schedule workflow execution
+
+    Start new workflow or resume existing one.
+
+    Args:
+        workflow_uid: Existing workflow UID (resume mode)
+        config: Workflow DAG config (new workflow mode)
+        config_format: Config format (yaml/json/dict)
+        initial_inputs: Initial inputs for activities
+        execute_mode: Execution mode
+            - celery: Fire-and-forget via Celery apply_async
+            - direct: Execute concurrently and wait for completion
+
+    Returns:
+        Workflow UID as string
+
+    Examples:
+        # Start new workflow
+        workflow_uid = await schedule_workflow(
+            config=my_config,
+            execute_mode="direct"
+        )
+
+        # Resume existing workflow
+        workflow_uid = await schedule_workflow(
+            workflow_uid="existing-uid",
+            execute_mode="celery"
+        )
+    """
+    import uuid
+
+    result_uid = await WorkflowScheduler.schedule_workflow(
+        workflow_uid=workflow_uid,
+        config=config,
+        config_format=config_format,
+        initial_inputs=initial_inputs,
+        execute_mode=execute_mode,
+    )
+    return str(result_uid)
+
+
+async def schedule_activity_handoff(
+    activity_uid: str,
+    execute_mode: Literal["celery", "direct"] = "direct",
+) -> str:
+    """Schedule activity handoff to downstream activities
+
+    Triggered after an activity completes.
+
+    Args:
+        activity_uid: Completed activity UID
+        execute_mode: Execution mode (celery/direct)
+
+    Returns:
+        Activity UID
+    """
+    result_uid = await WorkflowScheduler.schedule_activity_handoff(activity_uid=activity_uid, execute_mode=execute_mode)
+    return str(result_uid)
+
 
 __all__ = [
-    # 核心组件
+    # Core functions
+    "schedule_workflow",
+    "schedule_activity_handoff",
+    # Core classes
+    "WorkflowScheduler",
     "WorkflowManager",
     "ActivityTaskTemplate",
     "activity_task",
-    # 调度任务
-    "schedule_workflow_start",
-    "schedule_workflow_resume",
-    "schedule_activity_handoff",
-    # 文件处理任务类
-    "FetchFileTask",
-    "LoadFileTask",
-    "ReplaceContentTask",
-    "SplitTextTask",
-    "IndexIntoMilvusTask",
-    "IndexIntoEsTask",
-    "SummaryTask",
-    # 文件处理任务函数
-    "fetch_file_task",
-    "load_file_task",
-    "replace_content_task",
-    "split_text_task",
-    "index_into_milvus_task",
-    "index_into_es_task",
-    "summary_task",
-    # 工作流配置
-    "FILE_PROCESS_WORKFLOW",
-    # 任务注册表
-    "TASK_REGISTRY",
-    "get_task_by_name",
+    # Celery entry points
+    "schedule_workflow_celery_entry",
+    "schedule_activity_handoff_celery_entry",
 ]

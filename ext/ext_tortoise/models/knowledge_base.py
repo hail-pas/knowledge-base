@@ -213,8 +213,6 @@ class Workflow(BaseModel):
     completed_at = fields.DatetimeField(null=True, description="完成时间")
     canceled_at = fields.DatetimeField(null=True, description="是否被取消")
 
-    schedule_celery_task_id = fields.CharField(max_length=255, null=True, description="schedule 任务ID")
-
     class Meta:  # type: ignore
         table = "workflow"
         table_description = "工作流定义表"
@@ -237,7 +235,7 @@ class Activity(CreateOnlyModel):
     input = fields.JSONField(description="输入参数", default=dict)
     output = fields.JSONField(description="输出参数", default=dict)
     retry_count = fields.IntField(default=0, description="失败重试次数")
-    execute_params = fields.JSONField(description="Celery 执行参数", default=dict)
+    execute_params = fields.JSONField(description="额外的 Celery 执行参数，覆盖默认值", default=dict)
     status = fields.CharEnumField(ActivityStatusEnum, default=ActivityStatusEnum.pending.value, description="状态")
 
     # 监测支持
@@ -248,8 +246,7 @@ class Activity(CreateOnlyModel):
 
     canceled_at = fields.DatetimeField(null=True, description="取消时间")
 
-    # 幂等性支持
-    celery_task_id = fields.CharField(max_length=255, null=True, description="Celery 任务ID")
+    celery_task_id = fields.CharField(max_length=255, null=True, description="Celery 任务ID, direct执行模式下为空")
 
     class Meta:  # type: ignore
         table = "activity"
