@@ -60,6 +60,7 @@ class ServerConfig(BaseModel):
             return header
 
     address: HttpUrl = HttpUrl("http://0.0.0.0:8000")
+    base_path: str = ""
     cors: CorsConfig = CorsConfig()
     worker_number: int = multiprocessing.cpu_count() * int(os.getenv("WORKERS_PER_CORE", "2")) + 1
     profiling: ProfilingConfig | None = None

@@ -2,15 +2,16 @@
 
 import asyncio
 from datetime import datetime
-from typing import Generic, List, Optional, TypeVar, Any, TYPE_CHECKING, Self, Union, get_origin, get_args
+from typing import Generic, Optional, TypeVar, Any, TYPE_CHECKING, Self, Union, get_origin, get_args, ClassVar
 from abc import ABC, abstractmethod
 from pydantic import BaseModel, Field
 
-from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
+from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig, EmbeddingModelConfig
 from ext.indexing.types import FilterClause, SearchCursor, DenseSearchClause, SparseSearchClause, HybridSearchClause
 
 if TYPE_CHECKING:
     from ext.indexing.base import BaseIndexModel
+    from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
 
 ExtraConfigT = TypeVar("ExtraConfigT", bound=BaseModel)
 
@@ -417,3 +418,175 @@ class BaseIndexModel(BaseModel):
     async def exists(cls, id: str) -> bool:
         """检查文档是否存在"""
         return bool(await cls.get([id]))
+
+
+class IndexModelFactory:
+    """IndexModel 动态工厂
+
+    根据 embedding 配置动态创建带正确维度的 IndexModel 类
+
+    设计思路：
+    1. 在 register.py 中定义基础 IndexModel 类并绑定 provider
+    2. 运行时根据 embedding_config 的维度动态创建对应模型
+    3. 动态模型复用基础模型的 provider 配置
+
+    Example:
+        # ext/register.py
+        class ChunkIndex(BaseIndexModel):
+            content: str
+            class Meta:
+                index_name = "chunks"
+                provider = None  # 将在 register 时绑定
+
+        async def register():
+            provider = await IndexingProviderFactory.create(config)
+            ChunkIndex.Meta.provider = provider
+
+        # 运行时使用
+        emb_config = await EmbeddingModelConfig.filter(name="model-1536").first()
+        DynamicChunkIndex = IndexModelFactory.create_for_embedding(
+            base_model=ChunkIndex,
+            embedding_config=emb_config
+        )
+        # 现在 DynamicChunkIndex.Meta.dense_vector_dimension == 1536
+        # collection name 会自动变为 "chunks_1536"
+    """
+
+    _model_registry: dict[str, type[BaseIndexModel]] = {}
+
+    @classmethod
+    def create_for_embedding(
+        cls,
+        base_model: type[BaseIndexModel],
+        embedding_config: "EmbeddingModelConfig",
+    ) -> type[BaseIndexModel]:
+        """根据 embedding 配置动态创建 IndexModel 类
+
+        Args:
+            base_model: 基础 IndexModel 类（已在 register 时绑定 provider）
+            embedding_config: embedding 模型配置（包含维度信息）
+
+        Returns:
+            动态创建的 IndexModel 子类，Meta.dense_vector_dimension 已设置
+
+        Raises:
+            ValueError: 如果 embedding_config.dimension 无效
+            RuntimeError: 如果 base_model.Meta.provider 未绑定
+        """
+
+        if not isinstance(embedding_config, EmbeddingModelConfig):
+            raise TypeError(f"embedding_config must be EmbeddingModelConfig, got {type(embedding_config)}")
+
+        dimension = embedding_config.dimension
+
+        if not dimension or dimension <= 0:
+            raise ValueError(f"Invalid dimension: {dimension}")
+
+        if not base_model.Meta.provider:
+            raise RuntimeError(
+                f"base_model.Meta.provider is not bound. "
+                f"Please bind provider in register.py first: {base_model.__name__}.Meta.provider = await IndexingProviderFactory.create(...)"
+            )
+
+        model_key = cls._get_model_key(base_model.__name__, dimension)
+
+        if model_key not in cls._model_registry:
+            cls._model_registry[model_key] = cls._create_dynamic_class(base_model, dimension, model_key)
+
+        return cls._model_registry[model_key]
+
+    @classmethod
+    def _get_model_key(cls, base_name: str, dimension: int) -> str:
+        """生成唯一模型标识
+
+        Args:
+            base_name: 基础模型名称
+            dimension: 向量维度
+
+        Returns:
+            唯一标识字符串，如 "ChunkIndex_1536"
+        """
+        return f"{base_name}_{dimension}"
+
+    @classmethod
+    def _create_dynamic_class(
+        cls,
+        base_model: type[BaseIndexModel],
+        dimension: int,
+        class_name: str,
+    ) -> type[BaseIndexModel]:
+        """动态创建 IndexModel 子类
+
+        创建一个继承自 base_model 的新类，并覆盖 Meta.dense_vector_dimension
+
+        Args:
+            base_model: 基础模型类
+            dimension: 向量维度
+            class_name: 新类名称
+
+        Returns:
+            动态创建的 IndexModel 子类
+        """
+
+        class DynamicMeta(base_model.Meta):
+            """动态 Meta 类
+
+            继承 base_model.Meta 的所有配置，只覆盖 dense_vector_dimension
+            """
+
+            dense_vector_dimension = dimension
+
+        namespace = {
+            "Meta": DynamicMeta,
+            "__module__": base_model.__module__,
+            "__qualname__": f"{base_model.__qualname__}.{class_name}",
+            "__annotations__": {"Meta": ClassVar},
+        }
+
+        dynamic_class = type(class_name, (base_model,), namespace)
+
+        return dynamic_class
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """清除缓存的动态模型类
+
+        通常在测试或需要重新加载模型时使用
+
+        Example:
+            IndexModelFactory.clear_cache()
+        """
+        cls._model_registry.clear()
+
+    @classmethod
+    def get_registered_models(cls) -> list[str]:
+        """获取已注册的动态模型列表
+
+        Returns:
+            模型 key 列表，如 ["ChunkIndex_1536", "ChunkIndex_3072"]
+
+        Example:
+            >>> models = IndexModelFactory.get_registered_models()
+            >>> models
+            ['ChunkIndex_1536', 'ChunkIndex_3072']
+        """
+        return list(cls._model_registry.keys())
+
+    @classmethod
+    def get_model(cls, base_name: str, dimension: int) -> type[BaseIndexModel] | None:
+        """根据基础模型名和维度获取已注册的动态模型
+
+        Args:
+            base_name: 基础模型名称，如 "ChunkIndex"
+            dimension: 向量维度
+
+        Returns:
+            动态模型类，如果不存在返回 None
+
+        Example:
+            >>> model_cls = IndexModelFactory.get_model("ChunkIndex", 1536)
+            >>> if model_cls:
+            ...     print(model_cls.Meta.dense_vector_dimension)
+        """
+        model_key = cls._get_model_key(base_name, dimension)
+        return cls._model_registry.get(model_key)

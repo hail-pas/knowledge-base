@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from starlette.routing import Mount, Route, WebSocketRoute
 
-from api.depend import token_required, api_permission_check
+from service.depend import token_required, api_permission_check
 
 
 def filter_uri(r: Route | WebSocketRoute | Mount) -> bool:

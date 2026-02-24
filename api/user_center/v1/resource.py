@@ -1,10 +1,10 @@
 from fastapi import Query, Depends, Request, APIRouter
 
-from api.depend import api_permission_check
+from service.depend import api_permission_check
 from core.response import Resp
 from ext.ext_tortoise.curd import create_obj
-from api.service.resource.helper import resource_list_to_trees
-from api.service.resource.schema import ResourceCreateSchema, ResourceLevelTreeNode
+from service.resource.helper import resource_list_to_trees
+from service.resource.schema import ResourceCreateSchema, ResourceLevelTreeNode
 from ext.ext_tortoise.models.user_center import Resource
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])

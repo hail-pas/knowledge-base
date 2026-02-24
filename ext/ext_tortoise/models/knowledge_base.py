@@ -163,6 +163,7 @@ class Document(BaseModel):
         f"{_KBConnectionName}.FileSource", related_name="documents", on_delete=fields.RESTRICT, description="关联文件源",
     )
     uri = fields.CharField(max_length=1000, description="文件唯一标识（本地为绝对路径）")
+    parsed_uri = fields.CharField(max_length=1000, null=True, description="解析后的文件唯一标识")
     file_name = fields.CharField(max_length=255, description="文件名")
     display_name = fields.CharField(max_length=255, description="显示名称")
     extension = fields.CharField(max_length=50, description="文件扩展名")
@@ -342,7 +343,7 @@ class IndexingBackendConfig(BaseModel):
     is_default = fields.BooleanField(default=False, description="是否默认配置")
     description = fields.TextField(default="", description="描述信息")
 
-    class Meta:
+    class Meta: # type: ignore
         table = "indexing_backend_config"
         table_description = "索引后端配置表"
         app = _KBConnectionName

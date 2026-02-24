@@ -6,7 +6,7 @@ from fastapi import Depends, Request, APIRouter
 #  tortoise-orm
 from tortoise.queryset import QuerySet
 
-from api.depend import api_permission_check
+from service.depend import api_permission_check
 from core.schema import CRUDPager
 from core.response import Resp, PageData
 from ext.ext_tortoise.curd import (
@@ -17,7 +17,7 @@ from ext.ext_tortoise.curd import (
     update_view,
     pagination_factory,
 )
-from api.service.account.schema import (
+from service.account.schema import (
     AccountList,
     AccountCreate,
     AccountDetail,
