@@ -286,10 +286,9 @@ class TestCoordinateMapperPageBoundaries:
 class TestCoordinateMapperPerformance:
     """测试性能相关"""
 
-    def test_large_document(self):
+    def test_large_document(self, create_parse_result):
         """测试大文档处理"""
         # 创建一个包含100页的文档
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         pages_content = [f"Page {i + 1} content. " * 100 for i in range(100)]
         content = "\n\n".join(pages_content)
@@ -310,9 +309,8 @@ class TestCoordinateMapperPerformance:
 class TestCoordinateMapperMultipleSeparator:
     """测试分隔符处理"""
 
-    def test_custom_separator_in_content(self):
+    def test_custom_separator_in_content(self, create_parse_result):
         """测试内容中包含分隔符"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         # 内容中包含 \n\n
         page1 = "Line 1\n\nLine 2 in page 1"

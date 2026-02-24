@@ -1,8 +1,10 @@
 import asyncio
 import pytest
 from tortoise import Tortoise
-from core.context import init_ctx, clear_ctx
 from config.main import local_configs
+from util.encrypt import PasswordUtil
+from ext.ext_tortoise.models.user_center import Account, Role
+from unittest.mock import patch, AsyncMock
 
 
 @pytest.fixture(scope="session")
@@ -19,12 +21,22 @@ async def setup_context():
     # 初始化 Tortoise ORM 配置
     config = {
         "connections": {
+            "user_center": {
+                "engine": "tortoise.backends.sqlite",
+                "credentials": {"file_path": ":memory:"},
+            },
             "knowledge_base": {
                 "engine": "tortoise.backends.sqlite",
                 "credentials": {"file_path": ":memory:"},
-            }
+            },
         },
         "apps": {
+            "user_center": {
+                "models": [
+                    "ext.ext_tortoise.models.user_center",
+                ],
+                "default_connection": "user_center",
+            },
             "knowledge_base": {
                 "models": [
                     "ext.ext_tortoise.models.knowledge_base",
@@ -52,3 +64,25 @@ async def setup_context():
     await local_configs.extensions.redis.unregister()
     # 清理：关闭连接
     await Tortoise.close_connections()
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def setup_account(setup_context):
+    role = await Role.create(
+        label='super admin',
+        remark='super admin role'
+    )
+
+    account = await Account.create(
+        username='test-admin',
+        phone="18888888888",
+        email='test_admin@example.com',
+        password=PasswordUtil.get_password_hash('test-password'),
+        is_active=True,
+        is_staff=True,
+        is_super_admin=True,
+        role=role
+    )
+
+    with patch('service.depend._validate_jwt_token', new_callable=AsyncMock, return_value=account):
+        yield account

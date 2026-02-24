@@ -60,7 +60,7 @@ class MarkdownEngine(BaseEngine):
             )
         ]
 
-        return ParseResult(
+        result = ParseResult(
             content=content,
             format=OutputFormat.MARKDOWN,
             pages=pages_result,
@@ -69,3 +69,8 @@ class MarkdownEngine(BaseEngine):
             confidence=1.0,
             engine_used="markdown",
         )
+
+        print(result)
+        print(">>>" * 20, result.format, type(result.format), type(OutputFormat.MARKDOWN))
+
+        return result

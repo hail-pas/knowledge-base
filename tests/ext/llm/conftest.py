@@ -16,8 +16,19 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 
 
-# 跳过测试的条件
-skip_if_no_api_key = pytest.mark.skipif(not OPENAI_API_KEY, reason="OPENAI_API_KEY not set in environment")
+def pytest_configure(config):
+    """注册自定义 marker"""
+    config.addinivalue_line(
+        "markers",
+        "skip_if_no_api_key: skips test if api key not set"
+    )
+
+
+def pytest_runtest_setup(item):
+    """自动处理 marker"""
+    if item.get_closest_marker("skip_if_no_api_key"):
+        if not OPENAI_API_KEY:
+            pytest.skip("api key not set")
 
 
 @pytest.fixture

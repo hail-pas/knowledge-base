@@ -152,7 +152,7 @@ Section 3: Results
 These are the results."""
 
 
-def create_parse_result(content: str, format: OutputFormat, page_count: int = 1) -> ParseResult:
+def _create_parse_result(content: str, format: OutputFormat, page_count: int = 1) -> ParseResult:
     """辅助函数：创建 ParseResult"""
 
     if page_count == 1:
@@ -180,43 +180,49 @@ def create_parse_result(content: str, format: OutputFormat, page_count: int = 1)
 
 
 @pytest.fixture
+def create_parse_result():
+    """返回创建 ParseResult 的工厂函数"""
+    return _create_parse_result
+
+
+@pytest.fixture
 def text_parse_result(short_text):
     """TEXT 格式的 ParseResult"""
-    return create_parse_result(short_text, OutputFormat.TEXT)
+    return _create_parse_result(short_text, OutputFormat.TEXT)
 
 
 @pytest.fixture
 def long_text_parse_result(long_text):
     """长文本的 ParseResult"""
-    return create_parse_result(long_text, OutputFormat.TEXT)
+    return _create_parse_result(long_text, OutputFormat.TEXT)
 
 
 @pytest.fixture
 def multi_page_parse_result(multi_page_text):
     """多页 ParseResult"""
     content = "\n\n".join(multi_page_text)
-    return create_parse_result(content, OutputFormat.TEXT, page_count=3)
+    return _create_parse_result(content, OutputFormat.TEXT, page_count=3)
 
 
 @pytest.fixture
 def markdown_parse_result(markdown_with_headings):
     """MARKDOWN 格式的 ParseResult"""
-    return create_parse_result(markdown_with_headings, OutputFormat.MARKDOWN)
+    return _create_parse_result(markdown_with_headings, OutputFormat.MARKDOWN)
 
 
 @pytest.fixture
 def json_parse_result(json_list_data):
     """JSON 格式的 ParseResult"""
-    return create_parse_result(json_list_data, OutputFormat.JSON)
+    return _create_parse_result(json_list_data, OutputFormat.JSON)
 
 
 @pytest.fixture
 def empty_parse_result():
     """空的 ParseResult"""
-    return create_parse_result("", OutputFormat.TEXT)
+    return _create_parse_result("", OutputFormat.TEXT)
 
 
 @pytest.fixture
 def single_char_parse_result():
     """单字符 ParseResult"""
-    return create_parse_result("A", OutputFormat.TEXT)
+    return _create_parse_result("A", OutputFormat.TEXT)

@@ -13,10 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from ext.file_source.providers.s3 import S3FileSourceProvider
 from ext.file_source.types import S3ExtraConfig
-from tests.ext.file_source.conftest import skip_if_no_s3_config
 
 
-@skip_if_no_s3_config
+@pytest.mark.skip_if_no_s3_config
 class TestS3FileSourceProvider:
     """测试 S3 File Source Provider (阿里云 S3 兼容)"""
 

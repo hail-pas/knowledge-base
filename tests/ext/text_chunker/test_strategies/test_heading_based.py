@@ -91,9 +91,8 @@ class TestHeadingChunkStrategyChinese:
     """测试中文标题识别"""
 
     @pytest.mark.asyncio
-    async def test_chinese_chapters(self):
+    async def test_chinese_chapters(self, create_parse_result):
         """测试中文章节标题"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """第一章：引言
 
@@ -121,9 +120,8 @@ class TestHeadingChunkStrategyChinese:
         assert len(chunks) >= 3
 
     @pytest.mark.asyncio
-    async def test_chinese_pian(self):
+    async def test_chinese_pian(self, create_parse_result):
         """测试中文"篇"级标题"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """第一篇：总论
 
@@ -150,9 +148,8 @@ class TestHeadingChunkStrategyTreeBuilding:
     """测试标题树构建"""
 
     @pytest.mark.asyncio
-    async def test_nested_heading_structure(self):
+    async def test_nested_heading_structure(self, create_parse_result):
         """测试嵌套标题结构"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """# Main Title
 
@@ -183,9 +180,8 @@ Content 2"""
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_heading_hierarchy_preserved(self):
+    async def test_heading_hierarchy_preserved(self, create_parse_result):
         """测试标题层级保持"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """# Level 1
 
@@ -235,9 +231,8 @@ class TestHeadingChunkStrategyMaxChunkSize:
                 pass
 
     @pytest.mark.asyncio
-    async def test_split_long_section_by_paragraphs(self):
+    async def test_split_long_section_by_paragraphs(self, create_parse_result):
         """测试按段落分割超长章节"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         # 创建一个很长的章节
         long_paragraph = "This is a long paragraph. " * 50
@@ -286,9 +281,8 @@ class TestHeadingChunkStrategyOverlap:
                     assert chunk.overlap_end is not None
 
     @pytest.mark.asyncio
-    async def test_multiple_paragraph_overlap(self):
+    async def test_multiple_paragraph_overlap(self, create_parse_result):
         """测试多段落重叠"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """# Chapter 1
 
@@ -366,9 +360,8 @@ class TestHeadingChunkStrategyEdgeCases:
         assert len(chunks) == 0
 
     @pytest.mark.asyncio
-    async def test_single_heading(self):
+    async def test_single_heading(self, create_parse_result):
         """测试单个标题"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """# Only Heading
 
@@ -383,9 +376,8 @@ This is the content under the only heading."""
         assert len(chunks) == 1
 
     @pytest.mark.asyncio
-    async def test_heading_without_content(self):
+    async def test_heading_without_content(self, create_parse_result):
         """测试没有内容的标题"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """# Heading 1
 
@@ -403,9 +395,8 @@ This is the content under the only heading."""
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_custom_heading_pattern(self):
+    async def test_custom_heading_pattern(self, create_parse_result):
         """测试自定义标题模式"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         text = """CHAPTER 1: Introduction
 
@@ -445,10 +436,9 @@ class TestHeadingChunkStrategyPositionTracking:
             assert len(chunk.pages) > 0
 
     @pytest.mark.asyncio
-    async def test_multi_page_headings(self, multi_page_parse_result):
+    async def test_multi_page_headings(self, create_parse_result):
         """测试多页文档中的标题"""
         # 在多页文本中添加标题
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         page1 = "# Chapter 1\n\n" + "Content 1. " * 50
         page2 = "# Chapter 2\n\n" + "Content 2. " * 50

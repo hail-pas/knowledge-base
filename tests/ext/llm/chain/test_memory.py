@@ -7,7 +7,6 @@
 import pytest
 
 from ext.llm.chain import InMemoryMemory, ConversationBufferMemory
-from .conftest import skip_if_no_api_key
 
 
 class TestInMemoryMemory:
@@ -94,7 +93,7 @@ class TestConversationBufferMemory:
         print("✓ 对话缓冲清空成功")
 
 
-@skip_if_no_api_key
+@pytest.mark.skip_if_no_api_key
 class TestMemoryWithAgent:
     """测试 Memory 与 Agent 集成"""
 

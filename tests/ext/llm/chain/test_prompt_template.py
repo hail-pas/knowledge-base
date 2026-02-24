@@ -7,7 +7,6 @@
 import pytest
 
 from ext.llm.chain import PromptTemplate, LLM
-from .conftest import skip_if_no_api_key
 
 
 class TestPromptTemplate:
@@ -42,7 +41,7 @@ class TestPromptTemplate:
         print("✓ 缺少变量时正确抛出异常")
 
 
-@skip_if_no_api_key
+@pytest.mark.skip_if_no_api_key
 class TestPromptTemplateWithLLM:
     """测试 Prompt Template 与 LLM 组合"""
 

@@ -5,33 +5,68 @@ _engines: dict[str, type] = {}
 
 
 def _register_default_engines():
-    from ext.document_parser.engines.pdf.pymupdf import PyMUPDFEngine
-    from ext.document_parser.engines.pdf.pdfplumber import PDFPlumberEngine
-    from ext.document_parser.engines.ocr.paddleocr import PaddleOCREngine
-    from ext.document_parser.engines.ocr.tesseract import TesseractOCREngine
-    from ext.document_parser.engines.office.engines import DocxEngine, XLSXEngine, PPTXEngine
-    from ext.document_parser.engines.web.engines import TrafilaturaEngine, MarkdownEngine
-    from ext.document_parser.engines.web.url import URLEngine
-    from ext.document_parser.engines.structured.engines import CSVEngine, JSONEngine
-    from ext.document_parser.engines.amarkitdown.amarkitdown import MarkitdownEngine
 
-    _engines.update(
-        {
-            "pymupdf": PyMUPDFEngine,
-            "pdfplumber": PDFPlumberEngine,
-            "paddleocr": PaddleOCREngine,
-            "tesseract": TesseractOCREngine,
-            "docx": DocxEngine,
-            "xlsx": XLSXEngine,
-            "pptx": PPTXEngine,
-            "trafilatura": TrafilaturaEngine,
-            "markdown": MarkdownEngine,
-            "csv": CSVEngine,
-            "json": JSONEngine,
-            "markitdown": MarkitdownEngine,
-            "url": URLEngine,
-        }
-    )
+    default_engines = {}
+
+    try:
+        from ext.document_parser.engines.pdf.pymupdf import PyMUPDFEngine
+        default_engines["pymupdf"] = PyMUPDFEngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.pdf.pdfplumber import PDFPlumberEngine
+        default_engines["pdfplumber"] = PDFPlumberEngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.ocr.paddleocr import PaddleOCREngine
+        default_engines["paddleocr"] = PaddleOCREngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.ocr.tesseract import TesseractOCREngine
+        default_engines["tesseract"] = TesseractOCREngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.office.engines import DocxEngine, XLSXEngine, PPTXEngine
+        default_engines["docx"] = DocxEngine
+        default_engines["xlsx"] = XLSXEngine
+        default_engines["pptx"] = PPTXEngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.web.engines import TrafilaturaEngine, MarkdownEngine
+        default_engines["trafilatura"] = TrafilaturaEngine
+        default_engines["markdown"] = MarkdownEngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.web.url import URLEngine
+        default_engines["url"] = URLEngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.structured.engines import CSVEngine, JSONEngine
+        default_engines["csv"] = CSVEngine
+        default_engines["json"] = JSONEngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.amarkitdown.amarkitdown import MarkitdownEngine
+        default_engines["markitdown"] = MarkitdownEngine
+    except ImportError:
+        pass
+
+    _engines.update(default_engines)
 
 
 _instances: dict[str, BaseEngine] = {}

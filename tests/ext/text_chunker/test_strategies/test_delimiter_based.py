@@ -21,9 +21,8 @@ class TestDelimiterChunkStrategyBasic:
     """测试基本的分隔符切块功能"""
 
     @pytest.mark.asyncio
-    async def test_string_delimiter(self, text_with_delimiters):
+    async def test_string_delimiter(self, text_with_delimiters, create_parse_result):
         """测试字符串分隔符"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text_with_delimiters, OutputFormat.TEXT)
         # 设置小的 max_chunk_size 以避免合并
@@ -37,9 +36,8 @@ class TestDelimiterChunkStrategyBasic:
         assert len(chunks) >= 3
 
     @pytest.mark.asyncio
-    async def test_keep_delimiter_false(self, text_with_delimiters):
+    async def test_keep_delimiter_false(self, text_with_delimiters, create_parse_result):
         """测试不保留分隔符"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text_with_delimiters, OutputFormat.TEXT)
         # 设置小的 max_chunk_size 以避免合并
@@ -56,9 +54,8 @@ class TestDelimiterChunkStrategyBasic:
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_keep_delimiter_true(self, text_with_delimiters):
+    async def test_keep_delimiter_true(self, text_with_delimiters, create_parse_result):
         """测试保留分隔符"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text_with_delimiters, OutputFormat.TEXT)
         config = DelimiterChunkConfig(delimiters=["\n\n"], keep_delimiter=True)
@@ -84,10 +81,9 @@ class TestDelimiterChunkStrategyRegex:
     """测试正则表达式分隔符"""
 
     @pytest.mark.asyncio
-    async def test_regex_delimiter(self):
+    async def test_regex_delimiter(self, create_parse_result):
         """测试正则表达式分隔符"""
         text = "Section 1: Content\nSection 2: Content\nSection 3: Content"
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
         config = DelimiterChunkConfig(delimiters=["regex:\\nSection \\d+:"], keep_delimiter=True, regex_prefix="regex:")
@@ -124,10 +120,9 @@ class TestDelimiterChunkStrategyPriority:
     """测试多分隔符优先级"""
 
     @pytest.mark.asyncio
-    async def test_multiple_delimiters_priority(self):
+    async def test_multiple_delimiters_priority(self, create_parse_result):
         """测试多个分隔符按优先级尝试"""
         text = "Paragraph1\n\nParagraph2\nParagraph3"
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
         # 应该先用 \n\n 切分，如果不行再用 \n
@@ -139,10 +134,9 @@ class TestDelimiterChunkStrategyPriority:
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_first_delimiter_succeeds(self):
+    async def test_first_delimiter_succeeds(self, create_parse_result):
         """测试第一个分隔符成功切分"""
         text = "Section1\n\nSection2\n\nSection3"
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
         # 设置小的 max_chunk_size 以避免合并
@@ -191,10 +185,9 @@ class TestDelimiterChunkStrategyMergeSmall:
     """测试合并小块"""
 
     @pytest.mark.asyncio
-    async def test_merge_small_parts(self):
+    async def test_merge_small_parts(self, create_parse_result):
         """测试合并小块"""
         text = "A\nB\nC\nD\nE"
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
         config = DelimiterChunkConfig(
@@ -212,9 +205,8 @@ class TestDelimiterChunkStrategyOverlap:
     """测试重叠功能"""
 
     @pytest.mark.asyncio
-    async def test_overlap_enabled(self, text_with_delimiters):
+    async def test_overlap_enabled(self, text_with_delimiters, create_parse_result):
         """测试启用重叠"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text_with_delimiters, OutputFormat.TEXT)
         config = DelimiterChunkConfig(delimiters=["\n\n"], keep_delimiter=False, overlap=20)
@@ -230,9 +222,8 @@ class TestDelimiterChunkStrategyOverlap:
                     assert chunk.overlap_end is not None
 
     @pytest.mark.asyncio
-    async def test_overlap_zero(self, text_with_delimiters):
+    async def test_overlap_zero(self, text_with_delimiters, create_parse_result):
         """测试零重叠"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text_with_delimiters, OutputFormat.TEXT)
         config = DelimiterChunkConfig(delimiters=["\n\n"], keep_delimiter=False, overlap=0)
@@ -282,10 +273,9 @@ class TestDelimiterChunkStrategyEdgeCases:
         assert len(chunks) == 1
 
     @pytest.mark.asyncio
-    async def test_single_delimiter_at_start(self):
+    async def test_single_delimiter_at_start(self, create_parse_result):
         """测试分隔符在开头"""
         text = "\n\nContent after delimiter"
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
         config = DelimiterChunkConfig(delimiters=["\n\n"], keep_delimiter=False)
@@ -297,10 +287,9 @@ class TestDelimiterChunkStrategyEdgeCases:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_single_delimiter_at_end(self):
+    async def test_single_delimiter_at_end(self, create_parse_result):
         """测试分隔符在末尾"""
         text = "Content before delimiter\n\n"
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
         config = DelimiterChunkConfig(delimiters=["\n\n"], keep_delimiter=False)
@@ -316,9 +305,8 @@ class TestDelimiterChunkStrategyRegexComplex:
     """测试复杂正则表达式"""
 
     @pytest.mark.asyncio
-    async def test_chinese_chapter_pattern(self, chinese_document):
+    async def test_chinese_chapter_pattern(self, chinese_document, create_parse_result):
         """测试中文章节模式"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(chinese_document, OutputFormat.TEXT)
         config = DelimiterChunkConfig(
@@ -331,10 +319,9 @@ class TestDelimiterChunkStrategyRegexComplex:
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_numbered_section_pattern(self):
+    async def test_numbered_section_pattern(self, create_parse_result):
         """测试编号小节模式"""
         text = "1. Introduction\n2. Methodology\n3. Results\n4. Conclusion"
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
         config = DelimiterChunkConfig(delimiters=["regex:\\d+\\."], keep_delimiter=True, regex_prefix="regex:")

@@ -7,7 +7,6 @@
 import pytest
 
 from ext.llm.chain import tool
-from .conftest import skip_if_no_api_key, sample_weather_tool
 
 
 class TestToolDefinition:
@@ -21,23 +20,23 @@ class TestToolDefinition:
             """获取天气"""
             return f"{location}天气：晴"
 
-        assert get_weather.name == "get_weather"
-        assert "获取天气" in get_weather.description
-        assert "location" in get_weather.parameters["properties"]
-        assert "location" in get_weather.parameters["required"]
-        print(f"✓ 工具定义: {get_weather.name}")
-        print(f"✓ 工具描述: {get_weather.description}")
+        assert get_weather.name == "get_weather" # type: ignore
+        assert "获取天气" in get_weather.description # type: ignore
+        assert "location" in get_weather.parameters["properties"] # type: ignore
+        assert "location" in get_weather.parameters["required"] # type: ignore
+        print(f"✓ 工具定义: {get_weather.name}") # type: ignore
+        print(f"✓ 工具描述: {get_weather.description}") # type: ignore
 
     def test_tool_with_custom_name(self):
         """测试自定义工具名称"""
 
-        @tool(name="custom_name")
+        @tool(name="custom_name") # type: ignore
         def get_weather(location: str) -> str:
             """获取天气"""
             return f"{location}天气：晴"
 
-        assert get_weather.name == "custom_name"
-        print(f"✓ 自定义名称: {get_weather.name}")
+        assert get_weather.name == "custom_name" # type: ignore
+        print(f"✓ 自定义名称: {get_weather.name}") # type: ignore
 
     @pytest.mark.asyncio
     async def test_tool_invocation(self, sample_weather_tool):

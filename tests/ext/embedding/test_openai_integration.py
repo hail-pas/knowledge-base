@@ -11,17 +11,8 @@ import asyncio
 import ext.embedding.providers
 
 from ext.embedding import EmbeddingModelFactory
-from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
-from tests.ext.embedding.conftest import (
-    openai_embedding_config,
-    openai_embedding_config_with_extra,
-    sample_texts,
-    long_text,
-    skip_if_no_api_key,
-)
 
-
-@skip_if_no_api_key
+@pytest.mark.needs_api_key
 class TestOpenAIEmbeddingIntegration:
     """OpenAI Embedding 集成测试（需要真实 API）"""
 

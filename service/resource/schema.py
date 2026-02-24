@@ -19,7 +19,8 @@ class ResourceLevelTreeBaseNode(
         computed=("scene_display", "type_display", "sub_type_display"),
         meta_override=OverridePydanticMeta,
     ),
-): ...
+):
+    parent_id: int | None = Field(None, description="父节点ID")
 
 
 class ResourceLevelTreeNode(ResourceLevelTreeBaseNode):  # type: ignore

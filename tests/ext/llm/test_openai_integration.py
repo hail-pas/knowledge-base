@@ -11,16 +11,9 @@ import ext.llm.providers
 
 from ext.llm import LLMModelFactory
 from ext.llm.types import ChatMessage, ToolDefinition, FunctionDefinition, ToolCall, LLMRequest
-from tests.ext.llm.conftest import (
-    openai_llm_config,
-    openai_llm_config_with_extra,
-    sample_chat_messages,
-    sample_function_definition,
-    skip_if_no_api_key,
-)
 
 
-@skip_if_no_api_key
+@pytest.mark.skip_if_no_api_key
 class TestOpenAILLMIntegration:
     """OpenAI LLM 集成测试（需要真实 API）"""
 

@@ -7,10 +7,9 @@
 import pytest
 
 from ext.llm.chain import FunctionCallingAgent, ReActAgent, AgentStream
-from .conftest import skip_if_no_api_key
 
 
-@skip_if_no_api_key
+@pytest.mark.skip_if_no_api_key
 class TestFunctionCallingAgent:
     """测试 Function Calling Agent"""
 
@@ -59,7 +58,7 @@ class TestFunctionCallingAgent:
             if event.event_type == "thought":
                 print(f"    💭 {event.content[:50]}...")
             elif event.event_type == "action":
-                print(f"    🔧 调用: {event.tool_call['name']}")
+                print(f"    🔧 调用: {event.tool_call['name']}") # type: ignore
             elif event.event_type == "observation":
                 print(f"    📊 结果: {event.tool_result}")
             elif event.event_type == "content":
@@ -111,7 +110,7 @@ class TestFunctionCallingAgent:
         print(f"✓ 无需工具的回答: {result[:100]}")
 
 
-@skip_if_no_api_key
+@pytest.mark.skip_if_no_api_key
 class TestReActAgent:
     """测试 ReAct Agent"""
 

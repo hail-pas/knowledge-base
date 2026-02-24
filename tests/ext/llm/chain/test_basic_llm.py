@@ -7,10 +7,9 @@
 import pytest
 
 from ext.llm.chain import LLM
-from .conftest import skip_if_no_api_key
 
 
-@skip_if_no_api_key
+@pytest.mark.skip_if_no_api_key
 class TestBasicLLM:
     """测试基础 LLM 调用"""
 

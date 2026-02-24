@@ -19,10 +19,18 @@ OPENAI_EMBEDDING_MAX_BATCH_SIZE = os.getenv("OPENAI_EMBEDDING_MAX_BATCH_SIZE", "
 OPENAI_EMBEDDING_MAX_TOKEN_PER_TEXT = os.getenv("OPENAI_EMBEDDING_MAX_TOKEN_PER_TEXT", "8192")
 
 
-# 跳过测试的条件
-skip_if_no_api_key = pytest.mark.skipif(
-    not OPENAI_EMBEDDING_API_KEY, reason="OPENAI_EMBEDDING_API_KEY not set in environment"
-)
+def pytest_configure(config):
+    """注册自定义 marker"""
+    config.addinivalue_line(
+        "markers",
+        "needs_api_key: skips test if API_KEY env var not set"
+    )
+
+def pytest_runtest_setup(item):
+    """自动处理 marker"""
+    if item.get_closest_marker("needs_api_key"):
+        if not OPENAI_EMBEDDING_API_KEY:
+            pytest.skip("API_KEY not set")
 
 
 @pytest.fixture

@@ -115,12 +115,10 @@ class TestLengthChunkStrategyEdgeCases:
         assert chunks[0].content == "A"
 
     @pytest.mark.asyncio
-    async def test_text_exactly_chunk_size(self, long_text_parse_result):
+    async def test_text_exactly_chunk_size(self, create_parse_result):
         """测试文本长度正好是 chunk_size"""
         # 创建正好 200 字符的文本
         text = "A" * 200
-
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text, OutputFormat.TEXT)
 

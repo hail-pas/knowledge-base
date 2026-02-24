@@ -171,7 +171,6 @@ def has_paddleocr():
     """检查 paddleocr 是否可用"""
     try:
         import paddleocr
-
         return True
     except ImportError:
         return False

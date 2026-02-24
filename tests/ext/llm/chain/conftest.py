@@ -24,10 +24,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME")
 
 
-# 跳过测试的条件
-skip_if_no_api_key = pytest.mark.skipif(not OPENAI_API_KEY, reason="OPENAI_API_KEY not set in environment")
-
-
 @pytest.fixture
 def openai_llm_config_dict():
     """返回 OpenAI LLM 配置字典（不创建对象）"""

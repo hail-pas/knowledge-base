@@ -211,9 +211,8 @@ class TestTextChunkerOverrideRecommended:
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_override_text_with_delimiter(self, text_chunker, text_with_delimiters):
+    async def test_override_text_with_delimiter(self, text_chunker, text_with_delimiters, create_parse_result):
         """测试在 TEXT 上使用 delimiter 策略"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(text_with_delimiters, OutputFormat.TEXT)
         chunks = await text_chunker.chunk(parse_result, strategy="delimiter", config={"delimiters": ["\n\n"]})

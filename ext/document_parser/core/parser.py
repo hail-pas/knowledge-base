@@ -22,7 +22,7 @@ class DocumentParser:
             ".markdown": ["markdown"],
             ".csv": ["csv"],
             ".json": ["json"],
-            ".png": ["paddleocr"],
+            ".png": ["paddleocr", "tesseract"],
             ".jpg": ["paddleocr"],
             ".jpeg": ["paddleocr"],
         }
@@ -69,9 +69,11 @@ class DocumentParser:
 
                 result = await engine_instance.parse(file_path, options)
 
-                if not result.content or len(result.content.strip()) < 10:
+                if not result.content: # or len(result.content.strip()) < 10:
                     logger.warning(f"引擎 {engine_name} 解析结果为空，尝试下一个")
                     continue
+
+                print(">>>" * 20, result.format, type(result.format))
 
                 if processors:
                     for processor in processors:

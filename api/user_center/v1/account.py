@@ -78,5 +78,5 @@ async def get_account_detail(request: Request, pk: int) -> Resp[AccountDetail]:
 @router.delete(
     "/{pk}", description=f"删除{Account.Meta.table_description}", summary=f"删除{Account.Meta.table_description}",
 )
-async def delete_account(request: Request, pk: UUID) -> Resp:
+async def delete_account(request: Request, pk: int) -> Resp:
     return await delete_view(pk, get_queryset(request))

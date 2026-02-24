@@ -37,9 +37,8 @@ class TestJsonChunkStrategySimpleMode:
         assert len(chunks) == 4
 
     @pytest.mark.asyncio
-    async def test_simple_mode_dict(self, json_dict_data):
+    async def test_simple_mode_dict(self, json_dict_data, create_parse_result):
         """测试 Simple 模式处理字典"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(json_dict_data, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple", keys=[])
@@ -108,9 +107,8 @@ class TestJsonChunkStrategyJsonMode:
             json.loads(chunk.content)
 
     @pytest.mark.asyncio
-    async def test_json_mode_dict(self, json_dict_data):
+    async def test_json_mode_dict(self, json_dict_data, create_parse_result):
         """测试 JSON 模式处理字典"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(json_dict_data, OutputFormat.JSON)
         config = JsonChunkConfig(mode="json")
@@ -125,9 +123,8 @@ class TestJsonChunkStrategyJsonMode:
             json.loads(chunk.content)
 
     @pytest.mark.asyncio
-    async def test_json_mode_with_key_filter(self, json_dict_data):
+    async def test_json_mode_with_key_filter(self, json_dict_data, create_parse_result):
         """测试 JSON 模式 key 过滤"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(json_dict_data, OutputFormat.JSON)
         config = JsonChunkConfig(mode="json", keys=["title", "author"])
@@ -150,9 +147,8 @@ class TestJsonChunkStrategyNestedData:
     """测试嵌套数据处理"""
 
     @pytest.mark.asyncio
-    async def test_simple_mode_nested_dict(self, json_nested_data):
+    async def test_simple_mode_nested_dict(self, json_nested_data, create_parse_result):
         """测试 Simple 模式嵌套字典"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(json_nested_data, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple", keys=[])
@@ -163,15 +159,13 @@ class TestJsonChunkStrategyNestedData:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_simple_mode_nested_list(self):
+    async def test_simple_mode_nested_list(self, create_parse_result):
         """测试 Simple 模式嵌套列表"""
         data = {
             "title": "Test",
             "items": ["item1", "item2", "item3"],
         }
         content = json.dumps(data, ensure_ascii=False)
-
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple", keys=[])
@@ -186,9 +180,8 @@ class TestJsonChunkStrategyMergeAndSplit:
     """测试合并和分割"""
 
     @pytest.mark.asyncio
-    async def test_merge_small_chunks_simple_mode(self, json_list_data):
+    async def test_merge_small_chunks_simple_mode(self, create_parse_result):
         """测试 Simple 模式合并小块"""
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         # 创建一个小数据的列表
         small_data = [{"id": 1}, {"id": 2}, {"id": 3}]
@@ -204,7 +197,7 @@ class TestJsonChunkStrategyMergeAndSplit:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_split_large_chunks_json_mode(self):
+    async def test_split_large_chunks_json_mode(self, create_parse_result):
         """测试 JSON 模式分割大块"""
         # 创建一个大的 JSON 对象
         large_data = {
@@ -212,7 +205,6 @@ class TestJsonChunkStrategyMergeAndSplit:
         }
         content = json.dumps(large_data, ensure_ascii=False)
 
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="json", max_chunk_size=500)
@@ -250,11 +242,9 @@ class TestJsonChunkStrategyErrorHandling:
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_malformed_json(self):
+    async def test_malformed_json(self, create_parse_result):
         """测试格式错误的 JSON"""
         malformed_json = '{"name": "Alice", "age": 30'  # 缺少闭合括号
-
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(malformed_json, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
@@ -270,11 +260,9 @@ class TestJsonChunkStrategyEdgeCases:
     """测试边界情况"""
 
     @pytest.mark.asyncio
-    async def test_empty_json_array(self):
+    async def test_empty_json_array(self, create_parse_result):
         """测试空 JSON 数组"""
         content = "[]"
-
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
@@ -286,11 +274,9 @@ class TestJsonChunkStrategyEdgeCases:
         assert isinstance(chunks, list)
 
     @pytest.mark.asyncio
-    async def test_empty_json_object(self):
+    async def test_empty_json_object(self, create_parse_result):
         """测试空 JSON 对象"""
         content = "{}"
-
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
@@ -302,12 +288,10 @@ class TestJsonChunkStrategyEdgeCases:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_json_simple_value(self):
+    async def test_json_simple_value(self, create_parse_result):
         """测试简单 JSON 值"""
         content = '"just a string"'
 
-        from tests.ext.text_chunker.conftest import create_parse_result
-
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
         strategy = JsonChunkStrategy(config)
@@ -317,12 +301,10 @@ class TestJsonChunkStrategyEdgeCases:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_json_number(self):
+    async def test_json_number(self, create_parse_result):
         """测试 JSON 数字"""
         content = "42"
 
-        from tests.ext.text_chunker.conftest import create_parse_result
-
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
         strategy = JsonChunkStrategy(config)
@@ -332,12 +314,10 @@ class TestJsonChunkStrategyEdgeCases:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_json_boolean(self):
+    async def test_json_boolean(self, create_parse_result):
         """测试 JSON 布尔值"""
         content = "true"
 
-        from tests.ext.text_chunker.conftest import create_parse_result
-
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
         strategy = JsonChunkStrategy(config)
@@ -347,11 +327,9 @@ class TestJsonChunkStrategyEdgeCases:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_json_null(self):
+    async def test_json_null(self, create_parse_result):
         """测试 JSON null"""
         content = "null"
-
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
@@ -406,7 +384,7 @@ class TestJsonChunkStrategyComplexScenarios:
     """测试复杂场景"""
 
     @pytest.mark.asyncio
-    async def test_real_world_api_response(self):
+    async def test_real_world_api_response(self, create_parse_result):
         """测试真实 API 响应数据"""
         api_response = json.dumps(
             {
@@ -430,8 +408,6 @@ class TestJsonChunkStrategyComplexScenarios:
             ensure_ascii=False,
         )
 
-        from tests.ext.text_chunker.conftest import create_parse_result
-
         parse_result = create_parse_result(api_response, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple", keys=["id", "name"])
         strategy = JsonChunkStrategy(config)
@@ -441,7 +417,7 @@ class TestJsonChunkStrategyComplexScenarios:
         assert len(chunks) > 0
 
     @pytest.mark.asyncio
-    async def test_deeply_nested_structure(self):
+    async def test_deeply_nested_structure(self, create_parse_result):
         """测试深度嵌套结构"""
         deep_data = {
             "level1": {
@@ -454,8 +430,6 @@ class TestJsonChunkStrategyComplexScenarios:
         }
         content = json.dumps(deep_data, ensure_ascii=False)
 
-        from tests.ext.text_chunker.conftest import create_parse_result
-
         parse_result = create_parse_result(content, OutputFormat.JSON)
         config = JsonChunkConfig(mode="simple")
         strategy = JsonChunkStrategy(config)
@@ -465,7 +439,7 @@ class TestJsonChunkStrategyComplexScenarios:
         assert len(chunks) >= 1
 
     @pytest.mark.asyncio
-    async def test_unicode_content(self):
+    async def test_unicode_content(self, create_parse_result):
         """测试 Unicode 内容"""
         unicode_data = [
             {"text": "Hello 世界"},
@@ -474,8 +448,6 @@ class TestJsonChunkStrategyComplexScenarios:
             {"text": "🎉🎊"},
         ]
         content = json.dumps(unicode_data, ensure_ascii=False)
-
-        from tests.ext.text_chunker.conftest import create_parse_result
 
         parse_result = create_parse_result(content, OutputFormat.JSON)
         # 设置小的 max_chunk_size 以避免合并

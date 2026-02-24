@@ -14,7 +14,6 @@ from ext.llm.chain import (
     RunnableMap,
     RunnableSequence,
 )
-from .conftest import skip_if_no_api_key
 
 
 class TestChainCombination:
@@ -58,7 +57,7 @@ class TestChainCombination:
         print(f"✓ RunnableMap 执行成功: {result}")
 
 
-@skip_if_no_api_key
+@pytest.mark.skip_if_no_api_key
 class TestComplexChain:
     """测试复杂 Chain"""
 

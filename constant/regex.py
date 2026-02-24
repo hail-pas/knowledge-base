@@ -8,7 +8,8 @@ EMAIL_REGEX = re.compile(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)")
 
 LETTER_DIGITS_ONLY_REGEX = re.compile(r"^[a-zA-Z0-9]+$")
 
-ACCOUNT_USERNAME_REGEX = re.compile(r"^(?!\d+$)[a-zA-Z0-9]{4,20}$")  # 不能是纯数字
+# 不能全是数字，也不能全是符号（必须包含至少一个字母或数字）
+ACCOUNT_USERNAME_REGEX = re.compile(r"^(?!\d+$)(?![@_\-]+$)[a-zA-Z0-9_@\-]{4,20}$")
 
 LICENSE_NO_REGEX = re.compile(
     r"^[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼使领][A-HJ-NP-Z][A-HJ-NP-Z0-9]{4,5}[A-HJ-NP-Z0-9挂学警港澳]$",

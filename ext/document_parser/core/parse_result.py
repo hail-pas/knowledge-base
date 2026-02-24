@@ -38,4 +38,4 @@ class ParseResult(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
 
     class Config:
-        use_enum_values = True
+        use_enum_values = False

@@ -13,10 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from ext.file_source.providers.aliyun_oss import AliyunOSSFileSourceProvider
 from ext.file_source.types import AliyunOSSExtraConfig
-from tests.ext.file_source.conftest import skip_if_no_aliyun_config
 
 
-@skip_if_no_aliyun_config
+@pytest.mark.skip_if_no_aliyun_config
 class TestAliyunOSSFileSourceProvider:
     """测试 Aliyun OSS File Source Provider"""
 

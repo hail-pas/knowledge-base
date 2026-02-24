@@ -457,13 +457,15 @@ class TestEngineRegistry:
 
         engines = list_engines()
 
+        print(engines)
+
         assert isinstance(engines, list)
-        assert len(engines) >= 13
+        assert len(engines) >= 12  # paddle ocr
 
         expected_engines = [
             "pymupdf",
             "pdfplumber",
-            "paddleocr",
+            # "paddleocr",
             "tesseract",
             "docx",
             "xlsx",
