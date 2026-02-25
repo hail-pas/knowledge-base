@@ -10,6 +10,7 @@ from service.depend import api_permission_check
 from core.schema import CRUDPager
 from core.response import Resp, PageData
 from ext.ext_tortoise.curd import (
+    DeleteResp,
     list_view,
     create_obj,
     delete_view,
@@ -37,9 +38,9 @@ def get_queryset(request: Request) -> QuerySet[Account]:
 
 
 @router.post("", description=f"创建{Account.Meta.table_description}", summary=f"创建{Account.Meta.table_description}")
-async def create_account(request: Request, schema: AccountCreate) -> Resp:
-    await create_obj(Account, schema.model_dump(exclude_unset=True))
-    return Resp()
+async def create_account(request: Request, schema: AccountCreate) -> Resp[AccountList]:
+    obj = await create_obj(Account, schema.model_dump(exclude_unset=True))
+    return Resp(data=AccountList.model_validate(obj))
 
 
 @router.put(
@@ -78,5 +79,5 @@ async def get_account_detail(request: Request, pk: int) -> Resp[AccountDetail]:
 @router.delete(
     "/{pk}", description=f"删除{Account.Meta.table_description}", summary=f"删除{Account.Meta.table_description}",
 )
-async def delete_account(request: Request, pk: int) -> Resp:
+async def delete_account(request: Request, pk: int) -> Resp[DeleteResp]:
     return await delete_view(pk, get_queryset(request))

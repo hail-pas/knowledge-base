@@ -4,16 +4,16 @@ from service.depend import api_permission_check
 from core.response import Resp
 from ext.ext_tortoise.curd import create_obj
 from service.resource.helper import resource_list_to_trees
-from service.resource.schema import ResourceCreateSchema, ResourceLevelTreeNode
+from service.resource.schema import ResourceCreateSchema, ResourceLevelTreeBaseNode, ResourceLevelTreeNode
 from ext.ext_tortoise.models.user_center import Resource
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
 
 
 @router.post("", summary="创建系统资源", description="创建系统资源")
-async def create_resource(request: Request, schema: ResourceCreateSchema) -> Resp:
-    await create_obj(Resource, schema.model_dump(exclude_unset=True))
-    return Resp()
+async def create_resource(request: Request, schema: ResourceCreateSchema) -> Resp[ResourceLevelTreeBaseNode]:
+    obj = await create_obj(Resource, schema.model_dump(exclude_unset=True))
+    return Resp(data=ResourceLevelTreeBaseNode.model_validate(obj))
 
 
 @router.get(

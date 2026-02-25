@@ -43,7 +43,7 @@ async def setup_context():
                     # "aerich.models",
                 ],
                 "default_connection": "knowledge_base",
-            }
+            },
         },
         "use_tz": False,
         "timezone": "Asia/Shanghai",
@@ -68,21 +68,25 @@ async def setup_context():
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_account(setup_context):
-    role = await Role.create(
-        label='super admin',
-        remark='super admin role'
-    )
+    role = await Role.create(label="super admin", remark="super admin role")
 
     account = await Account.create(
-        username='test-admin',
+        username="test-admin",
         phone="18888888888",
-        email='test_admin@example.com',
-        password=PasswordUtil.get_password_hash('test-password'),
+        email="test_admin@example.com",
+        password=PasswordUtil.get_password_hash("test-password"),
         is_active=True,
         is_staff=True,
         is_super_admin=True,
-        role=role
+        role=role,
     )
 
-    with patch('service.depend._validate_jwt_token', new_callable=AsyncMock, return_value=account):
+    async def mock_validate_jwt_token(request, token):
+        request.scope["user"] = account
+        request.scope["scene"] = "test"
+        request.scope["is_staff"] = account.is_staff
+        request.scope["is_super_admin"] = account.is_super_admin
+        return account
+
+    with patch("service.depend._validate_jwt_token", new=mock_validate_jwt_token):
         yield account

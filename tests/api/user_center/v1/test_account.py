@@ -16,15 +16,18 @@ def test_create_account(client: TestClient):
         },
     )
     assert response.status_code == 200
+    assert response.json()["data"]["id"] is not None
+    global CREATED_ID
+    CREATED_ID = response.json()["data"]["id"]
 
 
 def test_get_account_list(client: TestClient):
     """测试获取账号列表接口"""
     response = client.get("/v1/account")
-    created_id = response.json()["data"]["items"][0]["id"]
     global CREATED_ID
-    CREATED_ID = created_id
+
     assert response.status_code == 200
+    assert response.json()["data"]["items"][0]["id"] == CREATED_ID
 
 
 def test_get_account_detail(client: TestClient):

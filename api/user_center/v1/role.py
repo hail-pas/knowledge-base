@@ -80,11 +80,11 @@ async def get_role_detail(request: Request, pk: int) -> Resp[RoleDetail]:
     description=f"创建{Role.Meta.table_description}",
     summary=f"创建{Role.Meta.table_description}",
 )
-async def create_role(request: Request, schema: RoleCreate) -> Resp:
+async def create_role(request: Request, schema: RoleCreate) -> Resp[RoleList]:
     async with in_transaction(connection_name=Role.Meta.app):
-        await create_obj(Role, schema.model_dump(exclude_unset=True))
+        obj = await create_obj(Role, schema.model_dump(exclude_unset=True))
 
-    return Resp()
+    return Resp(data=RoleList.model_validate(obj))
 
 
 @router.put("/{pk}", description=f"更新{Role.Meta.table_description}", summary=f"更新{Role.Meta.table_description}")

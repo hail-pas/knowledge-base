@@ -129,6 +129,7 @@ class FileSource(BaseModel):
     # ========== 状态管理 ==========
     is_enabled = fields.BooleanField(default=True, description="是否启用")
     is_default = fields.BooleanField(default=False, description="是否默认")
+    user_id = fields.UUIDField(description="用户ID, 为空时表示公共", null=True)
     description = fields.TextField(description="描述信息", default="")
 
     # ========== Provider 特定扩展配置 ==========
