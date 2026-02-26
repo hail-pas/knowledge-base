@@ -5,35 +5,39 @@ _engines: dict[str, type] = {}
 
 
 def _register_default_engines():
-
     default_engines = {}
 
     try:
         from ext.document_parser.engines.pdf.pymupdf import PyMUPDFEngine
+
         default_engines["pymupdf"] = PyMUPDFEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.pdf.pdfplumber import PDFPlumberEngine
+
         default_engines["pdfplumber"] = PDFPlumberEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.ocr.paddleocr import PaddleOCREngine
+
         default_engines["paddleocr"] = PaddleOCREngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.ocr.tesseract import TesseractOCREngine
+
         default_engines["tesseract"] = TesseractOCREngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.office.engines import DocxEngine, XLSXEngine, PPTXEngine
+
         default_engines["docx"] = DocxEngine
         default_engines["xlsx"] = XLSXEngine
         default_engines["pptx"] = PPTXEngine
@@ -42,6 +46,7 @@ def _register_default_engines():
 
     try:
         from ext.document_parser.engines.web.engines import TrafilaturaEngine, MarkdownEngine
+
         default_engines["trafilatura"] = TrafilaturaEngine
         default_engines["markdown"] = MarkdownEngine
     except ImportError:
@@ -49,12 +54,14 @@ def _register_default_engines():
 
     try:
         from ext.document_parser.engines.web.url import URLEngine
+
         default_engines["url"] = URLEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.structured.engines import CSVEngine, JSONEngine
+
         default_engines["csv"] = CSVEngine
         default_engines["json"] = JSONEngine
     except ImportError:
@@ -62,7 +69,15 @@ def _register_default_engines():
 
     try:
         from ext.document_parser.engines.amarkitdown.amarkitdown import MarkitdownEngine
+
         default_engines["markitdown"] = MarkitdownEngine
+    except ImportError:
+        pass
+
+    try:
+        from ext.document_parser.engines.plain import TextEngine
+
+        default_engines["text"] = TextEngine
     except ImportError:
         pass
 

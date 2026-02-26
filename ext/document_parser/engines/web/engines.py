@@ -70,7 +70,4 @@ class MarkdownEngine(BaseEngine):
             engine_used="markdown",
         )
 
-        print(result)
-        print(">>>" * 20, result.format, type(result.format), type(OutputFormat.MARKDOWN))
-
         return result

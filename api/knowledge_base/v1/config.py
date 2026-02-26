@@ -210,8 +210,8 @@ async def create_indexing_backend(
 
     if obj.is_default:  # type: ignore
         await (
-            IndexingBackendConfig.filter(is_default=True, type=obj.type, deleted_at=0)
-            .exclude(pk=obj.id)
+            IndexingBackendConfig.filter(is_default=True, type=obj.type, deleted_at=0) # type: ignore
+            .exclude(pk=obj.id) # type: ignore
             .update(is_default=False)
         )  # type: ignore
 
@@ -258,8 +258,8 @@ async def create_embedding_model(
 
     if obj.is_default:  # type: ignore
         await (
-            EmbeddingModelConfig.filter(is_default=True, type=obj.type, deleted_at=0)
-            .exclude(pk=obj.id)
+            EmbeddingModelConfig.filter(is_default=True, type=obj.type, deleted_at=0) # type: ignore
+            .exclude(pk=obj.id) # type: ignore
             .update(is_default=False)
         )  # type: ignore
 

@@ -25,6 +25,7 @@ class DocumentParser:
             ".png": ["paddleocr", "tesseract"],
             ".jpg": ["paddleocr"],
             ".jpeg": ["paddleocr"],
+            ".txt": ["text"],
         }
 
     async def parse(
@@ -69,7 +70,7 @@ class DocumentParser:
 
                 result = await engine_instance.parse(file_path, options)
 
-                if not result.content: # or len(result.content.strip()) < 10:
+                if not result.content:  # or len(result.content.strip()) < 10:
                     logger.warning(f"引擎 {engine_name} 解析结果为空，尝试下一个")
                     continue
 
