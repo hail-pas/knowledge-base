@@ -8,7 +8,7 @@ from loguru import logger
 
 from ext.ext_celery.app import celery_app
 from ext.ext_tortoise.enums import ActivityStatusEnum
-from ext.workflow.exceptions import ActivityNotFoundError
+from ext.workflow.exceptions import ActivityNotFoundError, DuplicateTaskNameError
 from ext.workflow.manager import WorkflowManager
 from ext.workflow.scheduler import WorkflowScheduler, schedule_activity_handoff_celery_entry
 from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
@@ -99,7 +99,7 @@ class ActivityTaskTemplate(ABC):
         )
 
         if self.execute_mode == "celery":
-            schedule_activity_handoff_celery_entry.apply_async(args=[str(self.activity_uid)]) # type: ignore
+            schedule_activity_handoff_celery_entry.apply_async(args=[str(self.activity_uid)])  # type: ignore
         else:
             await WorkflowScheduler.schedule_activity_handoff(self.activity_uid, execute_mode=self.execute_mode)
 
@@ -116,7 +116,7 @@ class ActivityTaskTemplate(ABC):
 
         activity = await WorkflowManager.get_activity_by_uid(self.activity_uid)
 
-        max_retries = activity.execute_params.get("max_retries", 3)
+        max_retries = activity.execute_params.get("max_retries", 0)
         current_retry = activity.retry_count
 
         if current_retry < max_retries:
@@ -137,7 +137,7 @@ class ActivityTaskTemplate(ABC):
             )
 
         if self.execute_mode == "celery":
-            schedule_activity_handoff_celery_entry.apply_async(args=[str(self.activity_uid)]) # type: ignore
+            schedule_activity_handoff_celery_entry.apply_async(args=[str(self.activity_uid)])  # type: ignore
         else:
             await WorkflowScheduler.schedule_activity_handoff(self.activity_uid, execute_mode=self.execute_mode)
 
@@ -217,61 +217,103 @@ class ActivityTaskTemplate(ABC):
         }
 
 
-def activity_task(task_class: type[ActivityTaskTemplate]):
-    """Decorator to create Celery task from ActivityTaskTemplate
+def activity_task(
+    decorator_arg=None, *, prefix: str = "workflow_activity", name: str | None = None, allow_override: bool = False
+):
+    """Decorator to create Celery task from ActivityTaskTemplate with unique name validation
 
-    Usage:
+    支持三种用法：
+    1. @activity_task                           -> workflow_activity.MyTask
+    2. @activity_task(prefix="doc")             -> doc.MyTask
+    3. @activity_task(name="custom.name")       -> custom.name
+    4. @activity_task(allow_override=True)      -> 允许覆盖同名task
+
+    Args:
+        decorator_arg: 类（当无参数使用时）或 None
+        prefix: 自定义前缀（默认 "workflow_activity"）
+        name: 完整自定义名称（优先级高于prefix）
+        allow_override: 是否允许覆盖同名任务（默认False）
+
+    Raises:
+        DuplicateTaskNameError: 当任务名称已存在且 allow_override=False
+
+    Returns:
+        Task callable
+
+    Examples:
         @activity_task
         class MyTask(ActivityTaskTemplate):
             async def execute(self) -> dict[str, Any]:
                 return {"result": "success"}
 
-    The resulting task can be called in two ways:
-    1. Via Celery: task.apply_async(args=[activity_uid_str, "celery"])
-    2. Direct: await task.async_call(activity_uid_str, "direct")
-
-    Args:
-        task_class: ActivityTaskTemplate subclass
-
-    Returns:
-        Task callable
+        @activity_task(prefix="workflow_document")
+        class DocumentParseTask(ActivityTaskTemplate):
+            async def execute(self) -> dict[str, Any]:
+                return {"parsed": True}
     """
-    task_name = f"workflow_activity.{task_class.__name__}"
 
-    @celery_app.task(
-        name=task_name,
-        bind=True,
-        max_retries=3,
-    )
-    def _celery_task_wrapper(celery_task, activity_uid: str, execute_mode: str = "direct") -> dict[str, Any]:
-        """Celery task wrapper (sync entry point)"""
-        import asyncio
+    def _create_task(task_class: type[ActivityTaskTemplate]):
+        task_name = name if name else f"{prefix}.{task_class.__name__}"
 
-        async def _execute():
+        existing_task = celery_app.tasks.get(task_name)
+        if existing_task and not allow_override:
+            existing_module = getattr(existing_task, "__module__", "unknown")
+            existing_name = getattr(existing_task, "__name__", "unknown")
+
+            error_msg = (
+                f"Task name '{task_name}' already registered!\n"
+                f"  Existing: {existing_name} from {existing_module}\n"
+                f"  New: {task_class.__name__} from {task_class.__module__}\n"
+                f"  Solutions:\n"
+                f"    1. Use a different 'prefix' or 'name'\n"
+                f"    2. Set allow_override=True if intentional (not recommended)\n"
+                f"    3. Check for accidental duplicate decorators"
+            )
+            logger.error(error_msg)
+            raise DuplicateTaskNameError(error_msg)
+
+        if existing_task and allow_override:
+            logger.warning(
+                f"Overriding existing task '{task_name}' "
+                f"({existing_name} from {existing_module}) "
+                f"with {task_class.__name__} from {task_class.__module__}"
+            )
+
+        @celery_app.task(name=task_name, bind=True, max_retries=3)
+        def _celery_task_wrapper(celery_task, activity_uid: str, execute_mode: str = "direct") -> dict[str, Any]:
+            import asyncio
+
+            async def _execute():
+                instance = task_class(activity_uid, execute_mode=execute_mode)
+                return await instance._execute_lifecycle()
+
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(_execute(), loop)
+                    return future.result()
+                else:
+                    return loop.run_until_complete(_execute())
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                return loop.run_until_complete(_execute())
+
+        async def _async_wrapper(activity_uid: str, execute_mode: str = "direct") -> dict[str, Any]:
             instance = task_class(activity_uid, execute_mode=execute_mode)
             return await instance._execute_lifecycle()
 
-        # Detect and reuse existing event loop (Celery worker environment)
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Use run_coroutine_threadsafe with existing loop
-                future = asyncio.run_coroutine_threadsafe(_execute(), loop)
-                return future.result()
-            else:
-                # Loop exists but not running
-                return loop.run_until_complete(_execute())
-        except RuntimeError:
-            # No event loop exists, create new one (test environment)
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            return loop.run_until_complete(_execute())
+        _celery_task_wrapper.async_call = _async_wrapper
 
-    async def _async_wrapper(activity_uid: str, execute_mode: str = "direct") -> dict[str, Any]:
-        """Async wrapper for direct calling"""
-        instance = task_class(activity_uid, execute_mode=execute_mode)
-        return await instance._execute_lifecycle()
+        logger.info(
+            f"Registered activity task: {task_name} (class={task_class.__name__}, module={task_class.__module__})"
+        )
 
-    _celery_task_wrapper.async_call = _async_wrapper # type: ignore
+        return _celery_task_wrapper
 
-    return _celery_task_wrapper
+    if decorator_arg is None:
+        return lambda task_class: _create_task(task_class)
+    elif isinstance(decorator_arg, type):
+        return _create_task(decorator_arg)
+    else:
+        raise TypeError(f"Invalid @activity_task usage: {decorator_arg}")

@@ -219,9 +219,18 @@ class BaseIndexModel(BaseModel):
     @classmethod
     def _get_id_default(cls):
         id_field = cls.model_fields.get("id")
-        if id_field and id_field.annotation:
-            id_type = cls._extract_type(id_field.annotation)
-            return "" if id_type == str else 0 if id_type == int else ""
+        if not id_field:
+            return ""
+
+        # 直接检查 annotation 是否就是 int 类型
+        if id_field.annotation is int:
+            return 0
+
+        # 否则使用 _extract_type 处理 Union 类型
+        id_type = cls._extract_type(id_field.annotation)
+        if id_type == int:
+            return 0
+
         return ""
 
     @classmethod

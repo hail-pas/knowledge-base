@@ -292,6 +292,7 @@ class WorkflowManager:
                     ActivityStatusEnum.pending.value,
                     ActivityStatusEnum.failed.value,
                     ActivityStatusEnum.canceled.value,
+                    ActivityStatusEnum.retrying.value
                 ]
             ]
 

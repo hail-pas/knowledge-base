@@ -49,3 +49,9 @@ class InvalidWorkflowConfigError(WorkflowError):
     """Invalid workflow configuration"""
 
     pass
+
+
+class DuplicateTaskNameError(WorkflowError):
+    """Task name already exists in Celery registry"""
+
+    pass

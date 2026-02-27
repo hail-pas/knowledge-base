@@ -35,8 +35,3 @@ class ChunkResult(BaseModel):
     overlap_start: TextPosition | None = Field(default=None, description="overlap区域起始位置（如果有）")
     overlap_end: TextPosition | None = Field(default=None, description="overlap区域结束位置（如果有）")
     metadata: dict[str, Any] = Field(default_factory=dict, description="额外的元数据信息")
-
-    class Config:
-        """Pydantic配置"""
-
-        use_enum_values = True

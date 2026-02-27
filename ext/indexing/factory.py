@@ -60,4 +60,4 @@ from ext.indexing.providers.elasticsearch import ElasticsearchProvider
 from ext.indexing.providers.milvus import MilvusProvider
 
 IndexingProviderFactory.register(IndexingBackendTypeEnum.elasticsearch.value, ElasticsearchProvider)
-IndexingProviderFactory.register("milvus", MilvusProvider)
+IndexingProviderFactory.register(IndexingBackendTypeEnum.milvus.value, MilvusProvider)

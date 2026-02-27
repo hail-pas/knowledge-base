@@ -1,5 +1,5 @@
+from enum import IntEnum
 from tortoise import fields
-from config import default
 from ext.ext_tortoise.base.models import BaseModel, CreateOnlyModel
 from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import (
@@ -29,52 +29,17 @@ class Collection(BaseModel):
     role_id = fields.UUIDField(description="角色ID", null=True)
     is_public = fields.BooleanField(default=False, description="是否公开")
     is_temp = fields.BooleanField(default=False, description="是否临时")
+    is_external = fields.BooleanField(default=False, description="是否外部")
+    # workflow DAG template 格式参考 ext/workflow 的实现
     workflow_template = fields.JSONField(default=dict, description="默认DAG工作流模版")
-    extra_config = fields.JSONField(
-        default=dict, description="额外配置：gen_faq: bool, use_mineru: bool 等，可继续扩展",
+    external_config = fields.JSONField(default=dict, description="外部知识库配置, 占位后续扩展")
+    embedding_model_config = fields.ForeignKeyField(
+        f"{_KBConnectionName}.EmbeddingModelConfig",
+        related_name="collections",
+        null=True,
+        on_delete=fields.RESTRICT,
+        description="关联嵌入模型",
     )
-    # workflow template 默认值为：
-    # {
-    #     "fetch_file": {
-    #         "input": {"file_path": file_path},
-    #         "execute_params": {"task_name": "workflow_activity.FetchFileTask"},
-    #         "depends_on": []
-    #     },
-    #     "load_file": {
-    #         "execute_params": {"task_name": "workflow_activity.LoadFileTask"},
-    #         "depends_on": ["fetch_file"]
-    #     },
-    #     "replace_content": {
-    #         "execute_params": {"task_name": "workflow_activity.ReplaceContentTask"},
-    #         "depends_on": ["load_file"],
-    #         "input": {"replace_rules": []}
-    #     },
-    #     "summary": {
-    #         "execute_params": {"task_name": "workflow_activity.SummaryTask"},
-    #         "depends_on": ["replace_content"],
-    #         "input": {"max_length": 100}
-    #     },
-    #     "split_text": {
-    #         "execute_params": {"task_name": "workflow_activity.SplitTask"},
-    #         "depends_on": ["replace_content"],
-    #         "input": {"split_policy": "markdown"}
-    #     },
-    #     "index_to_milvus": {
-    #         "execute_params": {"task_name": "workflow_activity.IndexMilvusTask"},
-    #         "depends_on": ["split_text"],
-    #         "input": {}
-    #     },
-    #     "index_to_es": {
-    #         "execute_params": {"task_name": "workflow_activity.IndexEsTask"},
-    #         "depends_on": ["replace_content"],
-    #         "input": {}
-    #     },
-    #     "generate_tag": {
-    #         "execute_params": {"task_name": "workflow_activity.GenTagTask"},
-    #         "depends_on": ["replace_content"],
-    #         "input": {}
-    #     }
-    # }
 
     class Meta:  # type: ignore
         table = "collection"
@@ -158,10 +123,16 @@ class Document(BaseModel):
     """
 
     collection = fields.ForeignKeyField(
-        f"{_KBConnectionName}.Collection", related_name="documents", on_delete=fields.CASCADE, description="关联集合",
+        f"{_KBConnectionName}.Collection",
+        related_name="documents",
+        on_delete=fields.CASCADE,
+        description="关联集合",
     )
     file_source = fields.ForeignKeyField(
-        f"{_KBConnectionName}.FileSource", related_name="documents", on_delete=fields.RESTRICT, description="关联文件源",
+        f"{_KBConnectionName}.FileSource",
+        related_name="documents",
+        on_delete=fields.RESTRICT,
+        description="关联文件源",
     )
     uri = fields.CharField(max_length=1000, description="文件唯一标识（本地为绝对路径）")
     parsed_uri = fields.CharField(max_length=1000, null=True, description="解析后的文件唯一标识")
@@ -177,6 +148,16 @@ class Document(BaseModel):
     long_summary = fields.TextField(description="文件详细摘要", null=True)
     status = fields.CharEnumField(DocumentStatusEnum, description="文件状态")
     current_workflow_uid = fields.UUIDField(null=True, description="当前关联的最新工作流UID")
+    config_flag = fields.SmallIntField(default=0, description="配置标志")
+
+
+
+    class ConfigType(IntEnum):
+        parse_image = 0  # bit 0
+        # OTHER_FLAG = 1  # bit 1
+
+    def check_config_flag(self, config_type: ConfigType) -> bool:
+        return bool(self.config_flag & (1 << config_type.value))
 
     class Meta:  # type: ignore
         table = "document"
@@ -195,6 +176,77 @@ class Document(BaseModel):
         return f"{self.file_name} ({self.status})"
 
 
+class DocumentPages(BaseModel):
+    document = fields.ForeignKeyField(f"{_KBConnectionName}.Document", related_name="pages", description="文档ID")
+    page_number = fields.SmallIntField(description="页码")
+    content = fields.TextField(description="页面内容，当只有一页的时候content太长可以不存，但是必须要有page记录，content可以从parsed_uri获取")
+    tables = fields.JSONField(description="页面表格信息")
+    images = fields.JSONField(description="页面图片信息, list[keys]")
+    metadata = fields.JSONField(description="页面元数据")
+
+    class Meta:  # type: ignore
+        table = "document_page"
+        indexes = [
+            ("document_id",),
+            ("document_id", "page_number"),
+        ]
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"{self.document_id} - Page {self.page_number}"  # type: ignore
+
+
+class DocumentChunk(BaseModel):
+    """文档切块记录表"""
+
+    document = fields.ForeignKeyField(f"{_KBConnectionName}.Document", related_name="chunks", description="文档ID")
+    content = fields.TextField(description="切块内容")
+    pages = fields.JSONField(description="切块页码列表")
+    min_page = fields.SmallIntField(description="最小页码")
+    max_page = fields.SmallIntField(description="最大页码")
+    start = fields.JSONField(description="起始位置（页码+页内偏移）")
+    end = fields.JSONField(description="结束位置（页码+页内偏移）")
+    overlap_start = fields.JSONField(null=True, description="重叠起始位置（页码+页内偏移）")
+    overlap_end = fields.JSONField(null=True, description="重叠结束位置（页码+页内偏移）")
+    metadata = fields.JSONField(description="元数据", default=dict)
+
+    class Meta:  # type: ignore
+        table = "document_chunk"
+        indexes = [
+            ("document_id",),
+            ("document_id", "min_page"),
+            ("document_id", "max_page"),
+        ]
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"{self.document_id} - Page {self.pages}"  # type: ignore
+
+
+class DocumentGeneratedFaq(BaseModel):
+    """文档生成FAQ表"""
+
+    document = fields.ForeignKeyField(
+        f"{_KBConnectionName}.Document", related_name="generated_faqs", description="文档"
+    )
+    content = fields.TextField(null=True, description="相关文档内容块")
+    question = fields.TextField(null=True, description="问题")
+    answer = fields.TextField(null=True, description="答案")
+    manual_add = fields.BooleanField(default=False, description="是否手动添加")
+    enabled = fields.BooleanField(default=True, description="是否启用")
+
+    class Meta:  # type: ignore
+        table = "document_gfaq"
+        indexes = [
+            ("document_id",),
+            ("document_id", "enabled"),
+        ]
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"{self.document_id} - {self.question}"  # type: ignore
+
+
 class Workflow(BaseModel):
     """工作流定义表
 
@@ -209,7 +261,9 @@ class Workflow(BaseModel):
         description="配置格式（yaml/json/python）",
     )
     status = fields.CharEnumField(
-        WorkflowStatusEnum, default=WorkflowStatusEnum.pending.value, description="工作流状态",
+        WorkflowStatusEnum,
+        default=WorkflowStatusEnum.pending.value,
+        description="工作流状态",
     )
     started_at = fields.DatetimeField(null=True, description="开始执行时间")
     completed_at = fields.DatetimeField(null=True, description="完成时间")
@@ -344,7 +398,7 @@ class IndexingBackendConfig(BaseModel):
     is_default = fields.BooleanField(default=False, description="是否默认配置")
     description = fields.TextField(default="", description="描述信息")
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table = "indexing_backend_config"
         table_description = "索引后端配置表"
         app = _KBConnectionName
