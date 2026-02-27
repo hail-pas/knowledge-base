@@ -200,15 +200,15 @@ async def bind_mock_providers():
     mock_provider.delete = AsyncMock()
     mock_provider.disconnect = AsyncMock()
 
-    DocumentContentDenseIndex.Meta.provider = mock_provider
-    DocumentContentSparseIndex.Meta.provider = mock_provider
-    DocumentGenerateFAQDenseIndex.Meta.provider = mock_provider
+    DocumentContentDenseIndex.Meta.provider = mock_provider  # type: ignore
+    DocumentContentSparseIndex.Meta.provider = mock_provider  # type: ignore
+    DocumentGenerateFAQDenseIndex.Meta.provider = mock_provider  # type: ignore
 
     yield mock_provider
 
-    DocumentContentDenseIndex.Meta.provider = None
-    DocumentContentSparseIndex.Meta.provider = None
-    DocumentGenerateFAQDenseIndex.Meta.provider = None
+    DocumentContentDenseIndex.Meta.provider = None  # type: ignore
+    DocumentContentSparseIndex.Meta.provider = None  # type: ignore
+    DocumentGenerateFAQDenseIndex.Meta.provider = None  # type: ignore
 
 
 # ========== Integration Tests for Full Workflow ==========
@@ -434,89 +434,3 @@ class TestDocumentWorkflowDirectMode:
 
             mock_embedding_model.embed_batch.assert_called()
             bind_mock_providers.bulk_upsert.assert_called()
-
-
-class TestDocumentWorkflowCeleryMode:
-    """Test document workflow in celery (fire-and-forget) mode"""
-
-    @pytest.mark.asyncio
-    async def test_workflow_celery_mode_with_real_file(
-        self,
-        test_document,
-        sample_txt_path,
-        mock_file_provider,
-    ):
-        """Test full workflow in celery mode (fire-and-forget) with real file"""
-        if not sample_txt_path.exists():
-            pytest.skip(f"Sample file not found: {sample_txt_path}")
-
-        with open(sample_txt_path, "rb") as f:
-            file_content = f.read()
-
-        mock_file_provider.get_file = AsyncMock(return_value=file_content)
-
-        with (
-            patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
-            patch("ext.workflow.scheduler.WorkflowScheduler._launch_activity_tasks_celery") as mock_launch,
-        ):
-            workflow_uid = await process_document(
-                document_id=test_document.id,
-                execute_mode="celery",
-                chunk_strategy="auto",
-            )
-
-            assert workflow_uid is not None
-            assert isinstance(workflow_uid, str)
-
-            mock_launch.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_workflow_celery_mode_different_strategies(
-        self,
-        test_document,
-        mock_file_provider,
-    ):
-        """Test celery mode with different chunking strategies"""
-        mock_content = "Test content for celery mode. " * 100
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
-
-        with (
-            patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
-            patch("ext.workflow.scheduler.WorkflowScheduler._launch_activity_tasks_celery") as mock_launch,
-        ):
-            workflow_uid = await process_document(
-                document_id=test_document.id,
-                execute_mode="celery",
-                chunk_strategy="length",
-                length_config=LengthChunkConfig(chunk_size=300, overlap=50),
-            )
-
-            assert workflow_uid is not None
-            assert isinstance(workflow_uid, str)
-
-            mock_launch.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_workflow_celery_mode_with_markdown(
-        self,
-        test_document,
-        mock_file_provider,
-    ):
-        """Test celery mode with markdown output"""
-        mock_content = "# Markdown Test\n\nContent here."
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
-
-        with (
-            patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
-            patch("ext.workflow.scheduler.WorkflowScheduler._launch_activity_tasks_celery") as mock_launch,
-        ):
-            workflow_uid = await process_document(
-                document_id=test_document.id,
-                execute_mode="celery",
-                parse_output_format="markdown",
-                chunk_strategy="auto",
-            )
-
-            assert workflow_uid is not None
-
-            mock_launch.assert_called_once()

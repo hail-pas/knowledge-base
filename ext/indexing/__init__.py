@@ -1,6 +1,6 @@
 """Indexing ORM 模块入口"""
 
-from ext.indexing.base import BaseIndexModel, IndexModelFactory
+from ext.indexing.base import BaseIndexModel
 from ext.indexing.types import (
     QueryClause,
     DenseSearchClause,
@@ -9,7 +9,7 @@ from ext.indexing.types import (
     FilterClause,
     SearchCursor,
 )
-from ext.indexing.factory import IndexingProviderFactory
+from ext.indexing.factory import IndexingProviderFactory, IndexModelFactory
 
 __all__ = [
     "BaseIndexModel",

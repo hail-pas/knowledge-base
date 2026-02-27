@@ -8,9 +8,8 @@ from ext.text_chunker import TextChunker
 from ext.document_parser.core.parse_result import ParseResult, OutputFormat, PageResult
 from ext.embedding import EmbeddingModelFactory
 from ext.indexing.types import FilterClause
+from ext.indexing.models import CollectionIndexModelHelper
 from ext.file_source import FileSourceFactory
-
-from service.collection.helper import CollectionIndexHelper
 from service.workflow.document.schemas import (
     DocumentParseTaskInput,
     DocumentChunkTaskInput,
@@ -227,7 +226,7 @@ class IndexChunkTask(ActivityTaskTemplate):
         embeddings = await embedding_model.embed_batch(texts)
 
         # Create index helper
-        helper = CollectionIndexHelper(document.collection)
+        helper = CollectionIndexModelHelper(document.collection)
 
         # Prepare sparse index documents
         sparse_docs = []
@@ -296,7 +295,7 @@ class IndexChunkTask(ActivityTaskTemplate):
         document = await get_document_for_workflow(task_input.document_id)
 
         try:
-            helper = CollectionIndexHelper(document.collection)
+            helper = CollectionIndexModelHelper(document.collection)
 
             # Delete from both indices
             filter_clause = FilterClause(equals={"file_id": task_input.document_id})
