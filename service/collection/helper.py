@@ -154,17 +154,14 @@ class CollectionService:
         - Update dense_model and faq_model indexes
         - If any failure, rollback to old embedding model
         """
-        old_config = await self.collection.embedding_model_config
+        old_config = await self.collection.embedding_model_config  # type: ignore
 
         self.collection.embedding_model_config = new_embedding_model_config
+
+        # TODO: 切换embedding触发逻辑
+
         await self.collection.save()
 
-        try:
-            pass
-        except Exception as e:
-            await self.collection.embedding_model_config.set(old_config)
-            await self.collection.save()
-            raise e
 
     async def can_delete_collection(self) -> bool:
         """

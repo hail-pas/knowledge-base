@@ -1,3 +1,4 @@
+import tempfile
 from typing import Any
 from pathlib import Path
 from loguru import logger
@@ -41,12 +42,20 @@ class DocumentParseTask(ActivityTaskTemplate):
 
         # Get file content from file source
         provider = await FileSourceFactory.create(document.file_source)
-        file_bytes = await provider.get_file(document.uri)
+
+        # 下载文件到临时文件，处理完之后删除
+        # 当uri为 http 地址时，则不需要下载，直接使用 document.uri 进行下一步解析，否则使用本地临时文件路径
+
+        if document.uri.startswith("http"):
+            file_path = document.uri
+        else:
+            file_path = tempfile.mkstemp(suffix=document.extension)[1]
+            await provider.download_to_local(document.uri, file_path)
 
         # Parse document with configured parameters
         parser = DocumentParser()
         parse_result = await parser.parse(
-            file_path=document.uri,
+            file_path=file_path,
             engine=task_input.engine,  # None = auto-detect
             output_format=task_input.output_format,
             options=task_input.options,

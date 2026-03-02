@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiofiles
 import pytest
 
 from ext.ext_tortoise.enums import (
@@ -233,7 +234,12 @@ class TestDocumentWorkflowDirectMode:
         with open(sample_txt_path, "rb") as f:
             file_content = f.read()
 
+        async def mock_download_to_local(uri: str, local_path: str) -> None:
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(file_content)
+
         mock_file_provider.get_file = AsyncMock(return_value=file_content)
+        mock_file_provider.download_to_local = AsyncMock(side_effect=mock_download_to_local)
 
         with (
             patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
@@ -266,7 +272,13 @@ class TestDocumentWorkflowDirectMode:
     ):
         """Test workflow with length-based chunking strategy"""
         mock_content = "Test document content for length chunking. " * 100
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
+
+        async def mock_download_to_local(uri: str, local_path: str) -> None:
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(mock_content.encode())
+
+        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode())
+        mock_file_provider.download_to_local = AsyncMock(side_effect=mock_download_to_local)
 
         with (
             patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
@@ -294,7 +306,13 @@ class TestDocumentWorkflowDirectMode:
     ):
         """Test workflow with heading-based chunking strategy"""
         mock_content = "# Heading 1\n\nContent under heading 1.\n\n## Heading 2\n\nContent under heading 2.\n\n" * 20
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
+
+        async def mock_download_to_local(uri: str, local_path: str) -> None:
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(mock_content.encode())
+
+        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode())
+        mock_file_provider.download_to_local = AsyncMock(side_effect=mock_download_to_local)
 
         with (
             patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
@@ -324,7 +342,13 @@ class TestDocumentWorkflowDirectMode:
     ):
         """Test workflow with delimiter-based chunking strategy"""
         mock_content = "Paragraph 1\n\nParagraph 2\n\nParagraph 3\n\n" * 20
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
+
+        async def mock_download_to_local(uri: str, local_path: str) -> None:
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(mock_content.encode())
+
+        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode())
+        mock_file_provider.download_to_local = AsyncMock(side_effect=mock_download_to_local)
 
         with (
             patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
@@ -354,7 +378,13 @@ class TestDocumentWorkflowDirectMode:
     ):
         """Test workflow with markdown output format"""
         mock_content = "# Test Document\n\nThis is a test."
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
+
+        async def mock_download_to_local(uri: str, local_path: str) -> None:
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(mock_content.encode())
+
+        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode())
+        mock_file_provider.download_to_local = AsyncMock(side_effect=mock_download_to_local)
 
         with (
             patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
@@ -384,7 +414,13 @@ class TestDocumentWorkflowDirectMode:
     ):
         """Test that workflow respects task dependencies (parse -> chunk -> index)"""
         mock_content = "Test document content for dependency check. " * 100
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
+
+        async def mock_download_to_local(uri: str, local_path: str) -> None:
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(mock_content.encode())
+
+        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode())
+        mock_file_provider.download_to_local = AsyncMock(side_effect=mock_download_to_local)
 
         with (
             patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),
@@ -414,7 +450,13 @@ class TestDocumentWorkflowDirectMode:
     ):
         """Test that workflow creates embeddings and indexes"""
         mock_content = "Test content for embedding and indexing. " * 50
-        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode("utf-8"))
+
+        async def mock_download_to_local(uri: str, local_path: str) -> None:
+            async with aiofiles.open(local_path, "wb") as f:
+                await f.write(mock_content.encode())
+
+        mock_file_provider.get_file = AsyncMock(return_value=mock_content.encode())
+        mock_file_provider.download_to_local = AsyncMock(side_effect=mock_download_to_local)
 
         with (
             patch("ext.file_source.FileSourceFactory.create", return_value=mock_file_provider),

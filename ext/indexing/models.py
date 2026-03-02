@@ -55,7 +55,7 @@ class DocumentGenerateFAQDenseIndex(_DocumentBaseIndexModel):
     question: str
     dense_vector: list[float]
     answer: str
-    db_faq_id: int
+    db_faq_id: int # 当为0的时候则表示由文件本身内容切分而来的
 
     class Meta:  # type: ignore
         index_name: str = "document_gfaq"

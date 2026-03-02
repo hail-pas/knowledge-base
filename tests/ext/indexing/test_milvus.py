@@ -24,7 +24,7 @@ async def test_milvus_index_model(test_index_model, milvus_config):
         created_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
         updated_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
 
-    index_model.Meta.provider = await IndexingProviderFactory.create(milvus_config)
+    index_model.Meta.provider = await IndexingProviderFactory.create(milvus_config, use_cache=False)
     return index_model
 
 
@@ -35,7 +35,7 @@ async def test_milvus_index_model_with_partition(test_index_model_with_partition
         created_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
         updated_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
 
-    index_model.Meta.provider = await IndexingProviderFactory.create(milvus_config)
+    index_model.Meta.provider = await IndexingProviderFactory.create(milvus_config, use_cache=False)
     return index_model
 
 

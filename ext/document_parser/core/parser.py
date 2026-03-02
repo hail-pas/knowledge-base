@@ -56,7 +56,7 @@ class DocumentParser:
             engine_names = self._selection_rules.get(ext, [])
 
             if not engine_names:
-                raise ValueError(f"不支持的文件类型: {ext}")
+                raise ValueError(f"不支持的文件类型: {ext}, file_path: {file_path}")
 
             logger.info(f"自动选择引擎: {engine_names}")
 

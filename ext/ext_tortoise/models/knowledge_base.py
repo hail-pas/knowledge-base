@@ -149,7 +149,7 @@ class Document(BaseModel):
     status = fields.CharEnumField(DocumentStatusEnum, description="文件状态")
     current_workflow_uid = fields.UUIDField(null=True, description="当前关联的最新工作流UID")
     config_flag = fields.SmallIntField(default=0, description="配置标志")
-
+    workflow_template = fields.JSONField(default=dict, description="DAG工作流模版")
 
 
     class ConfigType(IntEnum):

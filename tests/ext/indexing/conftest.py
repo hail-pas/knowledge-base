@@ -179,7 +179,7 @@ def test_index_model():
         updated_at: datetime = datetime.now()
 
         class Meta:  # type: ignore
-            index_name: str = "test_es_indexing"
+            index_name: str = "test_kbservice_indexing"
             dense_vector_field: str = "embedding"
             dense_vector_dimension: int = 1536
 
@@ -200,7 +200,7 @@ def test_index_model_with_partition():
         updated_at: datetime = datetime.now()
 
         class Meta:  # type: ignore
-            index_name: str = "test_es_indexing"
+            index_name: str = "test_kbservice_indexing_with_partition"
             dense_vector_field: str = "embedding"
             dense_vector_dimension: int = 1536
             partition_key: str = "tenant_id"

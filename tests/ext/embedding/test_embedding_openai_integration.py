@@ -5,7 +5,6 @@ OpenAI Embedding Provider 集成测试
 """
 
 import pytest
-import asyncio
 
 # 导入 providers 模块以触发自动注册
 import ext.embedding.providers
