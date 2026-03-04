@@ -92,11 +92,6 @@ def gen_tortoise_config_dict() -> dict:
                         f"ext.ext_tortoise.models.{k.value}",
                         "aerich.models",
                     ]
-                    # + [
-                    #     "aerich.models",
-                    # ]
-                    # if k.value == ConnectionNameEnum.user_center.value
-                    # else []
                 ),
                 "default_connection": k.value,
             }

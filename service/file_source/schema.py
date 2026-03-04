@@ -67,22 +67,20 @@ class FileSourceCreate(
 
 @optional()
 class FileSourceUpdate(BaseModel):
-    name: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
-    endpoint: str | None = None
-    region: str | None = None
-    use_ssl: bool | None = None
-    verify_ssl: bool | None = None
-    timeout: int | None = None
-    max_retries: int | None = None
-    concurrent_limit: int | None = None
-    max_connections: int | None = None
+    # name: str | None = None
+    # access_key: str | None = None
+    # secret_key: str | None = None
+    # endpoint: str | None = None
+    # region: str | None = None
+    # use_ssl: bool | None = None
+    # verify_ssl: bool | None = None
+    # timeout: int | None = None
+    # max_retries: int | None = None
+    # concurrent_limit: int | None = None
+    # max_connections: int | None = None
     is_enabled: bool | None = None
     is_default: bool | None = None
-    user_id: UUID | None = None
     description: str | None = None
-    extra_config: dict | None = None
 
 
 class FileSourceList(

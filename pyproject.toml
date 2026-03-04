@@ -45,6 +45,7 @@ dependencies = [
     "elasticsearch[async,orjson]>=8.0.0,<9.0.0",
     "pymilvus>=2.6.6",
 
+    # TODO: 后续可以把依赖拆分， ext 下的目录设为 lib 单独管理
     # parse
     "markitdown[all]==0.1.5", # ffmpeg/avconv
     "PyMuPDF==1.27.1",

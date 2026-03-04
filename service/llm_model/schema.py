@@ -31,7 +31,7 @@ class LLMModelConfigCreate(
             AnthropicExtraConfig(**extra_config)
 
     def validate_required_fields_by_type(self) -> None:
-        type_ = self.type
+        type_ = self.type  # type: ignore
 
         if type_ in (
             LLMModelTypeEnum.openai,
@@ -39,31 +39,31 @@ class LLMModelConfigCreate(
             LLMModelTypeEnum.deepseek,
             LLMModelTypeEnum.anthropic,
         ):
-            if not self.api_key:
+            if not self.api_key:  # type: ignore
                 raise ApiException(f"{type_.value} 需要 api_key")
 
     def validate_extra_config(self) -> None:
-        extra_config = self.extra_config or {}
-        self.validate_extra_config_by_type(self.type, extra_config)
+        extra_config = self.extra_config or {}  # type: ignore
+        self.validate_extra_config_by_type(self.type, extra_config)  # type: ignore
 
 
 @optional()
 class LLMModelConfigUpdate(BaseModel):
-    name: str | None = None
-    model_name: str | None = None
-    api_key: str | None = None
-    base_url: str | None = None
-    max_tokens: int | None = None
-    supports_chat: bool | None = None
-    supports_completion: bool | None = None
-    supports_streaming: bool | None = None
-    supports_function_calling: bool | None = None
-    supports_vision: bool | None = None
-    default_temperature: float | None = None
-    default_top_p: float | None = None
-    max_retries: int | None = None
-    timeout: int | None = None
-    extra_config: dict | None = None
+    # name: str | None = None
+    # model_name: str | None = None
+    # api_key: str | None = None
+    # base_url: str | None = None
+    # max_tokens: int | None = None
+    # supports_chat: bool | None = None
+    # supports_completion: bool | None = None
+    # supports_streaming: bool | None = None
+    # supports_function_calling: bool | None = None
+    # supports_vision: bool | None = None
+    # default_temperature: float | None = None
+    # default_top_p: float | None = None
+    # max_retries: int | None = None
+    # timeout: int | None = None
+    # extra_config: dict | None = None
     is_enabled: bool | None = None
     is_default: bool | None = None
     description: str | None = None

@@ -40,7 +40,6 @@ async def setup_context():
             "knowledge_base": {
                 "models": [
                     "ext.ext_tortoise.models.knowledge_base",
-                    # "aerich.models",
                 ],
                 "default_connection": "knowledge_base",
             },

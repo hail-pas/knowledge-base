@@ -74,7 +74,7 @@ class FileSource(BaseModel):
         null=True,
         description="存储位置"
         "  - type=local_file: 本地文件路径（如 /data/documents）"
-        "  - type=s3/minio/aliyun_oss: 存储桶名称（如 my-bucket）",
+        "  - type=s3/minio/aliyun_oss: 存储桶名称（如 my-bucket）, sharepoint: 站点路径, api: API路径",
     )
 
     # ========== 连接信息（对象存储通用）==========

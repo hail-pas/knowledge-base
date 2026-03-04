@@ -1,6 +1,9 @@
 import sys
 import asyncio
+import argparse
 from uuid import UUID
+
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))  # type: ignore
 
 from loguru import logger
 
@@ -11,8 +14,6 @@ from ext.ext_tortoise import enums
 from api.entrypoint.main import import_app
 from deploy.bin.permission.data import MenuAndPerm
 from ext.ext_tortoise.models.user_center import Account, Resource, Permission
-
-sys.path.append(".")  # noqa
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -148,8 +149,14 @@ async def main(app_path: str):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python script.py <app_path>")
-        sys.exit(1)
-    app_path = sys.argv[1]
-    asyncio.run(main(app_path))
+    parser = argparse.ArgumentParser(
+        description="Update menu and permissions for the application"
+    )
+    parser.add_argument(
+        "app_path",
+        type=str,
+        help="Path to the application module (e.g., 'api.entrypoint.main')"
+    )
+
+    args = parser.parse_args()
+    asyncio.run(main(args.app_path))
