@@ -54,6 +54,7 @@ class DocumentService(CollectionService):
         file_name: str,
         display_name: str | None,
         file_source: FileSource,
+        config_flag: int
     ) -> Document:
         """
         通过上传文件创建文档
@@ -105,7 +106,7 @@ class DocumentService(CollectionService):
             long_summary=None,
             status=DocumentStatusEnum.pending.value,
             current_workflow_uid=None,
-            config_flag=0,
+            config_flag=config_flag,
             workflow_template=self.collection.workflow_template,
         )
 
@@ -117,6 +118,7 @@ class DocumentService(CollectionService):
         uri: str,
         display_name: str | None,
         file_source: FileSource,
+        config_flag: int
     ) -> Document:
         """
         通过 URI 创建文档
@@ -171,7 +173,7 @@ class DocumentService(CollectionService):
             long_summary=None,
             status=DocumentStatusEnum.pending.value,
             current_workflow_uid=None,
-            config_flag=0,
+            config_flag=config_flag,
             workflow_template=self.collection.workflow_template,
         )
 

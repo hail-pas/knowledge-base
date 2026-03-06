@@ -13,14 +13,16 @@ from service.embedding_model.schema import EmbeddingModelConfigList
 
 class ExternalConfigSchema(BaseModel):
     """External KB config - placeholder for future fields"""
-
-    pass
-
+    endpoint: str
+    authorization: str
+    collection_id: str
 
 
 class CollectionCreate(
-    pydantic_model_creator(Collection, name="CollectionCreateBase", exclude_readonly=True)
+    pydantic_model_creator(Collection, name="CollectionCreateBase", exclude_readonly=True, exclude=("user_id", "tenant_id", "role_id", ))
 ):
+    workflow_template: dict = Field(default_factory=dict, description="工作流DAG配置，非外部知识库时必需")
+    external_config: ExternalConfigSchema | None = Field(None, description="外部知识库配置")
     embedding_model_config_id: Optional[int] = Field(None, description="关联嵌入模型ID")
 
     @field_validator("external_config", mode="before")
@@ -33,7 +35,7 @@ class CollectionCreate(
         return v
 
     @model_validator(mode="after")
-    def validate_external_collection_constraints(self) -> "CollectionCreate":
+    def validate_instance(self) -> "CollectionCreate":
         """Validate constraints for external collections"""
         if self.is_external:  # type: ignore
             if self.embedding_model_config_id is not None:
@@ -99,6 +101,7 @@ class CollectionList(
 
 class CollectionDetail(CollectionList):
     embedding_model_config: EmbeddingModelConfigList | None = None
+    summary: str = ""
 
 
 @as_query

@@ -3,7 +3,7 @@
 
 定义各种切块策略的配置参数
 """
-
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -57,10 +57,9 @@ class JsonChunkConfig(BaseModel):
     用于处理结构化的JSON数据
     """
 
-    mode: str = Field(default="simple", description="切块模式: 'simple' (键值对) 或 'json' (保持JSON格式)")
+    mode: Literal["simple", "json"] = Field(default="simple", description="切块模式: 'simple' (键值对) 或 'json' (保持JSON格式)")
     keys: list[str] = Field(default_factory=list, description="需要提取的key列表（空表示全部）")
-    key_separator: str = Field(default=", ", description="键之间分隔符")
-    value_separator: str = Field(default=": ", description="键值分隔符")
+    key_separator: str = Field(default=",", description="键之间分隔符")
+    value_separator: str = Field(default=":", description="键值分隔符")
     item_joiner: str = Field(default="\\n", description="条目间连接符")
     max_chunk_size: int = Field(default=1000, ge=1, description="单个切块最大字符数")
-    encoding: str = Field(default="utf-8", description="JSON编码")

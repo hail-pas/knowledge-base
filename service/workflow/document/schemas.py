@@ -80,8 +80,8 @@ class IndexChunkTaskInput(BaseModel):
     document_id: int = Field(..., description="Document primary key")
 
     # Indexing configuration
-    batch_size: int = Field(default=100, ge=1, description="Batch size for bulk insert operations")
-    concurrent_batches: int = Field(default=5, ge=1, description="Number of concurrent batch operations")
+    batch_size: int = Field(default=20, ge=1, description="Batch size for bulk insert operations")
+    concurrent_batches: int = Field(default=2, ge=1, description="Number of concurrent batch operations")
 
 
 class GenerateTagsTaskInput(BaseModel):
@@ -89,18 +89,11 @@ class GenerateTagsTaskInput(BaseModel):
 
     document_id: int = Field(..., description="Document primary key")
 
-    # Future parameters for tag generation
-    max_tags: Optional[int] = Field(default=10, description="Maximum number of tags to generate")
-    tag_source: Optional[Literal["content", "metadata", "both"]] = Field(
-        default="content", description="Source for tag generation"
-    )
-
 
 class GenerateFAQTaskInput(BaseModel):
     """Input parameters for GenerateFAQTask (placeholder)"""
 
     document_id: int = Field(..., description="Document primary key")
-
     # Future parameters for FAQ generation
     max_faq: Optional[int] = Field(default=5, description="Maximum number of FAQ pairs to generate")
-    faq_style: Optional[Literal["concise", "detailed"]] = Field(default="concise", description="FAQ answer style")
+    llm_model_config_id: Optional[int] = Field(default=0, description="指定使用的大模型配置")

@@ -78,7 +78,10 @@ class WorkflowTemplateValidator:
         input_schema_class = cls.VALID_TASKS.get(task_name)
         if input_schema_class:
             try:
-                input_schema_class(**input_data)
+                if "document_id" in input_data:
+                    input_data.pop("document_id")
+
+                input_schema_class(**input_data, document_id=0)  # template创建时不需要 document_id
             except Exception as e:
                 raise ValueError(f"活动 '{activity_name}' 的 input 验证失败: {str(e)}")
 

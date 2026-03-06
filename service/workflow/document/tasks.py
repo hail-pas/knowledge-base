@@ -326,7 +326,6 @@ class GenerateTagsTask(ActivityTaskTemplate):
         task_input = GenerateTagsTaskInput(**self.input)
         logger.info(
             f"Generating tags for document {task_input.document_id} (placeholder), "
-            f"max_tags={task_input.max_tags}, source={task_input.tag_source}"
         )
 
         return {"tags": [], "message": "Placeholder - tag generation not implemented"}
@@ -340,7 +339,7 @@ class GenerateFAQTask(ActivityTaskTemplate):
         task_input = GenerateFAQTaskInput(**self.input)
         logger.info(
             f"Generating FAQ for document {task_input.document_id} (placeholder), "
-            f"max_faq={task_input.max_faq}, style={task_input.faq_style}"
+            f"max_faq={task_input.max_faq}, style={task_input.llm_model_config_id}"
         )
 
         return {"faq_count": 0, "message": "Placeholder - FAQ generation not implemented"}

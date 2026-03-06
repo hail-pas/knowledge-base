@@ -106,7 +106,7 @@ class WorkflowStatusEnum(StrEnum):
 
 class ActivityStatusEnum(StrEnum):
     pending = ("pending", "待执行")
-    running = ("running", "运行中") # activity 实际执行时设置
+    running = ("running", "运行中")  # activity 实际执行时设置
     completed = ("completed", "已完成")
     failed = ("failed", "失败")
     canceled = ("canceled", "已取消")
@@ -166,3 +166,23 @@ class IndexingStatusEnum(StrEnum):
     inactive = ("inactive", "未活跃")
     error = ("error", "错误")
     deleting = ("deleting", "删除中")
+
+
+# =============================================================================
+# RAG 平台 - Chat 相关枚举
+# =============================================================================
+
+
+class ChatModeEnum(StrEnum):
+    """聊天模式"""
+
+    normal = ("normal", "普通聊天")
+    rag = ("rag", "RAG 聊天")
+
+
+class MessageStatusEnum(StrEnum):
+    """消息处理状态"""
+
+    pending = ("pending", "处理中")
+    success = ("success", "成功")
+    failed = ("failed", "失败")

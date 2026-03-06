@@ -53,6 +53,7 @@ async def create_document(
     file: UploadFile | None = File(None, description="上传的文件"),
     uri: str | None = Form(None, description="文件URI"),
     display_name: str | None = Form(None, description="显示名称"),
+    config_flag: int = Form(0, description="")
 ) -> Resp[DocumentList]:
     """
     创建文档，支持两种方式：
@@ -101,6 +102,7 @@ async def create_document(
             file_name=file_name,  # type: ignore
             display_name=display_name,
             file_source=file_source,
+            config_flag=config_flag
         )
     else:
         # URI 方式
@@ -108,6 +110,7 @@ async def create_document(
             uri=uri,  # type: ignore
             display_name=display_name,
             file_source=file_source,
+            config_flag=config_flag
         )
 
     return Resp(data=DocumentList.model_validate(document))
