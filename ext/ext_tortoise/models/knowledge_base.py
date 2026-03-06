@@ -212,6 +212,7 @@ class DocumentChunk(BaseModel):
     overlap_start = fields.JSONField(null=True, description="重叠起始位置（页码+页内偏移）")
     overlap_end = fields.JSONField(null=True, description="重叠结束位置（页码+页内偏移）")
     metadata = fields.JSONField(description="元数据", default=dict)
+    manual_add = fields.BooleanField(default=False, description="是否手动添加")
 
     class Meta:  # type: ignore
         table = "document_chunk"
@@ -505,140 +506,140 @@ class ConversationMemory(BaseModel):
         return f"ConversationMemory({self.session_id})"
 
 
-class ChatMessage(BaseModel):
-    """聊天消息主表
+# class ChatMessage(BaseModel):
+#     """聊天消息主表
 
-    存储基本字段和用户输入
-    """
+#     存储基本字段和用户输入
+#     """
 
-    # 主键
-    uid = fields.UUIDField(unique=True, description="消息唯一标识")
+#     # 主键
+#     uid = fields.UUIDField(unique=True, description="消息唯一标识")
 
-    # 关联字段
-    user_id = fields.IntField(description="用户ID")
-    session_id = fields.CharField(max_length=255, description="会话ID")
-    collection_ids = fields.JSONField(default=list, description="关联的集合ID列表 [1, 2, ...]")
+#     # 关联字段
+#     user_id = fields.IntField(description="用户ID")
+#     session_id = fields.CharField(max_length=255, description="会话ID")
+#     collection_ids = fields.JSONField(default=list, description="关联的集合ID列表 [1, 2, ...]")
 
-    # 聊天配置快照
-    chat_mode = fields.CharEnumField(
-        ChatModeEnum, default=ChatModeEnum.normal.value, description="聊天模式: normal/rag"
-    )
+#     # 聊天配置快照
+#     chat_mode = fields.CharEnumField(
+#         ChatModeEnum, default=ChatModeEnum.normal.value, description="聊天模式: normal/rag"
+#     )
 
-    # LLM 配置快照
-    llm_model_name = fields.CharField(max_length=100, null=True, description="使用的LLM模型名称")
-    llm_temperature = fields.FloatField(null=True, description="LLM温度参数")
-    llm_max_tokens = fields.IntField(null=True, description="LLM最大生成token数")
+#     # LLM 配置快照
+#     llm_model_name = fields.CharField(max_length=100, null=True, description="使用的LLM模型名称")
+#     llm_temperature = fields.FloatField(null=True, description="LLM温度参数")
+#     llm_max_tokens = fields.IntField(null=True, description="LLM最大生成token数")
 
-    # 检索配置快照（RAG 模式）
-    retrieval_mode = fields.CharField(max_length=20, null=True, description="检索模式: dense/sparse/hybrid")
-    retrieval_top_k = fields.IntField(null=True, description="检索返回数量")
+#     # 检索配置快照（RAG 模式）
+#     retrieval_mode = fields.CharField(max_length=20, null=True, description="检索模式: dense/sparse/hybrid")
+#     retrieval_top_k = fields.IntField(null=True, description="检索返回数量")
 
-    # ========== 用户输入（三个字段） ==========
-    user_input_text = fields.TextField(null=True, description="用户输入的文本内容")
-    user_input_images = fields.JSONField(default=list, description="用户输入的图片 OSS key 列表")
-    user_input_files = fields.JSONField(default=list, description="用户输入的文件 OSS key 列表")
+#     # ========== 用户输入（三个字段） ==========
+#     user_input_text = fields.TextField(null=True, description="用户输入的文本内容")
+#     user_input_images = fields.JSONField(default=list, description="用户输入的图片 OSS key 列表")
+#     user_input_files = fields.JSONField(default=list, description="用户输入的文件 OSS key 列表")
 
-    # ========== 处理结果摘要 ==========
-    status = fields.CharEnumField(
-        MessageStatusEnum, default=MessageStatusEnum.pending.value, description="处理状态: pending/success/failed"
-    )
-    final_response = fields.TextField(null=True, description="最终返回给用户的响应内容")
+#     # ========== 处理结果摘要 ==========
+#     status = fields.CharEnumField(
+#         MessageStatusEnum, default=MessageStatusEnum.pending.value, description="处理状态: pending/success/failed"
+#     )
+#     final_response = fields.TextField(null=True, description="最终返回给用户的响应内容")
 
-    # 性能指标
-    total_latency_ms = fields.IntField(null=True, description="端到端总耗时（毫秒）")
+#     # 性能指标
+#     total_latency_ms = fields.IntField(null=True, description="端到端总耗时（毫秒）")
 
-    # 错误信息
-    error_message = fields.TextField(null=True, description="错误信息（如果失败）")
+#     # 错误信息
+#     error_message = fields.TextField(null=True, description="错误信息（如果失败）")
 
-    # 时间戳
-    completed_at = fields.DatetimeField(null=True, description="完成时间")
+#     # 时间戳
+#     completed_at = fields.DatetimeField(null=True, description="完成时间")
 
-    class Meta:  # type: ignore
-        table = "chat_message"
-        table_description = "聊天消息主表（基本字段 + 用户输入）"
-        app = _KBConnectionName
-        indexes = [
-            ("user_id",),
-            ("user_id", "session_id"),
-            ("session_id", "created_at"),
-            ("status",),
-            ("created_at",),
-        ]
-        ordering = ["-created_at"]
+#     class Meta:  # type: ignore
+#         table = "chat_message"
+#         table_description = "聊天消息主表（基本字段 + 用户输入）"
+#         app = _KBConnectionName
+#         indexes = [
+#             ("user_id",),
+#             ("user_id", "session_id"),
+#             ("session_id", "created_at"),
+#             ("status",),
+#             ("created_at",),
+#         ]
+#         ordering = ["-created_at"]
 
-    def __str__(self):
-        return f"ChatMessage({self.uid}, user={self.user_id})"
+#     def __str__(self):
+#         return f"ChatMessage({self.uid}, user={self.user_id})"
 
 
-class ChatMessageArtifact(BaseModel):
-    """聊天消息追踪表（1:1 关系）
+# class ChatMessageArtifact(BaseModel):
+#     """聊天消息追踪表（1:1 关系）
 
-    存储完整的步骤和产物信息，支持实时追踪和事后分析
-    基于新的实时事件流协议设计
-    """
+#     存储完整的步骤和产物信息，支持实时追踪和事后分析
+#     基于新的实时事件流协议设计
+#     """
 
-    # 主键
-    uid = fields.UUIDField(unique=True, description="追踪唯一标识")
+#     # 主键
+#     uid = fields.UUIDField(unique=True, description="追踪唯一标识")
 
-    # 1:1 关联主表
-    message = fields.OneToOneField(
-        f"{_KBConnectionName}.ChatMessage",
-        related_name="artifact",
-        on_delete=fields.CASCADE,
-        description="关联的消息（1:1）",
-    )
+#     # 1:1 关联主表
+#     message = fields.OneToOneField(
+#         f"{_KBConnectionName}.ChatMessage",
+#         related_name="artifact",
+#         on_delete=fields.CASCADE,
+#         description="关联的消息（1:1）",
+#     )
 
-    # ========== 核心数据（JSON 存储） ==========
+#     # ========== 核心数据（JSON 存储） ==========
 
-    # 步骤列表（按执行顺序，支持嵌套）
-    steps = fields.JSONField(
-        default=list,
-        description="步骤列表（JSON 数组），每个元素包含 step_id, parent_step_id, step_type, status, input, output 等",
-    )
+#     # 步骤列表（按执行顺序，支持嵌套）
+#     steps = fields.JSONField(
+#         default=list,
+#         description="步骤列表（JSON 数组），每个元素包含 step_id, parent_step_id, step_type, status, input, output 等",
+#     )
 
-    # 产物列表（按创建顺序）
-    artifacts = fields.JSONField(
-        default=list, description="产物列表（JSON 数组），每个元素包含 artifact_id, step_id, artifact_type, data 等"
-    )
+#     # 产物列表（按创建顺序）
+#     artifacts = fields.JSONField(
+#         default=list, description="产物列表（JSON 数组），每个元素包含 artifact_id, step_id, artifact_type, data 等"
+#     )
 
-    # 完整事件流快照（可选，用于调试）
-    event_stream = fields.JSONField(
-        default=list, description="完整事件流快照（JSON 数组），包含所有推送的事件，用于调试和审计"
-    )
+#     # 完整事件流快照（可选，用于调试）
+#     event_stream = fields.JSONField(
+#         default=list, description="完整事件流快照（JSON 数组），包含所有推送的事件，用于调试和审计"
+#     )
 
-    # ========== 步骤统计 ==========
+#     # ========== 步骤统计 ==========
 
-    total_steps = fields.IntField(default=0, description="总步骤数")
-    pending_steps = fields.IntField(default=0, description="待处理步骤数")
-    running_steps = fields.IntField(default=0, description="运行中步骤数")
-    completed_steps = fields.IntField(default=0, description="成功步骤数")
-    failed_steps = fields.IntField(default=0, description="失败步骤数")
-    cancelled_steps = fields.IntField(default=0, description="已取消步骤数")
+#     total_steps = fields.IntField(default=0, description="总步骤数")
+#     pending_steps = fields.IntField(default=0, description="待处理步骤数")
+#     running_steps = fields.IntField(default=0, description="运行中步骤数")
+#     completed_steps = fields.IntField(default=0, description="成功步骤数")
+#     failed_steps = fields.IntField(default=0, description="失败步骤数")
+#     cancelled_steps = fields.IntField(default=0, description="已取消步骤数")
 
-    # ========== 产物统计 ==========
+#     # ========== 产物统计 ==========
 
-    total_artifacts = fields.IntField(default=0, description="总产物数")
+#     total_artifacts = fields.IntField(default=0, description="总产物数")
 
-    # ========== 时间戳 ==========
+#     # ========== 时间戳 ==========
 
-    first_step_at = fields.DatetimeField(null=True, description="第一个步骤开始时间")
-    last_step_at = fields.DatetimeField(null=True, description="最后一个步骤完成时间")
+#     first_step_at = fields.DatetimeField(null=True, description="第一个步骤开始时间")
+#     last_step_at = fields.DatetimeField(null=True, description="最后一个步骤完成时间")
 
-    # ========== 元数据 ==========
+#     # ========== 元数据 ==========
 
-    metadata = fields.JSONField(default=dict, description="额外的元数据")
+#     metadata = fields.JSONField(default=dict, description="额外的元数据")
 
-    class Meta:  # type: ignore
-        table = "chat_message_artifact"
-        table_description = "聊天消息追踪表（1:1，完整步骤和产物信息）"
-        app = _KBConnectionName
-        indexes = [
-            ("message_id",),
-            ("first_step_at",),
-            ("last_step_at",),
-            ("created_at",),
-        ]
-        ordering = ["-last_step_at"]
+#     class Meta:  # type: ignore
+#         table = "chat_message_artifact"
+#         table_description = "聊天消息追踪表（1:1，完整步骤和产物信息）"
+#         app = _KBConnectionName
+#         indexes = [
+#             ("message_id",),
+#             ("first_step_at",),
+#             ("last_step_at",),
+#             ("created_at",),
+#         ]
+#         ordering = ["-last_step_at"]
 
-    def __str__(self):
-        return f"ChatMessageArtifact(uid={self.uid}, steps={self.total_steps}, artifacts={self.total_artifacts})"
+#     def __str__(self):
+#         return f"ChatMessageArtifact(uid={self.uid}, steps={self.total_steps}, artifacts={self.total_artifacts})"

@@ -75,7 +75,11 @@ def embedding_model_setup(client, request):
                     "depends_on": ["parse_document"],
                 },
             },
-            "external_config": {},
+            "external_config": {
+                "endpoint": "https://example.com",
+                "authorization": "Bearer test-token",
+                "collection_id": "test-collection-id",
+            },
         },
     )
     assert response.status_code == 200
@@ -97,7 +101,7 @@ async def bind_mock_providers():
     from ext.indexing.models import (
         DocumentContentDenseIndex,
         DocumentContentSparseIndex,
-        DocumentGenerateFAQDenseIndex,
+        DocumentFAQDenseIndex,
     )
 
     mock_provider = AsyncMock()
@@ -107,13 +111,13 @@ async def bind_mock_providers():
 
     DocumentContentDenseIndex.Meta.provider = mock_provider  # type: ignore
     DocumentContentSparseIndex.Meta.provider = mock_provider  # type: ignore
-    DocumentGenerateFAQDenseIndex.Meta.provider = mock_provider  # type: ignore
+    DocumentFAQDenseIndex.Meta.provider = mock_provider  # type: ignore
 
     yield mock_provider
 
     DocumentContentDenseIndex.Meta.provider = None  # type: ignore
     DocumentContentSparseIndex.Meta.provider = None  # type: ignore
-    DocumentGenerateFAQDenseIndex.Meta.provider = None  # type: ignore
+    DocumentFAQDenseIndex.Meta.provider = None  # type: ignore
 
 
 # =============================================================================
@@ -805,3 +809,159 @@ def test_create_document_with_empty_display_name(client, mock_file_source_upload
     assert result["code"] == 0
     # 空字符串应该被视为 None，使用原始文件名
     assert result["data"]["display_name"] == "empty_display_name.pdf"
+
+
+@pytest.fixture
+def created_document_id(client, mock_file_source_upload, embedding_model_setup):
+    collection_id = embedding_model_setup["collection_id"]
+    file_source_id = embedding_model_setup["file_source_id"]
+
+    files = {
+        "file": ("doc_api_test.pdf", BytesIO(b"document api test"), "application/pdf"),
+    }
+    data = {
+        "collection_id": collection_id,
+        "file_source_id": file_source_id,
+    }
+    response = client.post("/v1/document", files=files, data=data)
+    assert response.status_code == 200
+    result = response.json()
+    assert result["code"] == 0
+    return result["data"]["id"]
+
+
+def test_document_stream_api(client, created_document_id):
+    async def fake_stream(uri: str, chunk_size: int = 8192):
+        yield b"stream-content"
+
+    provider_mock = AsyncMock()
+    provider_mock.get_file_stream = fake_stream
+
+    with patch("ext.file_source.FileSourceFactory.create", return_value=provider_mock):
+        response = client.get(f"/v1/document/{created_document_id}/stream")
+        assert response.status_code == 200
+        assert response.content == b"stream-content"
+        assert "inline;" in response.headers.get("content-disposition", "")
+
+
+@pytest.mark.asyncio
+async def test_document_pages_api_with_page_number_and_parsed_fallback(client, created_document_id):
+    from ext.ext_tortoise.models.knowledge_base import Document, DocumentPages
+
+    document = await Document.get(id=created_document_id)
+    document.parsed_uri = "/test/parsed.md"
+    await document.save()
+
+    await DocumentPages.create(
+        document_id=created_document_id,
+        page_number=1,
+        content="",
+        tables=[],
+        images=[],
+        metadata={},
+    )
+    await DocumentPages.create(
+        document_id=created_document_id,
+        page_number=2,
+        content="page-2-content",
+        tables=[],
+        images=[],
+        metadata={},
+    )
+
+    provider_mock = AsyncMock()
+    provider_mock.get_file = AsyncMock(return_value=b"parsed-uri-content")
+
+    with patch("ext.file_source.FileSourceFactory.create", return_value=provider_mock):
+        response = client.get(f"/v1/document/{created_document_id}/pages", params={"page_number": 1})
+        assert response.status_code == 200
+        result = response.json()
+        assert result["code"] == 0
+        assert len(result["data"]) == 1
+        assert result["data"][0]["page_number"] == 1
+        assert result["data"][0]["content"] == "parsed-uri-content"
+
+
+def test_document_chunk_crud_api(client, created_document_id):
+    create_resp = client.post(
+        f"/v1/document/{created_document_id}/chunks",
+        json={
+            "content": "chunk-content-v1",
+            "pages": [1, 2],
+            "start": {"page_number": 1, "offset": 0},
+            "end": {"page_number": 2, "offset": 10},
+            "metadata": {"source": "manual"},
+            "manual_add": True,
+        },
+    )
+    assert create_resp.status_code == 200
+    create_result = create_resp.json()
+    assert create_result["code"] == 0
+    chunk_id = create_result["data"]["id"]
+
+    list_resp = client.get(f"/v1/document/{created_document_id}/chunks", params={"page_number": 2})
+    assert list_resp.status_code == 200
+    list_result = list_resp.json()
+    assert list_result["code"] == 0
+    assert any(item["id"] == chunk_id for item in list_result["data"])
+
+    update_resp = client.put(
+        f"/v1/document/{created_document_id}/chunks/{chunk_id}",
+        json={
+            "content": "chunk-content-v2",
+            "pages": [3],
+        },
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["code"] == 0
+
+    list_after_update = client.get(f"/v1/document/{created_document_id}/chunks", params={"page_number": 2})
+    assert list_after_update.status_code == 200
+    assert list_after_update.json()["code"] == 0
+    assert all(item["id"] != chunk_id for item in list_after_update.json()["data"])
+
+    delete_resp = client.delete(f"/v1/document/{created_document_id}/chunks/{chunk_id}")
+    assert delete_resp.status_code == 200
+    delete_result = delete_resp.json()
+    assert delete_result["code"] == 0
+    assert delete_result["data"]["deleted"] == 1
+
+
+def test_document_generated_faq_crud_api(client, created_document_id):
+    create_resp = client.post(
+        f"/v1/document/{created_document_id}/faqs",
+        json={
+            "content": "faq-ref-content",
+            "question": "Q1?",
+            "answer": "A1",
+            "manual_add": True,
+            "enabled": True,
+        },
+    )
+    assert create_resp.status_code == 200
+    create_result = create_resp.json()
+    assert create_result["code"] == 0
+    faq_id = create_result["data"]["id"]
+
+    list_resp = client.get(f"/v1/document/{created_document_id}/faqs")
+    assert list_resp.status_code == 200
+    list_result = list_resp.json()
+    assert list_result["code"] == 0
+    assert any(item["id"] == faq_id for item in list_result["data"])
+
+    update_resp = client.put(
+        f"/v1/document/{created_document_id}/faqs/{faq_id}",
+        json={
+            "question": "Q1-updated?",
+            "answer": "A1-updated",
+            "enabled": False,
+        },
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["code"] == 0
+
+    delete_resp = client.delete(f"/v1/document/{created_document_id}/faqs/{faq_id}")
+    assert delete_resp.status_code == 200
+    delete_result = delete_resp.json()
+    assert delete_result["code"] == 0
+    assert delete_result["data"]["deleted"] == 1

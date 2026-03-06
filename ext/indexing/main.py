@@ -6,7 +6,7 @@ from ext.indexing.base import BaseProvider
 from ext.indexing.factory import IndexingProviderFactory
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 from ext.ext_tortoise.enums import IndexingBackendTypeEnum
-from ext.indexing.models import DocumentContentDenseIndex, DocumentContentSparseIndex, DocumentGenerateFAQDenseIndex
+from ext.indexing.models import DocumentContentDenseIndex, DocumentContentSparseIndex, DocumentFAQDenseIndex
 
 
 class ModelProviderConfig(RegisterExtensionConfig):
@@ -36,7 +36,7 @@ class ModelProviderConfig(RegisterExtensionConfig):
         self.milvus_provider = milvus_provider
         DocumentContentDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
         DocumentContentSparseIndex.Meta.provider = self.es_provider  # type: ignore
-        DocumentGenerateFAQDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
+        DocumentFAQDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
 
     @override
     async def unregister(self) -> None:

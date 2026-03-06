@@ -48,7 +48,7 @@ async def bind_mock_providers():
     from ext.indexing.models import (
         DocumentContentDenseIndex,
         DocumentContentSparseIndex,
-        DocumentGenerateFAQDenseIndex,
+        DocumentFAQDenseIndex,
     )
 
     mock_provider = AsyncMock()
@@ -58,13 +58,13 @@ async def bind_mock_providers():
 
     DocumentContentDenseIndex.Meta.provider = mock_provider  # type: ignore
     DocumentContentSparseIndex.Meta.provider = mock_provider  # type: ignore
-    DocumentGenerateFAQDenseIndex.Meta.provider = mock_provider  # type: ignore
+    DocumentFAQDenseIndex.Meta.provider = mock_provider  # type: ignore
 
     yield mock_provider
 
     DocumentContentDenseIndex.Meta.provider = None  # type: ignore
     DocumentContentSparseIndex.Meta.provider = None  # type: ignore
-    DocumentGenerateFAQDenseIndex.Meta.provider = None  # type: ignore
+    DocumentFAQDenseIndex.Meta.provider = None  # type: ignore
 
 
 

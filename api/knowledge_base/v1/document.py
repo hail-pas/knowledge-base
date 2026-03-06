@@ -1,7 +1,9 @@
-from typing import Annotated
+import mimetypes
+from urllib.parse import quote
 
 from pydantic import BaseModel
 from fastapi import APIRouter, Request, Depends, Form, File, UploadFile, Body
+from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
 
@@ -17,13 +19,28 @@ from ext.ext_tortoise.curd import (
     update_obj,
     DeleteResp,
 )
-from ext.ext_tortoise.models.knowledge_base import Document, Collection, FileSource
+from ext.ext_tortoise.models.knowledge_base import (
+    Document,
+    Collection,
+    FileSource,
+    DocumentPages,
+    DocumentChunk,
+    DocumentGeneratedFaq,
+)
 from ext.ext_tortoise.models.user_center import Account
 from ext.ext_tortoise.enums import DocumentStatusEnum
+from ext.file_source import FileSourceFactory
 
 from service.document.schema import (
     DocumentList,
     DocumentDetail,
+    DocumentPageList,
+    DocumentChunkList,
+    DocumentGeneratedFaqList,
+    DocumentChunkCreate,
+    DocumentChunkUpdate,
+    DocumentGeneratedFaqCreate,
+    DocumentGeneratedFaqUpdate,
 )
 from service.document.helper import DocumentService
 from service.collection.helper import WorkflowTemplateValidator
@@ -43,6 +60,15 @@ def get_document_queryset(request: Request, user: Account) -> QuerySet[Document]
         queryset = queryset.filter(collection__user_id=user.id)
 
     return queryset
+
+
+async def get_document_or_raise(request: Request, pk: int) -> Document:
+    user: Account = request.scope["user"]
+    queryset = get_document_queryset(request, user)
+    obj = await queryset.prefetch_related("file_source").get_or_none(pk=pk)
+    if not obj:
+        raise ApiException("Document不存在")
+    return obj
 
 
 @router.post("", summary="创建Document")
@@ -215,3 +241,148 @@ async def get_document_detail(request: Request, pk: int) -> Resp[DocumentDetail]
     user: Account = request.scope["user"]
     queryset = get_document_queryset(request, user)
     return await detail_view(queryset, pk, DocumentDetail)
+
+
+@router.get(
+    "/{pk}/stream",
+    summary="Document文件流",
+    response_class=StreamingResponse,
+)
+async def get_document_stream(request: Request, pk: int) -> StreamingResponse:
+    document = await get_document_or_raise(request, pk)
+    provider = await FileSourceFactory.create(document.file_source)
+
+    media_type = mimetypes.guess_type(document.file_name)[0] or "application/octet-stream"
+    filename = quote(document.file_name)
+
+    return StreamingResponse(
+        content=await provider.get_file_stream(document.uri),
+        media_type=media_type,
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{filename}"},
+    )
+
+
+@router.get("/{pk}/pages", summary="DocumentPages列表")
+async def list_document_pages(request: Request, pk: int, page_number: int | None = None) -> Resp[list[DocumentPageList]]:
+    document = await get_document_or_raise(request, pk)
+
+    pages_queryset = DocumentPages.filter(document_id=document.id, deleted_at=0).order_by("page_number")
+    if page_number is not None:
+        pages_queryset = pages_queryset.filter(page_number=page_number)
+    pages = await pages_queryset
+
+    if document.parsed_uri:
+        for page in pages:
+            if not page.content and page.page_number == 1:
+                provider = await FileSourceFactory.create(document.file_source)
+                content_bytes = await provider.get_file(document.parsed_uri)
+                page.content = content_bytes.decode("utf-8", errors="ignore")
+
+    return Resp(data=[DocumentPageList.model_validate(page) for page in pages])
+
+
+@router.get("/{pk}/chunks", summary="DocumentChunk列表")
+async def list_document_chunks(request: Request, pk: int, page_number: int | None = None) -> Resp[list[DocumentChunkList]]:
+    document = await get_document_or_raise(request, pk)
+
+    chunks_queryset = DocumentChunk.filter(document_id=document.id, deleted_at=0).order_by("-id")
+    if page_number is not None:
+        chunks_queryset = chunks_queryset.filter(min_page__lte=page_number, max_page__gte=page_number)
+    chunks = await chunks_queryset
+
+    return Resp(data=[DocumentChunkList.model_validate(chunk) for chunk in chunks])
+
+
+@router.post("/{pk}/chunks", summary="新增DocumentChunk")
+async def create_document_chunk(request: Request, pk: int, schema: DocumentChunkCreate) -> Resp[DocumentChunkList]:
+    document = await get_document_or_raise(request, pk)
+
+    min_page = min(schema.pages)
+    max_page = max(schema.pages)
+    obj = await create_obj(
+        DocumentChunk,
+        {
+            "document_id": document.id,
+            "content": schema.content,
+            "pages": schema.pages,
+            "min_page": min_page,
+            "max_page": max_page,
+            "start": schema.start,
+            "end": schema.end,
+            "overlap_start": schema.overlap_start,
+            "overlap_end": schema.overlap_end,
+            "metadata": schema.metadata,
+            "manual_add": schema.manual_add,
+        },
+    )
+
+    return Resp(data=DocumentChunkList.model_validate(obj))
+
+
+@router.put("/{pk}/chunks/{chunk_id}", summary="修改DocumentChunk")
+async def update_document_chunk(request: Request, pk: int, chunk_id: int, schema: DocumentChunkUpdate) -> Resp:
+    await get_document_or_raise(request, pk)
+    # TODO
+    return Resp()
+
+
+@router.delete("/{pk}/chunks/{chunk_id}", summary="删除DocumentChunk")
+async def delete_document_chunk(request: Request, pk: int, chunk_id: int) -> Resp[DeleteResp]:
+    deleted = await DocumentChunk.filter(id=chunk_id, document_id=pk, deleted_at=0).delete()
+    return Resp(data=DeleteResp(deleted=deleted))
+
+
+@router.get("/{pk}/faqs", summary="DocumentGeneratedFaq列表")
+async def list_document_generated_faqs(
+    request: Request,
+    pk: int,
+) -> Resp[list[DocumentGeneratedFaqList]]:
+    document = await get_document_or_raise(request, pk)
+
+    faqs_queryset = DocumentGeneratedFaq.filter(document_id=document.id, deleted_at=0).order_by("-id")
+    faqs = await faqs_queryset
+
+    return Resp(data=[DocumentGeneratedFaqList.model_validate(faq) for faq in faqs])
+
+
+@router.post("/{pk}/faqs", summary="新增DocumentGeneratedFaq")
+async def create_document_generated_faq(
+    request: Request,
+    pk: int,
+    schema: DocumentGeneratedFaqCreate,
+) -> Resp[DocumentGeneratedFaqList]:
+    document = await get_document_or_raise(request, pk)
+    obj = await create_obj(
+        DocumentGeneratedFaq,
+        {
+            "document_id": document.id,
+            "content": schema.content,
+            "question": schema.question,
+            "answer": schema.answer,
+            "manual_add": schema.manual_add,
+            "enabled": schema.enabled,
+        },
+    )
+    return Resp(data=DocumentGeneratedFaqList.model_validate(obj))
+
+
+@router.put("/{pk}/faqs/{faq_id}", summary="修改DocumentGeneratedFaq")
+async def update_document_generated_faq(
+    request: Request,
+    pk: int,
+    faq_id: int,
+    schema: DocumentGeneratedFaqUpdate,
+) -> Resp:
+    await get_document_or_raise(request, pk)
+    queryset = DocumentGeneratedFaq.filter(document_id=pk, deleted_at=0)
+    obj = await queryset.get_or_none(id=faq_id)
+    if not obj:
+        raise ApiException("DocumentGeneratedFaq不存在")
+    await update_obj(obj, queryset, schema.model_dump(exclude_unset=True))
+    return Resp()
+
+
+@router.delete("/{pk}/faqs/{faq_id}", summary="删除DocumentGeneratedFaq")
+async def delete_document_generated_faq(request: Request, pk: int, faq_id: int) -> Resp[DeleteResp]:
+    deleted = await DocumentGeneratedFaq.filter(id=faq_id, document_id=pk, deleted_at=0).delete()
+    return Resp(data=DeleteResp(deleted=deleted))

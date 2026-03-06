@@ -49,13 +49,13 @@ class DocumentContentDenseIndex(DocumentContentSparseIndex):
         # partition_key = "tenant_id"
 
 
-class DocumentGenerateFAQDenseIndex(_DocumentBaseIndexModel):
+class DocumentFAQDenseIndex(_DocumentBaseIndexModel):
 
     id: int = Field(default_factory=lambda: DocumentContentDenseIndex._get_id_default(), index_metadata={}) # type: ignore
     question: str
     dense_vector: list[float]
     answer: str
-    db_faq_id: int # 当为0的时候则表示由文件本身内容切分而来的
+    db_faq_id: str  # gfaq:{id} / faq:{id}
 
     class Meta:  # type: ignore
         index_name: str = "document_gfaq"
@@ -105,15 +105,15 @@ class CollectionIndexModelHelper:
         )
 
     @property
-    def faq_model(self) -> type[DocumentGenerateFAQDenseIndex]:
+    def faq_model(self) -> type[DocumentFAQDenseIndex]:
         """获取 FAQ 稠密索引模型（自动根据 collection embedding config 创建正确维度的模型）"""
         emb_config = self.collection.embedding_model_config
         if not emb_config:
             raise ValueError("Collection embedding model config is not set")
         return cast(
-            type[DocumentGenerateFAQDenseIndex],
+            type[DocumentFAQDenseIndex],
             IndexModelFactory.create_for_embedding(
-                DocumentGenerateFAQDenseIndex,
+                DocumentFAQDenseIndex,
                 emb_config,
             ),
         )
