@@ -4,7 +4,7 @@ Prompt Template 实现
 提供灵活的提示词模板支持
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, TypeAlias, Union
 from loguru import logger
 
 from ext.llm.types import ChatMessage
@@ -53,7 +53,7 @@ class PromptTemplate(Runnable[dict[str, Any], str]):
         # 匹配 {variable} 格式
         pattern = r"\{([^{}]+)\}"
         variables = re.findall(pattern, template)
-        return list(set(variables))
+        return list(dict.fromkeys(variables))
 
     def format(self, **kwargs: Any) -> str:
         """格式化模板
@@ -87,13 +87,21 @@ class PromptTemplate(Runnable[dict[str, Any], str]):
         return result
 
 
+ChatPromptMessage: TypeAlias = Union[
+    str,
+    PromptTemplate,
+    "MessagesPlaceholder",
+    tuple[str, Union[str, PromptTemplate, "MessagesPlaceholder"]],
+]
+
+
 class ChatPromptTemplate(Runnable[dict[str, Any], list[ChatMessage]]):
     """聊天提示词模板
 
     支持构建多消息的聊天提示词
     """
 
-    def __init__(self, messages: list[Union[str, PromptTemplate, "MessagesPlaceholder"]]):
+    def __init__(self, messages: list[ChatPromptMessage]):
         """初始化聊天提示词模板
 
         Args:
@@ -102,7 +110,7 @@ class ChatPromptTemplate(Runnable[dict[str, Any], list[ChatMessage]]):
         self.messages = messages
 
     @classmethod
-    def from_messages(cls, *messages: Union[str, PromptTemplate, "MessagesPlaceholder"]) -> "ChatPromptTemplate":
+    def from_messages(cls, *messages: ChatPromptMessage) -> "ChatPromptTemplate":
         """从消息列表创建聊天提示词模板
 
         Args:

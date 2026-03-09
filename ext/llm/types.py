@@ -18,6 +18,7 @@ class ChatMessage(BaseModel):
     content: str | list[dict[str, Any]] = Field(description="消息内容")
     name: str | None = Field(default=None, description="消息名称（可选）")
     tool_call_id: str | None = Field(default=None, description="工具调用ID（tool消息专用）")
+    tool_calls: list[dict[str, Any]] | None = Field(default=None, description="工具调用列表（assistant消息专用）")
 
 
 class FunctionDefinition(BaseModel):

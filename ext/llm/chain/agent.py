@@ -7,7 +7,7 @@ Agent 实现
 
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from collections.abc import AsyncIterator
 
 from loguru import logger
@@ -17,7 +17,6 @@ from ext.llm.types import ChatMessage, LLMRequest, LLMResponse
 from ext.llm.chain.base import Runnable
 from ext.llm.chain.exceptions import MaxIterationsError, ToolExecutionError, ToolNotFoundError
 from ext.llm.chain.llm import LLM
-from ext.llm.chain.memory import BaseMemory
 from ext.llm.chain.tool import Tool
 from util.general import truncate_content
 
@@ -71,7 +70,6 @@ class Agent(Runnable[str, str], ABC):
         self,
         llm: LLM,
         tools: list[Tool],
-        memory: BaseMemory | None = None,
         max_iterations: int = 10,
         system_prompt: str | None = None,
     ):
@@ -80,13 +78,11 @@ class Agent(Runnable[str, str], ABC):
         Args:
             llm: LLM 实例
             tools: 工具列表
-            memory: 记忆（可选）
             max_iterations: 最大迭代次数
             system_prompt: 系统提示词（可选）
         """
         self.llm = llm
         self.tools = tools
-        self.memory = memory
         self.max_iterations = max_iterations
         self.system_prompt = system_prompt
 
@@ -191,20 +187,13 @@ class FunctionCallingAgent(Agent):
                 result = response.content or ""
 
                 logger.debug(f"FunctionCallingAgent completed - output length: {len(result)}")
-
-                # 保存到记忆
-                if self.memory:
-                    await self.memory.save_context(input, result)
-
                 return result
+
+            messages.append(self._build_assistant_tool_call_message(response))
 
             # 执行工具调用
             for tool_call_data in response.tool_calls:
-                tool_call = {
-                    "id": tool_call_data.id,
-                    "name": tool_call_data.function["name"],
-                    "arguments": tool_call_data.function["arguments"],
-                }
+                tool_call = self._tool_call_to_dict(tool_call_data)
 
                 logger.info(f"FunctionCallingAgent executing tool: {tool_call['name']}")
 
@@ -213,13 +202,6 @@ class FunctionCallingAgent(Agent):
                 logger.debug(f"Tool '{tool_call['name']}' result: {truncate_content(str(tool_result))}")
 
                 # 添加工具响应到消息历史
-                messages.append(
-                    ChatMessage(
-                        role="assistant",
-                        content=response.content or "",
-                        tool_calls=[tool_call_data], # type: ignore
-                    ),
-                )
                 messages.append(
                     ChatMessage(
                         role="tool",
@@ -267,21 +249,14 @@ class FunctionCallingAgent(Agent):
                 result = response.content or ""
 
                 logger.debug(f"FunctionCallingAgent stream completed - output length: {len(result)}")
-
-                # 保存到记忆
-                if self.memory:
-                    await self.memory.save_context(input, result)
-
                 yield AgentStream(event_type="content", content=result)
                 return
 
+            messages.append(self._build_assistant_tool_call_message(response))
+
             # 执行工具调用
             for tool_call_data in response.tool_calls:
-                tool_call = {
-                    "id": tool_call_data.id,
-                    "name": tool_call_data.function["name"],
-                    "arguments": tool_call_data.function["arguments"],
-                }
+                tool_call = self._tool_call_to_dict(tool_call_data)
 
                 logger.info(f"FunctionCallingAgent stream executing tool: {tool_call['name']}")
 
@@ -299,13 +274,6 @@ class FunctionCallingAgent(Agent):
                     )
 
                     # 添加工具响应到消息历史
-                    messages.append(
-                        ChatMessage(
-                            role="assistant",
-                            content=response.content or "",
-                            tool_calls=[tool_call_data], # type: ignore
-                        ),
-                    )
                     messages.append(
                         ChatMessage(
                             role="tool",
@@ -345,11 +313,6 @@ class FunctionCallingAgent(Agent):
         if self.system_prompt:
             messages.append(ChatMessage(role="system", content=self.system_prompt))
 
-        # 加载记忆
-        if self.memory:
-            memory_vars = await self.memory.load_memory_variables()
-            messages.extend(memory_vars.get("messages", []))
-
         # 添加用户输入
         messages.append(ChatMessage(role="user", content=input))
 
@@ -369,31 +332,31 @@ class FunctionCallingAgent(Agent):
         Returns:
             LLM 响应
         """
-        # 转换消息格式
-        messages_dict = [
-            {
-                "role": msg.role,
-                "content": msg.content,
-                "tool_call_id": msg.tool_call_id,
-            }
-            if msg.tool_call_id
-            else {
-                "role": msg.role,
-                "content": msg.content,
-            }
-            for msg in messages
-        ]
-
         # 调用 LLM
         response = await self.llm.model.chat(
             LLMRequest(
-                messages=messages_dict, # type: ignore
+                messages=messages,
                 tools=tools,
                 tool_choice="auto",
             ),
         )
 
         return response
+
+    def _tool_call_to_dict(self, tool_call_data: Any) -> dict[str, str]:
+        return {
+            "id": tool_call_data.id,
+            "name": tool_call_data.function["name"],
+            "arguments": tool_call_data.function["arguments"],
+        }
+
+    def _build_assistant_tool_call_message(self, response: LLMResponse) -> ChatMessage:
+        tool_calls = response.tool_calls or []
+        return ChatMessage(
+            role="assistant",
+            content=response.content or "",
+            tool_calls=[tool_call.model_dump() for tool_call in tool_calls],
+        )
 
 
 class ReActAgent(Agent):
@@ -408,7 +371,6 @@ class ReActAgent(Agent):
         self,
         llm: LLM,
         tools: list[Tool],
-        memory: BaseMemory | None = None,
         max_iterations: int = 10,
         system_prompt: str | None = None,
     ):
@@ -417,11 +379,10 @@ class ReActAgent(Agent):
         Args:
             llm: LLM 实例
             tools: 工具列表
-            memory: 记忆（可选）
             max_iterations: 最大迭代次数
             system_prompt: 系统提示词（可选）
         """
-        super().__init__(llm, tools, memory, max_iterations, system_prompt)
+        super().__init__(llm, tools, max_iterations, system_prompt)
 
         # 默认 ReAct 提示词模板
         self.react_template = """你是一个智能助手，可以使用以下工具来回答问题。
@@ -488,11 +449,6 @@ Final Answer: 最终答案
                 result = parsed["final_answer"]
 
                 logger.debug(f"ReActAgent completed - output length: {len(result)}")
-
-                # 保存到记忆
-                if self.memory:
-                    await self.memory.save_context(input, result)
-
                 return result
 
             if parsed["action"]:
@@ -563,11 +519,6 @@ Final Answer: 最终答案
                 result = parsed["final_answer"]
 
                 logger.debug(f"ReActAgent stream completed - output length: {len(result)}")
-
-                # 保存到记忆
-                if self.memory:
-                    await self.memory.save_context(input, result)
-
                 yield AgentStream(event_type="content", content=result)
                 return
 

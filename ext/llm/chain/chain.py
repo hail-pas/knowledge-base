@@ -4,7 +4,7 @@ Chain 组合实现
 提供 Runnable 的组合能力，支持顺序执行和条件分支
 """
 
-from typing import Any, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, TypeVar
 from collections.abc import AsyncIterator, Callable
 from loguru import logger
 
@@ -27,6 +27,8 @@ class RunnableSequence(Runnable[InputT, OutputT]):
         Args:
             steps: Runnable 列表，按执行顺序排列
         """
+        if not steps:
+            raise ChainError("RunnableSequence requires at least one step")
         self.steps = steps
 
     async def ainvoke(self, input: InputT) -> OutputT:
@@ -175,11 +177,12 @@ class RunnableMap(Runnable[InputT, dict[str, Any]]):
 
         logger.debug(f"RunnableMap ainvoke - mappings: {list(self.mappings.keys())}")
 
-        tasks = [runnable.ainvoke(input) for runnable in self.mappings.values()]
+        keys = list(self.mappings.keys())
+        tasks = [self.mappings[key].ainvoke(input) for key in keys]
         results = await asyncio.gather(*tasks)
 
-        logger.debug(f"RunnableMap completed - results: {list(results)}")
-        return dict(zip(self.mappings.keys(), results, strict=False))
+        logger.debug(f"RunnableMap completed - output keys: {keys}")
+        return dict(zip(keys, results, strict=False))
 
 
 __all__ = [

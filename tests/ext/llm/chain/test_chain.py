@@ -30,6 +30,7 @@ class TestChainCombination:
         print("✓ pipe 操作符组合成功")
 
     @pytest.mark.asyncio
+    @pytest.mark.skip_if_no_api_key
     async def test_chain_with_output_parser(self, openai_llm):
         """测试带输出解析器的 Chain"""
         prompt = PromptTemplate.from_template("将以下内容翻译成中文：{text}")

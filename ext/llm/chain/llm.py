@@ -5,11 +5,11 @@ LLM Runnable 封装
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from collections.abc import AsyncIterator
 
 from ext.llm.base import BaseLLMModel
-from ext.llm.types import ChatMessage, LLMRequest, StreamChunk
+from ext.llm.types import ChatMessage, LLMRequest
 from loguru import logger
 
 from ext.llm.chain.base import Runnable
@@ -37,6 +37,19 @@ class LLM(Runnable[str, str]):
         self.model = model
         self.default_temperature = default_temperature
         self.default_max_tokens = default_max_tokens
+
+    def _resolve_generation_params(
+        self,
+        temperature: float | None,
+        max_tokens: int | None,
+    ) -> tuple[float, int]:
+        resolved_temperature = temperature if temperature is not None else (
+            self.default_temperature if self.default_temperature is not None else self.model.default_temperature
+        )
+        resolved_max_tokens = max_tokens if max_tokens is not None else (
+            self.default_max_tokens if self.default_max_tokens is not None else self.model.max_tokens
+        )
+        return resolved_temperature, resolved_max_tokens
 
     @classmethod
     def from_name(
@@ -105,14 +118,15 @@ class LLM(Runnable[str, str]):
         """
         logger.debug(
             f"LLM ainvoke - input length: {len(input)}, "
-            f"temperature: {temperature or self.default_temperature}, "
-            f"max_tokens: {max_tokens or self.default_max_tokens}",
+            f"temperature: {temperature if temperature is not None else self.default_temperature}, "
+            f"max_tokens: {max_tokens if max_tokens is not None else self.default_max_tokens}",
         )
+        resolved_temperature, resolved_max_tokens = self._resolve_generation_params(temperature, max_tokens)
 
         request = LLMRequest(
             messages=[ChatMessage(role="user", content=input)],
-            temperature=temperature or self.default_temperature or self.model.default_temperature,
-            max_tokens=max_tokens or self.default_max_tokens or self.model.max_tokens,
+            temperature=resolved_temperature,
+            max_tokens=resolved_max_tokens,
             **kwargs,
         )
 
@@ -146,13 +160,15 @@ class LLM(Runnable[str, str]):
             RuntimeError: LLM 调用失败
         """
         logger.debug(
-            f"LLM astream - input length: {len(input)}, temperature: {temperature or self.default_temperature}",
+            f"LLM astream - input length: {len(input)}, "
+            f"temperature: {temperature if temperature is not None else self.default_temperature}",
         )
+        resolved_temperature, resolved_max_tokens = self._resolve_generation_params(temperature, max_tokens)
 
         request = LLMRequest(
             messages=[ChatMessage(role="user", content=input)],
-            temperature=temperature or self.default_temperature or self.model.default_temperature,
-            max_tokens=max_tokens or self.default_max_tokens or self.model.max_tokens,
+            temperature=resolved_temperature,
+            max_tokens=resolved_max_tokens,
             stream=True,
             **kwargs,
         )
@@ -188,13 +204,14 @@ class LLM(Runnable[str, str]):
         """
         logger.debug(
             f"LLM ainvoke_with_messages - messages: {len(messages)}, "
-            f"temperature: {temperature or self.default_temperature}",
+            f"temperature: {temperature if temperature is not None else self.default_temperature}",
         )
+        resolved_temperature, resolved_max_tokens = self._resolve_generation_params(temperature, max_tokens)
 
         request = LLMRequest(
             messages=messages,
-            temperature=temperature or self.default_temperature or self.model.default_temperature,
-            max_tokens=max_tokens or self.default_max_tokens or self.model.max_tokens,
+            temperature=resolved_temperature,
+            max_tokens=resolved_max_tokens,
             **kwargs,
         )
 
@@ -251,7 +268,11 @@ class _LLMFactoryWrapper:
             from ext.llm import LLMModelFactory
 
             model = await LLMModelFactory.create_by_name(self._model_name)
-            self._llm_instance = LLM(model)
+            self._llm_instance = LLM(
+                model,
+                default_temperature=self._default_temperature,
+                default_max_tokens=self._default_max_tokens,
+            )
         return self._llm_instance
 
     async def ainvoke(self, input: str, **kwargs: Any) -> str:
@@ -274,11 +295,6 @@ class _LLMFactoryWrapper:
         """使用消息列表调用 LLM"""
         llm = await self._get_instance()
         return await llm.ainvoke_with_messages(messages, **kwargs)
-
-    async def abatch(self, inputs: list[str], **kwargs: Any) -> list[str]:
-        """批量调用 LLM"""
-        llm = await self._get_instance()
-        return await llm.abatch(inputs, **kwargs)
 
     @property
     def model(self):

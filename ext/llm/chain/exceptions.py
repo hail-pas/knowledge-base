@@ -1,10 +1,8 @@
 """
 Chain 模块异常定义
 
-提供 Chain、Agent、Tool、Memory 相关的自定义异常
+提供 Chain、Agent、Tool 相关的自定义异常
 """
-
-from typing import Optional
 
 
 class ChainError(Exception):
@@ -47,27 +45,6 @@ class ToolNotFoundError(ToolError):
         super().__init__(f"Tool '{tool_name}' not found")
 
 
-class MemoryError(ChainError):
-    """Memory 异常"""
-
-
-
-class MemoryLoadError(MemoryError):
-    """Memory 加载异常"""
-
-    def __init__(self, message: str, original_error: Exception | None = None):
-        self.original_error = original_error
-        super().__init__(message)
-
-
-class MemorySaveError(MemoryError):
-    """Memory 保存异常"""
-
-    def __init__(self, message: str, original_error: Exception | None = None):
-        self.original_error = original_error
-        super().__init__(message)
-
-
 __all__ = [
     "ChainError",
     "AgentError",
@@ -75,7 +52,4 @@ __all__ = [
     "ToolExecutionError",
     "ToolError",
     "ToolNotFoundError",
-    "MemoryError",
-    "MemoryLoadError",
-    "MemorySaveError",
 ]

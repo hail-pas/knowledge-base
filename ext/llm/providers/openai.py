@@ -77,6 +77,8 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
                 converted_msg["name"] = msg.name
             if msg.tool_call_id:
                 converted_msg["tool_call_id"] = msg.tool_call_id
+            if msg.tool_calls:
+                converted_msg["tool_calls"] = msg.tool_calls
 
             converted.append(converted_msg)
 

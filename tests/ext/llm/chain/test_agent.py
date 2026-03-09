@@ -69,33 +69,6 @@ class TestFunctionCallingAgent:
         print(f"✓ 流式输出共 {len(events)} 个事件")
 
     @pytest.mark.asyncio
-    async def test_agent_with_memory(self, openai_llm, sample_weather_tool):
-        """测试带记忆的 Agent"""
-        from ext.llm.chain import InMemoryMemory
-
-        memory = InMemoryMemory(max_messages=20)
-        agent = FunctionCallingAgent(
-            llm=openai_llm,
-            tools=[sample_weather_tool],
-            memory=memory,
-            max_iterations=5,
-        )
-
-        # 第一轮对话
-        response1 = await agent.ainvoke("我叫 Alice，来自北京")
-        print(f"✓ 第一轮: {response1[:50]}...")
-
-        # 第二轮对话
-        response2 = await agent.ainvoke("我叫什么名字？我来自哪里？")
-        print(f"✓ 第二轮: {response2[:50]}...")
-
-        # 验证记忆
-        memory_vars = await memory.load_memory_variables()
-        messages = memory_vars["messages"]
-        assert len(messages) >= 4  # 2 轮对话，每轮 2 条消息
-        print(f"✓ 记忆中保存了 {len(messages)} 条消息")
-
-    @pytest.mark.asyncio
     async def test_agent_no_tool_needed(self, openai_llm, sample_weather_tool):
         """测试不需要工具的情况"""
         agent = FunctionCallingAgent(
@@ -156,33 +129,6 @@ class TestReActAgent:
         assert len(events) > 0
         assert any(e.event_type == "content" for e in events)
         print(f"✓ ReAct 流式输出共 {len(events)} 个事件")
-
-    @pytest.mark.asyncio
-    async def test_react_with_memory(self, openai_llm, sample_weather_tool):
-        """测试 ReAct Agent 带记忆"""
-        from ext.llm.chain import InMemoryMemory
-
-        memory = InMemoryMemory(max_messages=20)
-        agent = ReActAgent(
-            llm=openai_llm,
-            tools=[sample_weather_tool],
-            memory=memory,
-            max_iterations=5,
-        )
-
-        # 第一轮对话
-        response1 = await agent.ainvoke("我叫 Alice，来自北京")
-        print(f"✓ ReAct 第一轮: {response1[:50]}...")
-
-        # 第二轮对话
-        response2 = await agent.ainvoke("我叫什么名字？我来自哪里？")
-        print(f"✓ ReAct 第二轮: {response2[:50]}...")
-
-        # 验证记忆
-        memory_vars = await memory.load_memory_variables()
-        messages = memory_vars["messages"]
-        assert len(messages) >= 4
-        print(f"✓ ReAct 记住了 {len(messages)} 条消息")
 
     @pytest.mark.asyncio
     async def test_react_no_tool_needed(self, openai_llm, sample_weather_tool):
