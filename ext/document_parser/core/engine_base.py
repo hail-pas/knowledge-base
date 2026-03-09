@@ -11,7 +11,7 @@ class BaseEngine(ABC):
     supported_formats: list[str]
 
     @abstractmethod
-    async def parse(self, file_path: str, options: Optional[dict[str, Any]] = None) -> ParseResult:
+    async def parse(self, file_path: str, options: dict[str, Any] | None = None) -> ParseResult:
         pass
 
     def can_parse(self, file_path: str) -> bool:

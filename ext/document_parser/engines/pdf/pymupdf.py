@@ -46,7 +46,7 @@ class PyMUPDFEngine(BaseEngine):
                             headers=[str(h) for h in headers if h],
                             rows=rows,
                             raw=raw,
-                        )
+                        ),
                     )
 
             pages_result.append(
@@ -55,7 +55,7 @@ class PyMUPDFEngine(BaseEngine):
                     content=text,
                     tables=table_formats,
                     metadata={"bbox": str(page.rect)},
-                )
+                ),
             )
 
         result = ParseResult(

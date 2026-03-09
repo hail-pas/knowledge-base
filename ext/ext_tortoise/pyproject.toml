@@ -1,0 +1,30 @@
+[project]
+name = "ext-tortoise"
+version = "1.0.0"
+requires-python = ">=3.9"
+description = "Tortoise-ORM integration extensions"
+authors = [
+    { name = "phoenix", email = "hypofiasco@gmail.com" },
+]
+
+dependencies = [
+    "tortoise-orm[aiomysql]>=0.25.0",
+    "aerich[toml]>=0.9.0",
+    "python-ulid==3.1.0",
+    "loguru>=0.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ext/ext_tortoise"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]

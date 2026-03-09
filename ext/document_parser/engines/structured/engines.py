@@ -34,7 +34,7 @@ class CSVEngine(BaseEngine):
                 tables=[table_format],
                 images=[],
                 metadata={},
-            )
+            ),
         ]
 
         return ParseResult(
@@ -54,7 +54,7 @@ class JSONEngine(BaseEngine):
     supported_formats = [".json"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         text_content = json.dumps(data, indent=2, ensure_ascii=False)
@@ -66,7 +66,7 @@ class JSONEngine(BaseEngine):
                 tables=[],
                 images=[],
                 metadata={"json_type": type(data).__name__},
-            )
+            ),
         ]
 
         return ParseResult(

@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import JSONResponse
 from starlette_context import context
 
 from core.types import IntEnum, ContextKeyEnum
@@ -38,7 +38,7 @@ class ResponseCodeEnum(IntEnum):
     request_limited = (429, "请求频率限制")
 
 
-class AesResponse(ORJSONResponse):
+class AesResponse(JSONResponse):
     def render(self, content: dict) -> bytes:
         """AES加密响应体"""
         # if not get_settings().DEBUG:
@@ -71,10 +71,10 @@ DataT = TypeVar("DataT")
 class Resp(BaseModel, Generic[DataT]):
     """响应Model."""
 
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_encoders={datetime: lambda v: v.strftime(DATETIME_FORMAT_STRING)},
-    )
+    # model_config = ConfigDict(
+    #     from_attributes=True,
+    #     json_encoders={datetime: lambda v: v.strftime(DATETIME_FORMAT_STRING)},
+    # )
 
     code: int = Field(
         default=ResponseCodeEnum.success,

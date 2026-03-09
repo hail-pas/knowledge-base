@@ -22,7 +22,7 @@ class TesseractOCREngine(BaseEngine):
                 tables=[],
                 images=[],
                 metadata={"engine": "tesseract"},
-            )
+            ),
         ]
 
         return ParseResult(

@@ -201,6 +201,8 @@ etc/*.yaml
 !etc/template.yaml
 
 .zed
+.opencode
+.claude
 .cursorignore
 local
 

@@ -7,68 +7,70 @@ authors = [
 requires-python = ">=3.13.0"
 version = "0.1.0"
 dependencies = [
-    "fastapi==0.115.12",
-    "python-multipart==0.0.20",
-    "starlette-context==0.4.0",
-    "pydantic-settings==2.9.1",
-    "orjson==3.10.18",
-    "httpx==0.28.1",
+    "fastapi==0.135.1",
+    "python-multipart==0.0.22",
+    "starlette-context==0.5.1",
+    "pydantic-settings==2.13.1",
+    "orjson==3.11.7",
     "pycryptodomex==3.23.0",
     "passlib==1.7.4",
-    "bcrypt==3.2.2",
-    "gunicorn==23.0.0",
-    "uvicorn[standard]==0.34.2",
-    "uvloop==0.21.0; sys_platform == 'linux'",  # uvicorn
-    "httptools>=0.6.4",    # uvicorn
-    # sqlmodel
-    # "sqlmodel==0.0.24",
-    # "alembic=1.15.2",
-    # tortoise
-    "tortoise-orm[aiomysql]==0.25.0",
-    "aerich[toml]==0.9.0",
+    "bcrypt==3.2.2", # pin
+    "gunicorn==25.1.0",
+    "uvicorn[standard]==0.41.0",
+    "uvloop==0.22.1; sys_platform == 'linux'",  # uvicorn
+    "httptools>=0.7.1",    # uvicorn
     # >>>>>>>
-    "python-jose[cryptography]==3.4.0",
-    "redis==6.1.0",
-    "celery==5.4.0",
-    "cachetools==5.5.2",
-    "loguru==0.7.3",
-    "aiofiles==25.1.0",
-    "python-ulid==3.0.0",
-    "captcha==0.6.0",
-    "pyinstrument==5.0.0",
-    "boto3>=1.35.0",
-    "networkx>=3.0",
-    "numpy>=2.4.0",
-    "pyyaml>=6.0",
-    "temporalio>=1.21.1",
-    "pydantic-ai>=0.7.2",
-    "elasticsearch[async,orjson]>=8.0.0,<9.0.0",
-    "pymilvus>=2.6.6",
+    "python-jose[cryptography]==3.5.0",
+    "cachetools==7.0.4",
+    "captcha==0.7.1",
 
-    # TODO: 后续可以把依赖拆分， ext 下的目录设为 lib 单独管理
-    # parse
-    "markitdown[all]==0.1.5", # ffmpeg/avconv
-    "PyMuPDF==1.27.1",
-    "pdfplumber==0.11.9",
-    "pytesseract==0.3.13",
-    "python-docx==1.2.0",
-    "python-pptx==1.0.2",
-    "openpyxl==3.1.5",
-    "trafilatura==2.0.0",
-
-    # filesource
-    "aiobotocore==3.1.3",
+    # ext workspace members
+    "document-parser[all]",
+    "embedding",
+    "ext-celery",
+    "ext-httpx",
+    "ext-redis",
+    "ext-tortoise",
+    "file-source[all]",
+    "indexing[all]",
+    "llm[all]",
+    "text-chunker",
+    "workflow",
 ]
+
+
+[tool.uv.workspace]
+members = [
+    "ext/document_parser",
+    "ext/embedding",
+    "ext/ext_celery",
+    "ext/ext_httpx",
+    "ext/ext_redis",
+    "ext/ext_tortoise",
+    "ext/file_source",
+    "ext/indexing",
+    "ext/llm",
+    "ext/text_chunker",
+    "ext/workflow",
+]
+
+[tool.uv.sources]
+document-parser = { workspace = true }
+embedding = { workspace = true }
+ext-celery = { workspace = true }
+ext-httpx = { workspace = true }
+ext-redis = { workspace = true }
+ext-tortoise = { workspace = true }
+file-source = { workspace = true }
+indexing = { workspace = true }
+llm = { workspace = true }
+text-chunker = { workspace = true }
+workflow = { workspace = true }
+
 
 [project.optional-dependencies]
-ali-oss = [
-    "oss2==2.19.1",
-]
 ipython = [
     "ipython==8.15.0",
-]
-sentry-sdk = [
-    "sentry-sdk[fastapi]==2.26.0",
 ]
 
 [dependency-groups]

@@ -1,0 +1,40 @@
+[project]
+name = "indexing"
+version = "1.0.0"
+requires-python = ">=3.9"
+description = "Indexing integrations (Elasticsearch, Milvus)"
+authors = [
+    { name = "phoenix", email = "hypofiasco@gmail.com" },
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "loguru>=0.7.0",
+]
+
+[project.optional-dependencies]
+elasticsearch = [
+    "elasticsearch[async,orjson]>=8.0.0,<9.0.0",  # pined, because server side
+]
+milvus = [
+    "pymilvus>=2.6.9",
+]
+
+all = [
+    "indexing[elasticsearch,milvus]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ext/indexing"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]

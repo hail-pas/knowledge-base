@@ -1,0 +1,59 @@
+[project]
+name = "document-parser"
+version = "1.0.0"
+requires-python = ">=3.9"
+description = "Document parsing library with multiple engine support"
+authors = [
+    { name = "phoenix", email = "hypofiasco@gmail.com" },
+]
+
+# 核心依赖（必需）
+dependencies = [
+    "pydantic>=2.0.0",
+    "loguru>=0.7.0",
+]
+
+# 可选依赖组
+[project.optional-dependencies]
+pdf = [
+    "PyMuPDF>=1.23.0",
+    "pdfplumber>=0.11.0",
+]
+office = [
+    "python-docx>=1.2.0",
+    "python-pptx>=1.0.0",
+    "openpyxl>=3.1.0",
+]
+ocr = [
+    "paddleocr>=2.7.0",
+    "pytesseract>=0.3.10",
+    "pdf2image>=1.16.0",
+    "Pillow>=9.0.0",
+]
+web = [
+    "trafilatura>=2.0.0",
+    "markitdown[all]>=0.1.0",
+]
+structured = [
+    "pandas>=2.0.0",
+]
+
+# 所有依赖（用于方便安装）
+all = [
+    "document-parser[pdf,office,ocr,web,structured]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ext/document_parser"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]

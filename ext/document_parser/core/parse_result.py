@@ -27,8 +27,8 @@ class PageResult(BaseModel):
 class ParseResult(BaseModel):
     content: str
     format: OutputFormat = Field(default=OutputFormat.TEXT)
-    structured_data: Optional[Any] = Field(default=None)
-    pages: Optional[list[PageResult]] = Field(default=None)
+    structured_data: Any | None = Field(default=None)
+    pages: list[PageResult] | None = Field(default=None)
     page_count: int = Field(default=0)
     metadata: dict[str, Any] = Field(default_factory=dict)
     parse_metadata: dict[str, Any] = Field(default_factory=dict)

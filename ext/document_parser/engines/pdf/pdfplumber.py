@@ -23,7 +23,7 @@ class PDFPlumberEngine(BaseEngine):
                     {
                         "vertical_strategy": "text",
                         "horizontal_strategy": "text",
-                    }
+                    },
                 )
 
                 table_formats = []
@@ -49,7 +49,7 @@ class PDFPlumberEngine(BaseEngine):
                                 headers=[str(h) for h in headers if h],
                                 rows=rows,
                                 raw=raw,
-                            )
+                            ),
                         )
 
                 pages_result.append(
@@ -57,7 +57,7 @@ class PDFPlumberEngine(BaseEngine):
                         page_number=page_num + 1,
                         content=text,
                         tables=table_formats,
-                    )
+                    ),
                 )
 
         return ParseResult(

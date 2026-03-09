@@ -93,7 +93,7 @@ def create_parameter_from_field_info(
             allow_inf_nan=attribute_set.get("allow_inf_nan") or _Unset,  # type: ignore
             max_digits=attribute_set.get("max_digits") or _Unset,  # type: ignore
             decimal_places=attribute_set.get("decimal_places") or _Unset,  # type: ignore
-            example=field_info.examples,
+            examples=field_info.examples,
             deprecated=field_info.deprecated,
             json_schema_extra=field_info.json_schema_extra,  # type: ignore
             # min_length=field_info.metadata[0].min_length,

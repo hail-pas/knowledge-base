@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from typing import Self, override
 from asyncio import Event
 from inspect import isclass, isfunction

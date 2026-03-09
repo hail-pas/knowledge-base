@@ -11,7 +11,7 @@ class TrafilaturaEngine(BaseEngine):
     supported_formats = [".html", ".htm"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             html_content = f.read()
 
         text = trafilatura.extract(
@@ -28,7 +28,7 @@ class TrafilaturaEngine(BaseEngine):
                 tables=[],
                 images=[],
                 metadata={"source": "trafilatura"},
-            )
+            ),
         ]
 
         return ParseResult(
@@ -47,7 +47,7 @@ class MarkdownEngine(BaseEngine):
     supported_formats = [".md", ".markdown"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         pages_result = [
@@ -57,7 +57,7 @@ class MarkdownEngine(BaseEngine):
                 tables=[],
                 images=[],
                 metadata={},
-            )
+            ),
         ]
 
         result = ParseResult(

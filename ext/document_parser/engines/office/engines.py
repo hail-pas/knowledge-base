@@ -46,7 +46,7 @@ class DocxEngine(BaseEngine):
                         headers=headers,
                         rows=rows,
                         raw=raw,
-                    )
+                    ),
                 )
 
         content = "\n\n".join(paragraphs)
@@ -58,7 +58,7 @@ class DocxEngine(BaseEngine):
                 tables=tables_data,
                 images=[],
                 metadata={"paragraph_count": len(paragraphs), "table_count": len(tables_data)},
-            )
+            ),
         ]
 
         return ParseResult(
@@ -116,7 +116,7 @@ class XLSXEngine(BaseEngine):
                     {
                         "sheet_name": sheet_name,
                         "table": table_format,
-                    }
+                    },
                 )
 
                 sheet_text = f"## Sheet: {sheet_name}\n\n"
@@ -130,7 +130,7 @@ class XLSXEngine(BaseEngine):
                         tables=[table_format],
                         images=[],
                         metadata={"sheet_name": sheet_name},
-                    )
+                    ),
                 )
 
         return ParseResult(
@@ -172,7 +172,7 @@ class PPTXEngine(BaseEngine):
                     tables=[],
                     images=[],
                     metadata={"slide_number": slide_num + 1},
-                )
+                ),
             )
 
         return ParseResult(

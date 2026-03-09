@@ -4,7 +4,6 @@ AWS S3 Provider (async with aiobotocore)
 
 from typing import Any
 
-import aiobotocore
 from aiobotocore.config import AioConfig
 from aiobotocore.session import AioSession
 from botocore.exceptions import ClientError

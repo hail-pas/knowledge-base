@@ -31,10 +31,10 @@ class DocumentParser:
     async def parse(
         self,
         file_path: str,
-        engine: Optional[str] = None,
+        engine: str | None = None,
         output_format: OutputFormat = OutputFormat.TEXT,
-        processors: Optional[List[BaseProcessor]] = None,
-        options: Optional[dict] = None,
+        processors: list[BaseProcessor] | None = None,
+        options: dict | None = None,
     ) -> ParseResult:
         if engine:
             engine_names = [engine]

@@ -24,8 +24,7 @@ class PaddleOCREngine(BaseEngine):
 
         if ext == ".pdf":
             return await self._parse_pdf(file_path)
-        else:
-            return await self._parse_image(file_path)
+        return await self._parse_image(file_path)
 
     async def _parse_pdf(self, file_path: str) -> ParseResult:
         images = convert_from_path(file_path)
@@ -60,7 +59,7 @@ class PaddleOCREngine(BaseEngine):
                     content=page_text,
                     tables=[],
                     images=[],
-                )
+                ),
             )
 
         avg_confidence = sum(total_confidence) / len(total_confidence) if total_confidence else 0.75
@@ -97,7 +96,7 @@ class PaddleOCREngine(BaseEngine):
                 tables=[],
                 images=[],
                 metadata={"avg_ocr_confidence": avg_confidence},
-            )
+            ),
         ]
 
         return ParseResult(

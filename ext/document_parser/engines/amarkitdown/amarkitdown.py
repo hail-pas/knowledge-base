@@ -108,7 +108,7 @@ class MarkitdownEngine(BaseEngine):
                 tables=[],
                 images=[],
                 metadata={"note": "No page markers detected, returning as single page"},
-            )
+            ),
         ]
 
     def _split_by_markers(self, content: str, matches: list[re.Match]) -> list[PageResult]:
@@ -128,7 +128,7 @@ class MarkitdownEngine(BaseEngine):
                         tables=[],
                         images=[],
                         metadata={"page_marker": match.group(0)},
-                    )
+                    ),
                 )
 
             prev_end = match.end()
@@ -144,7 +144,7 @@ class MarkitdownEngine(BaseEngine):
                         tables=[],
                         images=[],
                         metadata={"note": "Final page"},
-                    )
+                    ),
                 )
 
         # If splitting failed, return single page
@@ -156,7 +156,7 @@ class MarkitdownEngine(BaseEngine):
                     tables=[],
                     images=[],
                     metadata={"note": "Page splitting failed, returning as single page"},
-                )
+                ),
             ]
 
         return pages

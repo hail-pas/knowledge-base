@@ -21,7 +21,6 @@ from ext.text_chunker.config.strategy_presets import (
     validate_strategy_for_format,
 )
 from ext.text_chunker.core.chunk_result import ChunkResult
-from ext.text_chunker.strategies.base import BaseChunkStrategy
 from ext.text_chunker.strategies.delimiter_based import DelimiterChunkStrategy
 from ext.text_chunker.strategies.heading_based import HeadingChunkStrategy
 from ext.text_chunker.strategies.json_based import JsonChunkStrategy
