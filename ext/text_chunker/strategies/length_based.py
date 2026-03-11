@@ -53,6 +53,7 @@ class LengthChunkStrategy(BaseChunkStrategy[LengthChunkConfig]):
         chunks = []
         start = 0
         chunk_index = 0
+        previous_end = 0
 
         while start < len(text):
             end = min(start + chunk_size, len(text))
@@ -60,9 +61,9 @@ class LengthChunkStrategy(BaseChunkStrategy[LengthChunkConfig]):
 
             overlap_start = None
             overlap_end = None
-            if overlap > 0 and start > 0:
-                overlap_start = max(start - overlap, 0)
-                overlap_end = start
+            if overlap > 0 and chunk_index > 0 and start < previous_end:
+                overlap_start = start
+                overlap_end = min(previous_end, end)
 
             chunk = self._build_chunk(
                 content=content,
@@ -73,6 +74,7 @@ class LengthChunkStrategy(BaseChunkStrategy[LengthChunkConfig]):
                 metadata={"chunk_index": chunk_index, "strategy": "length"},
             )
             chunks.append(chunk)
+            previous_end = end
 
             # 如果已经到达文本末尾，退出循环
             if end >= len(text):

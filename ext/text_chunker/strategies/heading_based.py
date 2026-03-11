@@ -1,86 +1,68 @@
 """
 按标题层级切块策略
 
-按照文档标题层级进行切块，保留父级标题
+按照正文区间切块，并在 chunk 内容中补上当前标题及其祖先标题。
 """
 
 import re
 from dataclasses import dataclass, field
 from loguru import logger
-from typing import Any
 
 from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.config.strategy_config import HeadingChunkConfig
 from ext.text_chunker.strategies.base import BaseChunkStrategy
+from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 
 
 @dataclass
 class Heading:
     """标题信息"""
 
-    level: int  # 标题层级（1-6）
-    title: str  # 标题文本
-    position: int  # 在文档中的全局位置
-    parent: "Heading | None" = None  # 父标题
-    children: list["Heading"] = field(default_factory=list)  # 子标题
+    level: int
+    title: str
+    start: int
+    line_end: int
+    parent: "Heading | None" = None
+    children: list["Heading"] = field(default_factory=list)
+
+
+@dataclass
+class HeadingBodyChunk:
+    """正文切块信息"""
+
+    content: str
+    body_start: int
+    body_end: int
+    overlap_start: int | None = None
+    overlap_end: int | None = None
 
 
 class HeadingChunkStrategy(BaseChunkStrategy[HeadingChunkConfig]):
-    """按标题层级切块策略
-
-    根据文档标题层级进行切块，保留所有父级标题，
-    超长时按段落分割
-    """
+    """按标题层级切块策略"""
 
     async def chunk(self, parse_result: ParseResult) -> list:
-        """
-        执行按标题层级切块
-
-        Args:
-            parse_result: 文档解析结果
-
-        Returns:
-            切块结果列表
-        """
-        from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 
         self._set_mapper(CoordinateMapper(parse_result))
 
         text = parse_result.content
-
-        # 1. 解析标题结构
         headings = self._parse_headings(text)
 
         if not headings:
             logger.warning("No headings found, falling back to length-based chunking")
-            # 回退到按长度切分
             return await self._fallback_to_length(parse_result)
 
-        # 2. 构建标题树
-        heading_tree = self._build_heading_tree(headings)
+        self._build_heading_tree(headings)
 
-        # 3. 按标题切分内容
-        chunks_data = self._split_by_headings(text, heading_tree)
-
-        # 4. 构建ChunkResult列表
         results = []
         chunk_index = 0
 
-        for chunk_text, start_pos, end_pos in chunks_data:
-            overlap_start = None
-            overlap_end = None
-
-            # 计算overlap（基于段落数）
-            if self.config.overlap_paragraphs > 0 and chunk_index > 0:
-                overlap_end = start_pos
-                overlap_start = self._calculate_overlap_start(text, start_pos, self.config.overlap_paragraphs)
-
+        for chunk_data in self._split_by_headings(text, headings):
             chunk = self._build_chunk(
-                content=chunk_text,
-                global_start=start_pos,
-                global_end=end_pos,
-                overlap_start=overlap_start,
-                overlap_end=overlap_end,
+                content=chunk_data.content,
+                global_start=chunk_data.body_start,
+                global_end=chunk_data.body_end,
+                overlap_start=chunk_data.overlap_start,
+                overlap_end=chunk_data.overlap_end,
                 metadata={"chunk_index": chunk_index, "strategy": "heading"},
             )
             results.append(chunk)
@@ -90,217 +72,213 @@ class HeadingChunkStrategy(BaseChunkStrategy[HeadingChunkConfig]):
         return results
 
     def _parse_headings(self, text: str) -> list[Heading]:
-        """
-        解析文档中的所有标题
+        headings: list[Heading] = []
 
-        Args:
-            text: 文档文本
+        for match in re.finditer(r"(?m)^[^\n]*(?:\n|$)", text):
+            line = match.group(0).rstrip("\n")
+            stripped_line = line.strip()
+            if not stripped_line:
+                continue
 
-        Returns:
-            标题列表（按出现顺序）
-        """
-        headings = []
-        heading_patterns = self.config.heading_patterns
+            level = self._detect_heading_level(stripped_line)
+            if level is None:
+                continue
 
-        for pattern in heading_patterns:
-            # 编译正则
-            regex = re.compile(pattern, re.MULTILINE)
-
-            for match in regex.finditer(text):
-                title = match.group(0).strip()
-
-                # 判断标题层级
-                level = 1
-                if pattern.startswith("^#"):
-                    # Markdown标题
-                    level = len(match.group(1)) if match.groups() else title.count("#")
-                elif "章节" in title or "篇" in title:
-                    # 中文章节
-                    if "篇" in title:
-                        level = 1
-                    elif "章" in title:
-                        level = 2
-                    else:
-                        level = 3
-
-                headings.append(Heading(level=level, title=title, position=match.start(), parent=None))
-
-        # 按位置排序
-        headings.sort(key=lambda h: h.position)
+            headings.append(
+                Heading(
+                    level=level,
+                    title=stripped_line,
+                    start=match.start(),
+                    line_end=match.start() + len(line),
+                )
+            )
 
         logger.debug(f"Parsed {len(headings)} headings")
         return headings
 
-    def _build_heading_tree(self, headings: list[Heading]) -> list[Heading]:
-        """
-        构建标题层级树
+    def _detect_heading_level(self, line: str) -> int | None:
+        for pattern in self.config.heading_patterns:
+            if not re.search(pattern, line):
+                continue
 
-        Args:
-            headings: 标题列表
+            markdown_match = re.match(r"^(#{1,6})\s+", line)
+            if markdown_match:
+                return len(markdown_match.group(1))
 
-        Returns:
-            根级标题列表
-        """
-        if not headings:
-            return []
+            if "篇" in line:
+                return 1
+            if "章" in line:
+                return 2
+            if "节" in line:
+                return 3
 
-        root_headings: list[Heading] = []
+            return 1
+
+        return None
+
+    def _build_heading_tree(self, headings: list[Heading]) -> None:
         stack: list[Heading] = []
 
         for heading in headings:
-            # 弹出栈中比当前标题层级高或相等的标题
             while stack and stack[-1].level >= heading.level:
                 stack.pop()
 
-            # 设置父标题
             if stack:
                 heading.parent = stack[-1]
                 stack[-1].children.append(heading)
-            else:
-                root_headings.append(heading)
 
-            # 入栈
             stack.append(heading)
 
-        logger.debug(f"Built heading tree with {len(root_headings)} root headings")
-        return root_headings
+    def _split_by_headings(self, text: str, headings: list[Heading]) -> list[HeadingBodyChunk]:
+        chunks: list[HeadingBodyChunk] = []
 
-    def _split_by_headings(self, text: str, heading_tree: list[Heading]) -> list[tuple[str, int, int]]:
-        """
-        按标题切分文本
+        leading_chunks = self._build_prefixed_chunks(text, 0, headings[0].start, [])
+        chunks.extend(leading_chunks)
 
-        Args:
-            text: 文档文本
-            heading_tree: 标题树
-
-        Returns:
-            (chunk_text, start_pos, end_pos) 列表
-        """
-        chunks = []
-
-        def process_heading(heading: Heading, parent_titles: list[str]):
-            """处理单个标题及其内容"""
-            # 收集所有父级标题
-            all_titles = parent_titles + [heading.title]
-
-            # 确定内容范围
-            start_pos = heading.position + len(heading.title)
-
-            # 找到结束位置（下一个同级或更高级标题，或文档结尾）
-            end_pos = len(text)
-
-            # 在同级标题中找下一个
-            if heading.parent:
-                siblings = heading.parent.children
-                idx = siblings.index(heading)
-                if idx < len(siblings) - 1:
-                    end_pos = siblings[idx + 1].position
-            else:
-                # 根级标题，在根级列表中找下一个
-                # 这里简化处理，假设heading_tree是排序的
-                pass
-
-            # 提取内容
-            content = text[start_pos:end_pos].strip()
-
-            # 添加父级标题（如果配置要求）
-            if self.config.preserve_headings and all_titles:
-                heading_text = "\n".join(all_titles) + "\n\n"
-                content = heading_text + content
-
-            # 检查是否超长
-            if len(content) > self.config.max_chunk_size:
-                # 超长，按段落分割
-                sub_chunks = self._split_by_paragraphs(content, self.config.max_chunk_size)
-
-                # 计算每个子块的全局位置
-                global_offset = heading.position
-                for sub_chunk in sub_chunks:
-                    chunk_start = global_offset
-                    global_offset += len(sub_chunk)
-                    chunk_end = global_offset
-                    chunks.append((sub_chunk, chunk_start, chunk_end))
-            else:
-                chunks.append((content, heading.position, end_pos))
-
-            # 递归处理子标题
-            for child in heading.children:
-                process_heading(child, all_titles)
-
-        # 处理所有根级标题
-        for root_heading in heading_tree:
-            process_heading(root_heading, [])
+        for index, heading in enumerate(headings):
+            next_heading_start = headings[index + 1].start if index + 1 < len(headings) else len(text)
+            section_end = heading.children[0].start if heading.children else next_heading_start
+            heading_path = self._get_heading_path(heading)
+            chunks.extend(self._build_prefixed_chunks(text, heading.line_end, section_end, heading_path))
 
         return chunks
 
-    def _split_by_paragraphs(self, text: str, max_size: int) -> list[str]:
-        """
-        按段落切分文本
+    def _build_prefixed_chunks(
+        self,
+        text: str,
+        range_start: int,
+        range_end: int,
+        heading_path: list[str],
+    ) -> list[HeadingBodyChunk]:
+        body_start = self._skip_leading_whitespace(text, range_start, range_end)
+        body_end = self._trim_trailing_whitespace(text, body_start, range_end)
 
-        Args:
-            text: 输入文本
-            max_size: 最大切块大小
+        if body_start >= body_end:
+            return []
 
-        Returns:
-            切块列表
-        """
-        paragraphs = text.split("\n\n")
-        chunks = []
-        current_chunk = ""
+        prefix = ""
+        if self.config.preserve_headings and heading_path:
+            prefix = "\n".join(heading_path) + "\n\n"
 
-        for para in paragraphs:
-            test_chunk = current_chunk + ("\n\n" if current_chunk else "") + para
+        body_budget = self.config.max_chunk_size - len(prefix) if self.config.max_chunk_size > len(prefix) else 1
+        body_ranges = self._split_body_range(text, body_start, body_end, body_budget, self.config.overlap_paragraphs)
 
-            if len(test_chunk) <= max_size:
-                current_chunk = test_chunk
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk)
-                current_chunk = para
+        return [
+            HeadingBodyChunk(
+                content=prefix + text[chunk_start:chunk_end],
+                body_start=chunk_start,
+                body_end=chunk_end,
+                overlap_start=overlap_start,
+                overlap_end=overlap_end,
+            )
+            for chunk_start, chunk_end, overlap_start, overlap_end in body_ranges
+        ]
 
-        if current_chunk:
-            chunks.append(current_chunk)
+    def _split_body_range(
+        self,
+        text: str,
+        start: int,
+        end: int,
+        max_size: int,
+        overlap_paragraphs: int,
+    ) -> list[tuple[int, int, int | None, int | None]]:
+        atoms = self._build_body_atoms(text, start, end, max_size)
+        if not atoms:
+            return []
 
-        return chunks
+        results: list[tuple[int, int, int | None, int | None]] = []
+        chunk_start_idx = 0
 
-    def _calculate_overlap_start(self, text: str, chunk_start: int, num_paragraphs: int) -> int:
-        """
-        计算overlap起始位置（向前回溯N个段落）
+        while chunk_start_idx < len(atoms):
+            chunk_end_idx = chunk_start_idx
+            chunk_start = atoms[chunk_start_idx][0]
+            chunk_end = atoms[chunk_start_idx][1]
 
-        Args:
-            text: 文档文本
-            chunk_start: 当前chunk起始位置
-            num_paragraphs: 回溯段落数
+            while chunk_end_idx + 1 < len(atoms):
+                candidate_end = atoms[chunk_end_idx + 1][1]
+                if candidate_end - chunk_start > max_size:
+                    break
+                chunk_end_idx += 1
+                chunk_end = candidate_end
 
-        Returns:
-            overlap起始位置
-        """
-        if num_paragraphs <= 0:
-            return chunk_start
+            overlap_start = None
+            overlap_end = None
+            if chunk_start_idx > 0 and overlap_paragraphs > 0:
+                overlap_count = min(overlap_paragraphs, chunk_end_idx - chunk_start_idx + 1)
+                overlap_start = atoms[chunk_start_idx][0]
+                overlap_end = atoms[chunk_start_idx + overlap_count - 1][1]
 
-        # 向前查找段落分隔符
-        paragraph_count = 0
-        pos = chunk_start - 1
+            results.append((chunk_start, chunk_end, overlap_start, overlap_end))
 
-        while pos >= 0 and paragraph_count < num_paragraphs:
-            if text[pos : pos + 2] == "\n\n":
-                paragraph_count += 1
-            pos -= 1
+            if chunk_end_idx == len(atoms) - 1:
+                break
 
-        return max(pos + 2, 0)  # +2 跳过 \n\n
+            next_start_idx = max(chunk_end_idx - overlap_paragraphs + 1, chunk_start_idx + 1)
+            chunk_start_idx = next_start_idx
+
+        return results
+
+    def _build_body_atoms(self, text: str, start: int, end: int, max_size: int) -> list[tuple[int, int]]:
+        paragraphs = self._extract_paragraph_ranges(text, start, end)
+        atoms: list[tuple[int, int]] = []
+
+        for para_start, para_end in paragraphs:
+            if para_end - para_start <= max_size:
+                atoms.append((para_start, para_end))
+                continue
+
+            split_start = para_start
+            while split_start < para_end:
+                split_end = min(split_start + max_size, para_end)
+                atoms.append((split_start, split_end))
+                split_start = split_end
+
+        return atoms
+
+    def _extract_paragraph_ranges(self, text: str, start: int, end: int) -> list[tuple[int, int]]:
+        paragraph_ranges: list[tuple[int, int]] = []
+        cursor = start
+
+        while cursor < end:
+            separator = re.search(r"\n\s*\n", text[cursor:end])
+            paragraph_end = cursor + separator.start() if separator else end
+
+            trimmed_start = self._skip_leading_whitespace(text, cursor, paragraph_end)
+            trimmed_end = self._trim_trailing_whitespace(text, trimmed_start, paragraph_end)
+
+            if trimmed_start < trimmed_end:
+                paragraph_ranges.append((trimmed_start, trimmed_end))
+
+            if not separator:
+                break
+
+            cursor = cursor + separator.end()
+
+        return paragraph_ranges
+
+    def _skip_leading_whitespace(self, text: str, start: int, end: int) -> int:
+        while start < end and text[start].isspace():
+            start += 1
+        return start
+
+    def _trim_trailing_whitespace(self, text: str, start: int, end: int) -> int:
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        return end
+
+    def _get_heading_path(self, heading: Heading) -> list[str]:
+        titles = []
+        current: Heading | None = heading
+
+        while current is not None:
+            titles.append(current.title)
+            current = current.parent
+
+        return list(reversed(titles))
 
     async def _fallback_to_length(self, parse_result: ParseResult) -> list:
-        """
-        回退到按长度切分
-
-        Args:
-            parse_result: 文档解析结果
-
-        Returns:
-            切块结果列表
-        """
-        from ext.text_chunker.strategies.length_based import LengthChunkStrategy
         from ext.text_chunker.config.strategy_config import LengthChunkConfig
+        from ext.text_chunker.strategies.length_based import LengthChunkStrategy
 
         logger.info("Falling back to length-based chunking")
 

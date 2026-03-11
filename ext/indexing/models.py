@@ -19,7 +19,7 @@ class _DocumentBaseIndexModel(BaseIndexModel):
     tags: list[str]
     source_type: str
 
-    extras: dict
+    extras: dict # = Field(index_metadata={"json_support": False}) # type: ignore
     # tenant_id: str
 
 
@@ -77,7 +77,8 @@ class CollectionIndexModelHelper:
 
         # 直接使用 model 的方法
         await helper.sparse_model.bulk_insert([...])
-        results = await helper.dense_model.search(query_clause, ...)
+        dense_model = await helper.get_dense_model()
+        results = await dense_model.search(query_clause, ...)
     """
 
     def __init__(self, collection: Collection):
@@ -90,29 +91,27 @@ class CollectionIndexModelHelper:
         """获取稀疏索引模型（无需 embedding 维度）"""
         return DocumentContentSparseIndex
 
-    @property
-    def dense_model(self) -> type[DocumentContentDenseIndex]:
+    async def get_dense_model(self) -> type[DocumentContentDenseIndex]:
         """获取稠密索引模型（自动根据 collection embedding config 创建正确维度的模型）"""
         emb_config = self.collection.embedding_model_config
         if not emb_config:
             raise ValueError("Collection embedding model config is not set")
         return cast(
             type[DocumentContentDenseIndex],
-            IndexModelFactory.create_for_embedding(
+            await IndexModelFactory.create_for_embedding(
                 DocumentContentDenseIndex,
                 emb_config,
             ),
         )
 
-    @property
-    def faq_model(self) -> type[DocumentFAQDenseIndex]:
+    async def get_faq_model(self) -> type[DocumentFAQDenseIndex]:
         """获取 FAQ 稠密索引模型（自动根据 collection embedding config 创建正确维度的模型）"""
         emb_config = self.collection.embedding_model_config
         if not emb_config:
             raise ValueError("Collection embedding model config is not set")
         return cast(
             type[DocumentFAQDenseIndex],
-            IndexModelFactory.create_for_embedding(
+            await IndexModelFactory.create_for_embedding(
                 DocumentFAQDenseIndex,
                 emb_config,
             ),
@@ -120,15 +119,20 @@ class CollectionIndexModelHelper:
 
     async def delete_by_collection(self):
         equal_clause = FilterClause(equals={"collection_id": self.collection.id})
+        dense_model = await self.get_dense_model()
+        faq_model = await self.get_faq_model()
 
-        await self.dense_model.delete_by_query(equal_clause)
+        await dense_model.delete_by_query(equal_clause)
         await self.sparse_model.delete_by_query(equal_clause)
-        await self.faq_model.delete_by_query(equal_clause)
+        await faq_model.delete_by_query(equal_clause)
 
     async def delete_by_documents(self, documents: list[Document]):
         assert all([self.collection.id == doc.collection_id for doc in documents])  # type: ignore
 
         equal_clause = FilterClause(in_list={"document_id": [doc.id for doc in documents]})
-        await self.dense_model.delete_by_query(equal_clause)
+        dense_model = await self.get_dense_model()
+        faq_model = await self.get_faq_model()
+
+        await dense_model.delete_by_query(equal_clause)
         await self.sparse_model.delete_by_query(equal_clause)
-        await self.faq_model.delete_by_query(equal_clause)
+        await faq_model.delete_by_query(equal_clause)

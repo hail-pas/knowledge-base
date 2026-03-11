@@ -8,6 +8,7 @@ class OutputFormat(Enum):
     TEXT = "text"
     MARKDOWN = "markdown"
     JSON = "json"
+    AUTO = "auto"
 
 
 class TableFormat(BaseModel):

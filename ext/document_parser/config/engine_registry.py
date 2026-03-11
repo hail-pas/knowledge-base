@@ -10,74 +10,74 @@ def _register_default_engines():
     try:
         from ext.document_parser.engines.pdf.pymupdf import PyMUPDFEngine
 
-        default_engines["pymupdf"] = PyMUPDFEngine
+        default_engines[PyMUPDFEngine.engine_name] = PyMUPDFEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.pdf.pdfplumber import PDFPlumberEngine
 
-        default_engines["pdfplumber"] = PDFPlumberEngine
+        default_engines[PDFPlumberEngine.engine_name] = PDFPlumberEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.ocr.paddleocr import PaddleOCREngine
 
-        default_engines["paddleocr"] = PaddleOCREngine
+        default_engines[PaddleOCREngine.engine_name] = PaddleOCREngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.ocr.tesseract import TesseractOCREngine
 
-        default_engines["tesseract"] = TesseractOCREngine
+        default_engines[TesseractOCREngine.engine_name] = TesseractOCREngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.office.engines import DocxEngine, XLSXEngine, PPTXEngine
 
-        default_engines["docx"] = DocxEngine
-        default_engines["xlsx"] = XLSXEngine
-        default_engines["pptx"] = PPTXEngine
+        default_engines[DocxEngine.engine_name] = DocxEngine
+        default_engines[XLSXEngine.engine_name] = XLSXEngine
+        default_engines[PPTXEngine.engine_name] = PPTXEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.web.engines import TrafilaturaEngine, MarkdownEngine
 
-        default_engines["trafilatura"] = TrafilaturaEngine
-        default_engines["markdown"] = MarkdownEngine
+        default_engines[TrafilaturaEngine.engine_name] = TrafilaturaEngine
+        default_engines[MarkdownEngine.engine_name] = MarkdownEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.web.url import URLEngine
 
-        default_engines["url"] = URLEngine
+        default_engines[URLEngine.engine_name] = URLEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.structured.engines import CSVEngine, JSONEngine
 
-        default_engines["csv"] = CSVEngine
-        default_engines["json"] = JSONEngine
+        default_engines[CSVEngine.engine_name] = CSVEngine
+        default_engines[JSONEngine.engine_name] = JSONEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.amarkitdown.amarkitdown import MarkitdownEngine
 
-        default_engines["markitdown"] = MarkitdownEngine
+        default_engines[MarkitdownEngine.engine_name] = MarkitdownEngine
     except ImportError:
         pass
 
     try:
         from ext.document_parser.engines.plain import TextEngine
 
-        default_engines["text"] = TextEngine
+        default_engines[TextEngine.engine_name] = TextEngine
     except ImportError:
         pass
 

@@ -18,4 +18,4 @@ class ExtensionRegistry(BaseModel):
     rdb_knowledge_base: TortoiseConfig
     celery: CeleryConfig
     httpx: HttpxConfig = HttpxConfig()
-    _: ModelProviderConfig = ModelProviderConfig()
+    register_model_provider: ModelProviderConfig = ModelProviderConfig()

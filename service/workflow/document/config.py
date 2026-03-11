@@ -1,6 +1,7 @@
 from service.workflow.document.schemas import (
     DocumentParseTaskInput,
     DocumentChunkTaskInput,
+    DocumentSummarizeTaskInput,
     IndexChunkTaskInput,
     GenerateTagsTaskInput,
     GenerateFAQTaskInput,
@@ -12,6 +13,11 @@ DOCUMENT_PROCESSING_WORKFLOW_DEFAULTS = {
         "input": DocumentParseTaskInput(document_id=0).model_dump(),
         "execute_params": {"task_name": "workflow_document.DocumentParseTask"},
         "depends_on": [],
+    },
+    "summarize": {
+        "input": DocumentSummarizeTaskInput(document_id=0).model_dump(),
+        "execute_params": {"task_name": "workflow_document.DocumentSummarizeTask"},
+        "depends_on": ["parse_document"],
     },
     "chunk_document": {
         "input": DocumentChunkTaskInput(document_id=0).model_dump(),

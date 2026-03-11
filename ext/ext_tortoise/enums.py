@@ -72,16 +72,7 @@ class DocumentStatusEnum(StrEnum):
     """文件状态"""
 
     pending = ("pending", "待处理")
-    fetching = ("fetching", "正在获取")
-    fetched = ("fetched", "已获取")
-    loading = ("loading", "正在加载")
-    loaded = ("loaded", "已加载")
-    splitting = ("splitting", "正在分割")
-    splitted = ("splitted", "已分割")
-    indexing = ("indexing", "正在索引")
-    indexed = ("indexed", "已索引")
-    summarizing = ("summarizing", "正在摘要")
-    summarized = ("summarized", "已摘要")
+    processing = ("processing", "处理中")
     success = ("success", "成功")
     failure = ("failure", "失败")
 
@@ -166,23 +157,3 @@ class IndexingStatusEnum(StrEnum):
     inactive = ("inactive", "未活跃")
     error = ("error", "错误")
     deleting = ("deleting", "删除中")
-
-
-# =============================================================================
-# RAG 平台 - Chat 相关枚举
-# =============================================================================
-
-
-class ChatModeEnum(StrEnum):
-    """聊天模式"""
-
-    normal = ("normal", "普通聊天")
-    rag = ("rag", "RAG 聊天")
-
-
-class MessageStatusEnum(StrEnum):
-    """消息处理状态"""
-
-    pending = ("pending", "处理中")
-    success = ("success", "成功")
-    failed = ("failed", "失败")

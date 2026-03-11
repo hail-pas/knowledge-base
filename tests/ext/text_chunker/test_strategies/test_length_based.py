@@ -11,6 +11,7 @@
 import pytest
 
 from ext.document_parser.core.parse_result import OutputFormat
+from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 from ext.text_chunker.strategies.length_based import LengthChunkStrategy
 from ext.text_chunker.config.strategy_config import LengthChunkConfig
 
@@ -266,10 +267,25 @@ class TestLengthChunkStrategyMetadata:
 
         # 后续的 chunk 应该有 overlap
         for chunk in chunks[1:]:
-            if chunk.overlap_start and chunk.overlap_end:
-                # 验证 overlap 内容确实是重复的
-                start_global = chunk.start.page_number
-                end_global = chunk.end.page_number
+            assert chunk.overlap_start is not None
+            assert chunk.overlap_end is not None
+
+    @pytest.mark.asyncio
+    async def test_overlap_positions_are_inside_current_chunk(self, long_text_parse_result):
+        """overlap 位置应位于当前 chunk 内部"""
+        mapper = CoordinateMapper(long_text_parse_result)
+        config = LengthChunkConfig(chunk_size=200, overlap=50, mode="chars")
+        strategy = LengthChunkStrategy(config)
+
+        chunks = await strategy.chunk(long_text_parse_result)
+
+        for chunk in chunks[1:]:
+            chunk_start = mapper.page_to_global(chunk.start)
+            chunk_end = mapper.page_to_global(chunk.end) + 1
+            overlap_start = mapper.page_to_global(chunk.overlap_start)
+            overlap_end = mapper.page_to_global(chunk.overlap_end) + 1
+
+            assert chunk_start <= overlap_start < overlap_end <= chunk_end
 
 
 class TestLengthChunkStrategyTokenMode:

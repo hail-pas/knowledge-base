@@ -1,3 +1,4 @@
+from typing import Literal
 import mimetypes
 from urllib.parse import quote
 
@@ -5,8 +6,9 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Request, Depends, Form, File, UploadFile, Body
 from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
-from tortoise.expressions import Q
+from tortoise.transactions import in_transaction
 
+from ext.ext_tortoise.main import ConnectionNameEnum
 from service.depend import api_permission_check
 from core.schema import CRUDPager
 from core.response import Resp, PageData
@@ -20,15 +22,17 @@ from ext.ext_tortoise.curd import (
     DeleteResp,
 )
 from ext.ext_tortoise.models.knowledge_base import (
+    Activity,
     Document,
     Collection,
     FileSource,
     DocumentPages,
     DocumentChunk,
     DocumentGeneratedFaq,
+    Workflow,
 )
 from ext.ext_tortoise.models.user_center import Account
-from ext.ext_tortoise.enums import DocumentStatusEnum
+from ext.ext_tortoise.enums import ActivityStatusEnum, DocumentStatusEnum
 from ext.file_source import FileSourceFactory
 
 from service.document.schema import (
@@ -41,9 +45,11 @@ from service.document.schema import (
     DocumentChunkUpdate,
     DocumentGeneratedFaqCreate,
     DocumentGeneratedFaqUpdate,
+    DocumentUpdate,
 )
 from service.document.helper import DocumentService
 from service.collection.helper import WorkflowTemplateValidator
+from service.workflow.document import process_document
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
 
@@ -167,19 +173,10 @@ async def delete_document(request: Request, pk: int) -> Resp[DeleteResp]:
     return Resp(data=DeleteResp(deleted=1))
 
 
-@router.patch("/{pk}/workflow-template", summary="更新Document工作流模板")
-async def update_document_workflow_template(
-    request: Request, pk: int, workflow_template: dict = Body(..., description="工作流模板配置")
+@router.put("/{pk}", summary="更新Document")
+async def update_document(
+    request: Request, pk: int, schema: DocumentUpdate
 ) -> Resp:
-    """
-    更新 document 的 workflow_template
-    不触发 workflow 执行
-
-    注意：
-    - 不验证文档状态
-    - 仅更新 workflow_template 字段
-    - 使用 WorkflowTemplateValidator 验证格式
-    """
     user: Account = request.scope["user"]
     queryset = get_document_queryset(request, user)
 
@@ -187,20 +184,16 @@ async def update_document_workflow_template(
     if not obj:
         raise ApiException("Document不存在")
 
-    if obj.workflow_template == workflow_template:
-        return Resp()
+    update_data = schema.model_dump(exclude_unset=True)
 
+    if "workflow_template" in update_data:
     # 验证 workflow_template 格式
-    try:
-        WorkflowTemplateValidator.validate(workflow_template)
-    except ValueError as e:
-        raise ApiException(str(e))
+        try:
+            WorkflowTemplateValidator.validate(update_data["workflow_template"])
+        except ValueError as e:
+            raise ApiException(str(e))
 
-    # 更新
-    obj.workflow_template = workflow_template
-    await obj.save()
-
-    # TODO: 触发 workflow
+    await update_obj(obj, queryset, update_data)
 
     return Resp()
 
@@ -243,6 +236,76 @@ async def get_document_detail(request: Request, pk: int) -> Resp[DocumentDetail]
     return await detail_view(queryset, pk, DocumentDetail)
 
 
+@router.post("/{pk}/re-process", summary="Document 重新处理")
+async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
+    user: Account = request.scope["user"]
+    queryset = get_document_queryset(request, user)
+    async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+        obj = await queryset.filter(pk=pk).select_for_update().first()
+        if not obj:
+            raise ApiException("Document不存在")
+
+        if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
+            raise ApiException("当前状态不支持重新处理")
+
+        obj.status = DocumentStatusEnum.pending
+        await obj.save(using_db=conn, update_fields=["status"])
+
+        if obj.current_workflow_uid:
+            await Activity.filter(workflow_uid=obj.current_workflow_uid).delete()
+            await Workflow.filter(uid=obj.current_workflow_uid).delete()
+
+    workflow_id = await process_document(workflow_uid=None, document_id=obj.id, workflow_template=obj.workflow_template, execute_mode="direct")
+
+    obj.current_workflow_uid = workflow_id  # type: ignore
+    await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
+
+    return Resp(data={"workflow_id": workflow_id})
+
+
+@router.post("/{pk}/re-chunk", summary="Document 重新切块")
+async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
+    user: Account = request.scope["user"]
+    queryset = get_document_queryset(request, user)
+    async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+        obj = await queryset.filter(id=pk).select_for_update().first()
+        if not obj:
+            raise ApiException("Document不存在重新切块")
+
+        if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
+            raise ApiException("当前状态不支持")
+
+        workflow_uid=str(obj.current_workflow_uid) if obj.current_workflow_uid else None
+
+        if workflow_uid:
+            chunk_activity_uids = []
+            activities = await Activity.filter(workflow_uid=workflow_uid)
+            for activity in activities:
+                task_name = (activity.execute_params or {}).get("task_name")
+                if task_name == "workflow_document.DocumentChunkTask":
+                    chunk_activity_uids.append(activity.uid)
+
+            if chunk_activity_uids:
+                await Activity.filter(uid__in=chunk_activity_uids).update(
+                    status=ActivityStatusEnum.pending.value,
+                    started_at=None,
+                    completed_at=None,
+                    error_message=None,
+                    stack_trace=None,
+                    canceled_at=None,
+                )
+
+        obj.status = DocumentStatusEnum.pending
+        await obj.save(using_db=conn, update_fields=["status"])
+
+    workflow_id = await process_document(workflow_uid=str(obj.current_workflow_uid), document_id=obj.id, workflow_template=obj.workflow_template, execute_mode="direct")
+    if not obj.current_workflow_uid or str(obj.current_workflow_uid) != workflow_id:
+        obj.current_workflow_uid = workflow_id  # type: ignore
+        await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
+
+    return Resp(data={"workflow_id": workflow_id})
+
+
 @router.get(
     "/{pk}/stream",
     summary="Document文件流",
@@ -256,7 +319,7 @@ async def get_document_stream(request: Request, pk: int) -> StreamingResponse:
     filename = quote(document.file_name)
 
     return StreamingResponse(
-        content=await provider.get_file_stream(document.uri),
+        content=provider.get_file_stream(document.uri),
         media_type=media_type,
         headers={"Content-Disposition": f"inline; filename*=UTF-8''{filename}"},
     )

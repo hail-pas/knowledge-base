@@ -1,6 +1,5 @@
 from pathlib import Path
 from loguru import logger
-from typing import Optional, List
 
 from ext.document_parser.core.parse_result import ParseResult, OutputFormat
 from ext.document_parser.config.engine_registry import get_engine, list_engines
@@ -13,9 +12,9 @@ class DocumentParser:
     def __init__(self):
         self._selection_rules = {
             ".pdf": ["pymupdf", "pdfplumber", "paddleocr"],
-            ".docx": ["docx"],
+            ".docx": ["markitdown", "docx"],
             ".xlsx": ["xlsx"],
-            ".pptx": ["pptx"],
+            ".pptx": ["markitdown", "pptx"],
             ".html": ["trafilatura"],
             ".htm": ["trafilatura"],
             ".md": ["markdown"],

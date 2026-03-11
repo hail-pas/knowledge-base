@@ -13,6 +13,7 @@
 import pytest
 
 from ext.document_parser.core.parse_result import OutputFormat
+from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 from ext.text_chunker.strategies.delimiter_based import DelimiterChunkStrategy
 from ext.text_chunker.config.strategy_config import DelimiterChunkConfig
 
@@ -217,9 +218,25 @@ class TestDelimiterChunkStrategyOverlap:
         if len(chunks) > 1:
             # 第二个及之后的 chunk 应该有 overlap
             for chunk in chunks[1:]:
-                if chunk.overlap_start and chunk.overlap_end:
-                    assert chunk.overlap_start is not None
-                    assert chunk.overlap_end is not None
+                assert chunk.overlap_start is not None
+                assert chunk.overlap_end is not None
+
+    @pytest.mark.asyncio
+    async def test_overlap_positions_are_inside_current_chunk(self, long_text_parse_result):
+        """回退到按长度切分时，overlap 位置应位于当前 chunk 内部"""
+        mapper = CoordinateMapper(long_text_parse_result)
+        config = DelimiterChunkConfig(delimiters=["ZZZ"], overlap=20, max_chunk_size=100, fallback_to_length=True)
+        strategy = DelimiterChunkStrategy(config)
+
+        chunks = await strategy.chunk(long_text_parse_result)
+
+        for chunk in chunks[1:]:
+            chunk_start = mapper.page_to_global(chunk.start)
+            chunk_end = mapper.page_to_global(chunk.end) + 1
+            overlap_start = mapper.page_to_global(chunk.overlap_start)
+            overlap_end = mapper.page_to_global(chunk.overlap_end) + 1
+
+            assert chunk_start <= overlap_start < overlap_end <= chunk_end
 
     @pytest.mark.asyncio
     async def test_overlap_zero(self, text_with_delimiters, create_parse_result):

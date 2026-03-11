@@ -205,8 +205,8 @@ class BaseIndexModel(BaseModel):
                         setattr(cls.Meta, attr_name, attr_value)
 
     id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={})  # type: ignore
-    created_at: datetime = datetime.now()
-    updated_at: datetime = datetime.now()
+    created_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
+    updated_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
 
     @staticmethod
     def _extract_type(annotation):
@@ -427,4 +427,3 @@ class BaseIndexModel(BaseModel):
     async def exists(cls, id: str) -> bool:
         """检查文档是否存在"""
         return bool(await cls.get([id]))
-

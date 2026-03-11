@@ -21,6 +21,17 @@ class DocumentDetail(DocumentList):
     file_source: FileSourceList | None = None
 
 
+@optional()
+class DocumentUpdate(
+    pydantic_model_creator(
+        Document,
+        name="DocumentList",
+        include=("display_name", "config_flag", "workflow_template", )
+    ),
+):
+    ...
+
+
 class DocumentPageList(
     pydantic_model_creator(
         DocumentPages,

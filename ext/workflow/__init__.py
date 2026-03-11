@@ -67,7 +67,6 @@ async def schedule_workflow(
             execute_mode="celery"
         )
     """
-    import uuid
 
     result_uid = await WorkflowScheduler.schedule_workflow(
         workflow_uid=workflow_uid,

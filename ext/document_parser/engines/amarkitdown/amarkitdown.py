@@ -87,6 +87,7 @@ class MarkitdownEngine(BaseEngine):
     def _detect_pages(self, content: str) -> list[PageResult]:
         """Detect page boundaries in markdown content."""
         page_patterns = [
+            r"<!--\s*Slide number:\s*(\d+)\s*-->",
             r"\n---+\s*Page\s+(\d+)\s*---+\n",
             r"\n\n#+\s*Page\s+(\d+)\s*\n",
             r"\n\n\s*Page\s+(\d+)\s*\n\n",
@@ -97,7 +98,7 @@ class MarkitdownEngine(BaseEngine):
         # Try to detect page markers
         for pattern in page_patterns:
             matches = list(re.finditer(pattern, content, re.IGNORECASE))
-            if len(matches) > 1:
+            if matches:
                 return self._split_by_markers(content, matches)
 
         # If no clear page markers detected, return single page
@@ -114,36 +115,46 @@ class MarkitdownEngine(BaseEngine):
     def _split_by_markers(self, content: str, matches: list[re.Match]) -> list[PageResult]:
         """Split content into pages based on detected markers."""
         pages = []
-        prev_end = 0
+        first_match = matches[0]
+        leading_content = content[: first_match.start()].strip()
+
+        if leading_content:
+            pages.append(
+                PageResult(
+                    page_number=1,
+                    content=leading_content,
+                    tables=[],
+                    images=[],
+                    metadata={"note": "Leading content before first page marker"},
+                ),
+            )
 
         for i, match in enumerate(matches):
-            start = match.start()
-            page_content = content[prev_end:start].strip()
+            next_start = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+            page_content = content[match.end() : next_start].strip()
+            page_number = self._extract_page_number(match, fallback=i + 1)
 
             if page_content:
                 pages.append(
                     PageResult(
-                        page_number=i + 1,
+                        page_number=page_number,
                         content=page_content,
                         tables=[],
                         images=[],
                         metadata={"page_marker": match.group(0)},
                     ),
                 )
-
-            prev_end = match.end()
-
-        # Add remaining content as last page
-        if prev_end < len(content):
-            remaining_content = content[prev_end:].strip()
-            if remaining_content:
+            else:
                 pages.append(
                     PageResult(
-                        page_number=len(matches) + 1,
-                        content=remaining_content,
+                        page_number=page_number,
+                        content="",
                         tables=[],
                         images=[],
-                        metadata={"note": "Final page"},
+                        metadata={
+                            "page_marker": match.group(0),
+                            "note": "Empty page content after marker",
+                        },
                     ),
                 )
 
@@ -160,3 +171,10 @@ class MarkitdownEngine(BaseEngine):
             ]
 
         return pages
+
+    def _extract_page_number(self, match: re.Match, fallback: int) -> int:
+        """Extract page number from marker regex."""
+        try:
+            return int(match.group(1))
+        except (IndexError, TypeError, ValueError):
+            return fallback

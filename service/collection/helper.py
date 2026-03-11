@@ -7,6 +7,7 @@ from ext.indexing.models import CollectionIndexModelHelper
 from service.workflow.document.schemas import (
     DocumentParseTaskInput,
     DocumentChunkTaskInput,
+    DocumentSummarizeTaskInput,
     IndexChunkTaskInput,
     GenerateTagsTaskInput,
     GenerateFAQTaskInput,
@@ -18,6 +19,7 @@ class WorkflowTemplateValidator:
 
     VALID_TASKS = {
         "workflow_document.DocumentParseTask": DocumentParseTaskInput,
+        "workflow_document.DocumentSummarizeTask": DocumentSummarizeTaskInput,
         "workflow_document.DocumentChunkTask": DocumentChunkTaskInput,
         "workflow_document.IndexChunkTask": IndexChunkTaskInput,
         "workflow_document.GenerateTagsTask": GenerateTagsTaskInput,

@@ -82,9 +82,14 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         self._validate_model_config(model_class)
 
         collection_name = self.build_collection_name(model_class)
+        collection_exists = await self._client.has_collection(collection_name=collection_name)
 
-        if drop_existing:
+        if drop_existing and collection_exists:
             await self._client.drop_collection(collection_name)
+            collection_exists = False
+
+        if collection_exists:
+            return
 
         # 构建字段列表
         fields = []

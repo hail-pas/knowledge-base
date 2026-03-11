@@ -5,11 +5,19 @@
 """
 
 import re
+from dataclasses import dataclass
 from loguru import logger
 
 from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.config.strategy_config import DelimiterChunkConfig
 from ext.text_chunker.strategies.base import BaseChunkStrategy
+
+
+@dataclass
+class DelimiterChunkSpan:
+    content: str
+    start: int
+    end: int
 
 
 class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
@@ -48,25 +56,24 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
 
         # 构建ChunkResult列表
         results = []
-        global_pos = 0
         chunk_index = 0
+        previous_end = 0
 
-        for chunk_text in chunks:
-            if not chunk_text:
+        for chunk_data in chunks:
+            if not chunk_data.content:
                 continue
 
-            start = global_pos
-            end = global_pos + len(chunk_text)
-            global_pos = end
+            start = chunk_data.start
+            end = chunk_data.end
 
             overlap_start = None
             overlap_end = None
-            if overlap > 0 and chunk_index > 0:
-                overlap_start = start - overlap
-                overlap_end = start
+            if overlap > 0 and chunk_index > 0 and start < previous_end:
+                overlap_start = start
+                overlap_end = min(previous_end, end)
 
             chunk = self._build_chunk(
-                content=chunk_text,
+                content=chunk_data.content,
                 global_start=start,
                 global_end=end,
                 overlap_start=overlap_start,
@@ -74,6 +81,7 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
                 metadata={"chunk_index": chunk_index, "strategy": "delimiter"},
             )
             results.append(chunk)
+            previous_end = end
             chunk_index += 1
 
         logger.info(f"Chunked text into {len(results)} chunks using delimiter strategy")
@@ -88,7 +96,7 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
         max_chunk_size: int,
         overlap: int,
         fallback_to_length: bool,
-    ) -> list[str]:
+    ) -> list[DelimiterChunkSpan]:
         """
         按分隔符切分文本
 
@@ -119,7 +127,7 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
             if len(parts) <= 1:
                 continue
 
-            has_oversized = any(len(part) > max_chunk_size for part in parts)
+            has_oversized = any(len(part.content) > max_chunk_size for part in parts)
 
             if has_oversized and fallback_to_length:
                 logger.info(
@@ -127,16 +135,16 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
                 )
                 return self._split_by_length(text, max_chunk_size, overlap)
 
-            chunks = self._merge_small_parts(parts, max_chunk_size, keep_delimiter)
+            chunks = self._merge_small_parts(parts, max_chunk_size)
             return chunks
 
         if fallback_to_length:
             logger.warning("No delimiter produced valid splits, falling back to length-based")
             return self._split_by_length(text, max_chunk_size, overlap)
 
-        return [text]
+        return [DelimiterChunkSpan(content=text, start=0, end=len(text))]
 
-    def _split_by_string(self, text: str, delimiter: str, keep_delimiter: bool) -> list[str] | None:
+    def _split_by_string(self, text: str, delimiter: str, keep_delimiter: bool) -> list[DelimiterChunkSpan] | None:
         """
         按普通字符串分隔符切分
 
@@ -151,11 +159,28 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
         if not delimiter:
             return None
 
-        escaped_delim = re.escape(delimiter)
-        pattern = f"{escaped_delim}(?!$)" if keep_delimiter else f"(?<={escaped_delim})"
-        return re.split(pattern, text)
+        parts = []
+        cursor = 0
+        delim_len = len(delimiter)
 
-    def _split_by_regex(self, text: str, pattern: str, keep_delimiter: bool) -> list[str] | None:
+        while cursor < len(text):
+            match_pos = text.find(delimiter, cursor)
+            if match_pos < 0:
+                break
+
+            part_end = match_pos + delim_len if keep_delimiter else match_pos
+            next_cursor = part_end if keep_delimiter else match_pos + delim_len
+
+            if cursor < part_end:
+                parts.append(DelimiterChunkSpan(content=text[cursor:part_end], start=cursor, end=part_end))
+            cursor = next_cursor
+
+        if cursor < len(text):
+            parts.append(DelimiterChunkSpan(content=text[cursor:], start=cursor, end=len(text)))
+
+        return parts
+
+    def _split_by_regex(self, text: str, pattern: str, keep_delimiter: bool) -> list[DelimiterChunkSpan] | None:
         """
         按正则表达式分隔符切分，支持精确保留分隔符
 
@@ -180,19 +205,20 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
         last_end = 0
 
         for match in compiled.finditer(text):
-            parts.append(text[last_end : match.start()])
+            part_end = match.end() if keep_delimiter else match.start()
+            next_start = match.end()
 
-            if keep_delimiter:
-                parts[-1] += match.group()
+            if last_end < part_end:
+                parts.append(DelimiterChunkSpan(content=text[last_end:part_end], start=last_end, end=part_end))
 
-            last_end = match.end()
+            last_end = next_start
 
         if last_end < len(text):
-            parts.append(text[last_end:])
+            parts.append(DelimiterChunkSpan(content=text[last_end:], start=last_end, end=len(text)))
 
-        return [p for p in parts if p]
+        return [part for part in parts if part.content]
 
-    def _split_by_length(self, text: str, max_chunk_size: int, overlap: int) -> list[str]:
+    def _split_by_length(self, text: str, max_chunk_size: int, overlap: int) -> list[DelimiterChunkSpan]:
         """
         按长度切分文本
 
@@ -209,12 +235,19 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
 
         while start < len(text):
             end = min(start + max_chunk_size, len(text))
-            chunks.append(text[start:end])
+            chunks.append(DelimiterChunkSpan(content=text[start:end], start=start, end=end))
+            if end >= len(text):
+                break
             start = end - overlap if overlap > 0 else end
+            if overlap >= max_chunk_size and len(chunks) > 1:
+                logger.warning(
+                    f"Overlap ({overlap}) >= max_chunk_size ({max_chunk_size}), breaking to avoid infinite loop"
+                )
+                break
 
         return chunks
 
-    def _merge_small_parts(self, parts: list[str], max_chunk_size: int, keep_delimiter: bool) -> list[str]:
+    def _merge_small_parts(self, parts: list[DelimiterChunkSpan], max_chunk_size: int) -> list[DelimiterChunkSpan]:
         """
         合并过小的文本块
 
@@ -233,19 +266,18 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
         current_chunk = parts[0]
 
         for part in parts[1:]:
-            # 检查添加分隔符后的长度
-            test_chunk = current_chunk + part if keep_delimiter else current_chunk + part
+            test_chunk = current_chunk.content + part.content
 
             if len(test_chunk) <= max_chunk_size:
-                current_chunk = test_chunk
+                current_chunk = DelimiterChunkSpan(content=test_chunk, start=current_chunk.start, end=part.end)
             else:
                 # 超过大小，保存当前chunk，开始新的chunk
-                if current_chunk:
+                if current_chunk.content:
                     chunks.append(current_chunk)
                 current_chunk = part
 
         # 添加最后一个chunk
-        if current_chunk:
+        if current_chunk.content:
             chunks.append(current_chunk)
 
         return chunks

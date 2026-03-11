@@ -12,6 +12,7 @@
 import pytest
 
 from ext.document_parser.core.parse_result import OutputFormat
+from ext.document_parser.core.parse_result import ParseResult, PageResult
 from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 from ext.text_chunker.core.chunk_result import TextPosition
 
@@ -98,6 +99,23 @@ class TestCoordinateMapperGlobalToPage:
         # 可能返回第一页的末尾或最后一页（根据新的容错逻辑）
         assert pos.page_number >= 1
 
+    def test_preserves_actual_page_numbers(self):
+        """测试保留 ParseResult 中的真实页号"""
+        parse_result = ParseResult(
+            content="page10\n\npage11",
+            format=OutputFormat.MARKDOWN,
+            pages=[
+                PageResult(page_number=10, content="page10"),
+                PageResult(page_number=11, content="page11"),
+            ],
+            page_count=2,
+            engine_used="test",
+        )
+        mapper = CoordinateMapper(parse_result)
+
+        assert mapper.global_to_page(0).page_number == 10
+        assert mapper.global_to_page(len("page10") + 2).page_number == 11
+
 
 class TestCoordinateMapperPageToGlobal:
     """测试页码坐标到全局索引转换"""
@@ -135,6 +153,22 @@ class TestCoordinateMapperPageToGlobal:
 
         with pytest.raises(ValueError, match="Invalid page number"):
             mapper.page_to_global(pos)
+
+    def test_non_sequential_page_number(self):
+        """测试非从1开始的页码可逆映射"""
+        parse_result = ParseResult(
+            content="aaa\n\nbbb",
+            format=OutputFormat.TEXT,
+            pages=[
+                PageResult(page_number=10, content="aaa"),
+                PageResult(page_number=11, content="bbb"),
+            ],
+            page_count=2,
+            engine_used="test",
+        )
+        mapper = CoordinateMapper(parse_result)
+
+        assert mapper.page_to_global(TextPosition(page_number=11, char_index=0)) == len("aaa") + 2
 
     def test_zero_page_number(self, multi_page_parse_result):
         """测试零页码"""
@@ -175,6 +209,23 @@ class TestCoordinateMapperGetPagesForRange:
         pages = mapper.get_pages_for_range(0, total_len)
 
         assert pages == [1, 2, 3]
+
+    def test_full_range_with_actual_page_numbers(self):
+        """测试返回真实页号而不是数组下标"""
+        parse_result = ParseResult(
+            content="aaa\n\nbbb\n\nccc",
+            format=OutputFormat.TEXT,
+            pages=[
+                PageResult(page_number=10, content="aaa"),
+                PageResult(page_number=11, content="bbb"),
+                PageResult(page_number=12, content="ccc"),
+            ],
+            page_count=3,
+            engine_used="test",
+        )
+        mapper = CoordinateMapper(parse_result)
+
+        assert mapper.get_pages_for_range(0, mapper.get_content_length()) == [10, 11, 12]
 
     def test_empty_range(self, multi_page_parse_result):
         """测试空范围"""
@@ -268,17 +319,20 @@ class TestCoordinateMapperPageBoundaries:
         sep_len = len(mapper._separator)
 
         # 第一页
-        page1_start, page1_end = mapper._page_boundaries[0]
+        page1_number, page1_start, page1_end = mapper._page_boundaries[0]
+        assert page1_number == 1
         assert page1_start == 0
         assert page1_end == len(multi_page_parse_result.pages[0].content)
 
         # 第二页
-        page2_start, page2_end = mapper._page_boundaries[1]
+        page2_number, page2_start, page2_end = mapper._page_boundaries[1]
+        assert page2_number == 2
         assert page2_start == page1_end + sep_len
         assert page2_end == page2_start + len(multi_page_parse_result.pages[1].content)
 
         # 第三页
-        page3_start, page3_end = mapper._page_boundaries[2]
+        page3_number, page3_start, page3_end = mapper._page_boundaries[2]
+        assert page3_number == 3
         assert page3_start == page2_end + sep_len
         assert page3_end == page3_start + len(multi_page_parse_result.pages[2].content)
 

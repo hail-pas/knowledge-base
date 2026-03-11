@@ -1,5 +1,6 @@
 from loguru import logger
 from ext.document_parser.core.parse_result import OutputFormat
+from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.file_source import FileSourceFactory
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
@@ -7,6 +8,27 @@ from ext.ext_tortoise.models.knowledge_base import (
     DocumentChunk,
     FileSource,
 )
+
+_ALLOWED_STATUS_TRANSITIONS: dict[DocumentStatusEnum, set[DocumentStatusEnum]] = {
+    DocumentStatusEnum.pending: {
+        DocumentStatusEnum.pending,
+        DocumentStatusEnum.processing,
+        DocumentStatusEnum.failure,
+    },
+    DocumentStatusEnum.processing: {
+        DocumentStatusEnum.processing,
+        DocumentStatusEnum.success,
+        DocumentStatusEnum.failure,
+    },
+    DocumentStatusEnum.success: {
+        DocumentStatusEnum.success,
+        DocumentStatusEnum.pending,
+    },
+    DocumentStatusEnum.failure: {
+        DocumentStatusEnum.failure,
+        DocumentStatusEnum.pending,
+    },
+}
 
 
 async def get_document_for_workflow(document_id: int) -> Document:
@@ -22,6 +44,31 @@ async def get_document_for_workflow(document_id: int) -> Document:
     return await Document.get(id=document_id).prefetch_related("collection__embedding_model_config", "file_source")
 
 
+async def update_document_status(document_id: int, status: DocumentStatusEnum) -> None:
+    """
+    Update document status with transition validation.
+    """
+    document = await Document.filter(id=document_id).only("id", "status").first()
+    if not document:
+        raise ValueError(f"Document not found: {document_id}")
+
+    current_status = DocumentStatusEnum(document.status)
+    if status == current_status:
+        return
+
+    allowed_targets = _ALLOWED_STATUS_TRANSITIONS.get(current_status, set())
+    if status not in allowed_targets:
+        raise ValueError(f"Invalid document status transition: {current_status.value} -> {status.value}")
+
+    updated = await Document.filter(id=document_id, status=current_status.value).update(status=status.value)
+    if not updated:
+        latest = await Document.filter(id=document_id).only("status").first()
+        if latest:
+            raise ValueError(
+                f"Document status changed concurrently: expected {current_status.value}, got {latest.status}"
+            )
+
+
 def get_parsed_uri_extension(content_format: str) -> str:
     """
     Returns .md or .txt based on format
@@ -32,7 +79,7 @@ def get_parsed_uri_extension(content_format: str) -> str:
     Returns:
         File extension (.md or .txt)
     """
-    return ".md" if content_format == OutputFormat.MARKDOWN else ".txt"
+    return ".md" if content_format == OutputFormat.MARKDOWN.value else ".txt"
 
 
 async def upload_parsed_content(file_source: FileSource, document_id: int, content: str, content_format: str) -> str:
@@ -50,6 +97,9 @@ async def upload_parsed_content(file_source: FileSource, document_id: int, conte
     """
     provider = await FileSourceFactory.create(file_source)
     ext = get_parsed_uri_extension(content_format)
+
+    print(">>>>>>>>>>>>>>", ext)
+
     uri = f"{document_id}/parsed{ext}"
 
     content_bytes = content.encode("utf-8")

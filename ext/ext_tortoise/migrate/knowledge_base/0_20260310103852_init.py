@@ -26,27 +26,6 @@ async def upgrade(db: BaseDBAsyncClient) -> str:
     KEY `idx_activity_status_6357fc` (`status`),
     KEY `idx_activity_celery__4333c8` (`celery_task_id`)
 ) CHARACTER SET utf8mb4 COMMENT='工作流活动表';
-CREATE TABLE IF NOT EXISTS `conversation_memory` (
-    `id` BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
-    `created_at` DATETIME(6) NOT NULL COMMENT '创建时间' DEFAULT CURRENT_TIMESTAMP(6),
-    `updated_at` DATETIME(6) NOT NULL COMMENT '更新时间' DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    `deleted_at` BIGINT COMMENT '删除时间',
-    `uid` CHAR(36) NOT NULL UNIQUE COMMENT '会话唯一标识',
-    `session_id` VARCHAR(255) NOT NULL COMMENT '会话ID',
-    `user_id` CHAR(36) COMMENT '用户ID',
-    `agent_type` VARCHAR(50) NOT NULL COMMENT 'Agent类型',
-    `messages` JSON NOT NULL COMMENT '对话历史消息列表',
-    `agent_config` JSON NOT NULL COMMENT 'Agent配置',
-    `tags` JSON NOT NULL COMMENT '标签列表',
-    `metadata` JSON NOT NULL COMMENT '其他元数据',
-    `last_updated` DATETIME(6) NOT NULL COMMENT '最后更新时间' DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-    KEY `idx_conversatio_created_ee2458` (`created_at`),
-    KEY `idx_conversatio_deleted_7aaa08` (`deleted_at`),
-    KEY `idx_conversatio_session_7b1e3f` (`session_id`),
-    KEY `idx_conversatio_user_id_227072` (`user_id`),
-    KEY `idx_conversatio_agent_t_aaa01d` (`agent_type`),
-    KEY `idx_conversatio_last_up_3fd9c6` (`last_updated`)
-) CHARACTER SET utf8mb4 COMMENT='对话记忆表';
 CREATE TABLE IF NOT EXISTS `embedding_model_config` (
     `id` BIGINT NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
     `created_at` DATETIME(6) NOT NULL COMMENT '创建时间' DEFAULT CURRENT_TIMESTAMP(6),
@@ -103,7 +82,7 @@ CREATE TABLE IF NOT EXISTS `file_source` (
     `type` VARCHAR(10) NOT NULL COMMENT '文件源类型',
     `access_key` VARCHAR(500) COMMENT '访问密钥',
     `secret_key` VARCHAR(500) COMMENT '密钥（加密存储）',
-    `storage_location` VARCHAR(1000) COMMENT '存储位置  - type=local_file: 本地文件路径（如 /data/documents）  - type=s3/minio/aliyun_oss: 存储桶名称（如 my-bucket）',
+    `storage_location` VARCHAR(1000) COMMENT '存储位置  - type=local_file: 本地文件路径（如 /data/documents）  - type=s3/minio/aliyun_oss: 存储桶名称（如 my-bucket）, sharepoint: 站点路径, api: API路径',
     `endpoint` VARCHAR(500) COMMENT '服务端点URL',
     `region` VARCHAR(100) COMMENT '区域/地域',
     `use_ssl` BOOL NOT NULL COMMENT '是否使用SSL/TLS' DEFAULT 1,
@@ -171,6 +150,7 @@ CREATE TABLE IF NOT EXISTS `document_chunk` (
     `overlap_start` JSON COMMENT '重叠起始位置（页码+页内偏移）',
     `overlap_end` JSON COMMENT '重叠结束位置（页码+页内偏移）',
     `metadata` JSON NOT NULL COMMENT '元数据',
+    `manual_add` BOOL NOT NULL COMMENT '是否手动添加' DEFAULT 0,
     `document_id` BIGINT NOT NULL COMMENT '文档ID',
     CONSTRAINT `fk_document_document_c3048c62` FOREIGN KEY (`document_id`) REFERENCES `document` (`id`) ON DELETE CASCADE,
     KEY `idx_document_ch_created_832cef` (`created_at`),

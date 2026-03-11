@@ -87,7 +87,7 @@ class IndexModelFactory:
 
         # 运行时使用
         emb_config = await EmbeddingModelConfig.filter(name="model-1536").first()
-        DynamicChunkIndex = IndexModelFactory.create_for_embedding(
+        DynamicChunkIndex = await IndexModelFactory.create_for_embedding(
             base_model=ChunkIndex,
             embedding_config=emb_config
         )
@@ -98,7 +98,7 @@ class IndexModelFactory:
     _model_registry: dict[str, type[BaseIndexModel]] = {}
 
     @classmethod
-    def create_for_embedding(
+    async def create_for_embedding(
         cls,
         base_model: type[BaseIndexModel],
         embedding_config: "EmbeddingModelConfig",
@@ -136,7 +136,11 @@ class IndexModelFactory:
         if model_key not in cls._model_registry:
             cls._model_registry[model_key] = cls._create_dynamic_class(base_model, dimension, model_key)
 
-        return cls._model_registry[model_key]
+        _m = cls._model_registry[model_key]
+
+        await _m.create_schema()
+
+        return _m
 
     @classmethod
     def _get_model_key(cls, base_name: str, dimension: int) -> str:

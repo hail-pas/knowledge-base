@@ -87,7 +87,7 @@ class ChunkIndex(BaseIndexModel):
 
 
 @pytest.fixture
-async def embedding_configs():
+def embedding_configs():
     """创建测试用的 embedding 配置"""
 
     configs = {}
@@ -143,46 +143,47 @@ def mock_provider():
     return MockProvider()
 
 
+@pytest.mark.asyncio
 class TestIndexModelFactory:
     """测试 IndexModelFactory"""
 
-    def test_create_dynamic_class_with_dimension_1536(self, mock_provider, embedding_configs):
+    async def test_create_dynamic_class_with_dimension_1536(self, mock_provider, embedding_configs):
         """测试创建维度为 1536 的动态模型"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
 
         emb_config = embedding_configs["1536"]
 
-        dynamic_model = IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         assert dynamic_model.Meta.dense_vector_dimension == 1536
         assert dynamic_model.Meta.index_name == "chunks"
         assert dynamic_model.Meta.provider is not None
 
-    def test_create_dynamic_class_with_dimension_3072(self, mock_provider, embedding_configs):
+    async def test_create_dynamic_class_with_dimension_3072(self, mock_provider, embedding_configs):
         """测试创建维度为 3072 的动态模型"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
 
         emb_config = embedding_configs["3072"]
 
-        dynamic_model = IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         assert dynamic_model.Meta.dense_vector_dimension == 3072
 
-    def test_caching_mechanism(self, mock_provider, embedding_configs):
+    async def test_caching_mechanism(self, mock_provider, embedding_configs):
         """测试缓存机制 - 相同配置返回同一类"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
 
         emb_config = embedding_configs["1536"]
 
-        model1 = IndexModelFactory.create_for_embedding(base_model, emb_config)
-        model2 = IndexModelFactory.create_for_embedding(base_model, emb_config)
+        model1 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        model2 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         assert model1 is model2
 
-    def test_different_dimensions_create_different_classes(self, mock_provider, embedding_configs):
+    async def test_different_dimensions_create_different_classes(self, mock_provider, embedding_configs):
         """测试不同维度创建不同的类"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
@@ -190,40 +191,40 @@ class TestIndexModelFactory:
         emb_config_1536 = embedding_configs["1536"]
         emb_config_3072 = embedding_configs["3072"]
 
-        model_1536 = IndexModelFactory.create_for_embedding(base_model, emb_config_1536)
-        model_3072 = IndexModelFactory.create_for_embedding(base_model, emb_config_3072)
+        model_1536 = await IndexModelFactory.create_for_embedding(base_model, emb_config_1536)
+        model_3072 = await IndexModelFactory.create_for_embedding(base_model, emb_config_3072)
 
         assert model_1536 is not model_3072
         assert model_1536.Meta.dense_vector_dimension == 1536
         assert model_3072.Meta.dense_vector_dimension == 3072
 
-    def test_inheritance_from_base_model(self, mock_provider, embedding_configs):
+    async def test_inheritance_from_base_model(self, mock_provider, embedding_configs):
         """测试动态模型继承自基础模型"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
 
         emb_config = embedding_configs["1024"]
 
-        dynamic_model = IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         assert issubclass(dynamic_model, BaseIndexModel)
         assert issubclass(dynamic_model, ChunkIndex)
 
-    def test_clear_cache(self, mock_provider, embedding_configs):
+    async def test_clear_cache(self, mock_provider, embedding_configs):
         """测试清除缓存"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
 
         emb_config = embedding_configs["1536"]
 
-        model1 = IndexModelFactory.create_for_embedding(base_model, emb_config)
+        model1 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
         IndexModelFactory.clear_cache()
 
-        model2 = IndexModelFactory.create_for_embedding(base_model, emb_config)
+        model2 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         assert model1 is not model2
 
-    def test_get_registered_models(self, mock_provider, embedding_configs):
+    async def test_get_registered_models(self, mock_provider, embedding_configs):
         """测试获取已注册的模型列表"""
         IndexModelFactory.clear_cache()
 
@@ -233,15 +234,15 @@ class TestIndexModelFactory:
         emb_config_1536 = embedding_configs["1536"]
         emb_config_3072 = embedding_configs["3072"]
 
-        IndexModelFactory.create_for_embedding(base_model, emb_config_1536)
-        IndexModelFactory.create_for_embedding(base_model, emb_config_3072)
+        await IndexModelFactory.create_for_embedding(base_model, emb_config_1536)
+        await IndexModelFactory.create_for_embedding(base_model, emb_config_3072)
 
         registered = IndexModelFactory.get_registered_models()
 
         assert "ChunkIndex_1536" in registered
         assert "ChunkIndex_3072" in registered
 
-    def test_get_model(self, mock_provider, embedding_configs):
+    async def test_get_model(self, mock_provider, embedding_configs):
         """测试通过基础模型名和维度获取模型"""
         IndexModelFactory.clear_cache()
 
@@ -250,19 +251,19 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        IndexModelFactory.create_for_embedding(base_model, emb_config)
+        await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         retrieved_model = IndexModelFactory.get_model("ChunkIndex", 1536)
 
         assert retrieved_model is not None
         assert retrieved_model.Meta.dense_vector_dimension == 1536
 
-    def test_get_model_not_exists(self):
+    async def test_get_model_not_exists(self):
         """测试获取不存在的模型返回 None"""
         result = IndexModelFactory.get_model("NonExistentModel", 1234)
         assert result is None
 
-    def test_invalid_dimension_raises_error(self, mock_provider):
+    async def test_invalid_dimension_raises_error(self, mock_provider):
         """测试无效维度抛出错误"""
         from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
 
@@ -278,7 +279,7 @@ class TestIndexModelFactory:
                 base_url="test",
                 dimension=0,
             )
-            IndexModelFactory.create_for_embedding(base_model, emb_config)
+            await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         with pytest.raises(ValueError, match="Invalid dimension"):
             emb_config = EmbeddingModelConfig(
@@ -289,9 +290,9 @@ class TestIndexModelFactory:
                 base_url="test",
                 dimension=-1,
             )
-            IndexModelFactory.create_for_embedding(base_model, emb_config)
+            await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
-    def test_provider_not_bound_raises_error(self, embedding_configs):
+    async def test_provider_not_bound_raises_error(self, embedding_configs):
         """测试未绑定 provider 抛出错误"""
         base_model = ChunkIndex
         base_model.Meta.provider = None
@@ -299,24 +300,24 @@ class TestIndexModelFactory:
         emb_config = embedding_configs["1536"]
 
         with pytest.raises(RuntimeError, match="Meta.provider is not bound"):
-            IndexModelFactory.create_for_embedding(base_model, emb_config)
+            await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
-    def test_wrong_config_type_raises_error(self, mock_provider):
+    async def test_wrong_config_type_raises_error(self, mock_provider):
         """测试传入错误的配置类型抛出错误"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
 
         with pytest.raises(TypeError, match="must be EmbeddingModelConfig"):
-            IndexModelFactory.create_for_embedding(base_model, "not-a-config")
+            await IndexModelFactory.create_for_embedding(base_model, "not-a-config")
 
-    def test_dynamic_model_can_be_instantiated(self, mock_provider, embedding_configs):
+    async def test_dynamic_model_can_be_instantiated(self, mock_provider, embedding_configs):
         """测试动态模型可以正常实例化"""
         base_model = ChunkIndex
         base_model.Meta.provider = mock_provider
 
         emb_config = embedding_configs["1536"]
 
-        dynamic_model = IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
         instance = dynamic_model(
             content="test content",
@@ -327,7 +328,7 @@ class TestIndexModelFactory:
         assert instance.document_id == 123
         assert dynamic_model.Meta.dense_vector_dimension == 1536
 
-    def test_model_key_generation(self):
+    async def test_model_key_generation(self):
         """测试模型 key 生成逻辑"""
         key = IndexModelFactory._get_model_key("ChunkIndex", 1536)
         assert key == "ChunkIndex_1536"

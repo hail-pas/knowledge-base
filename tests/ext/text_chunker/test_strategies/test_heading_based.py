@@ -13,6 +13,7 @@
 import pytest
 
 from ext.document_parser.core.parse_result import OutputFormat
+from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 from ext.text_chunker.strategies.heading_based import HeadingChunkStrategy
 from ext.text_chunker.config.strategy_config import HeadingChunkConfig
 
@@ -208,6 +209,34 @@ Content L3"""
         # 验证层级结构被保留
         assert len(chunks) > 0
 
+    @pytest.mark.asyncio
+    async def test_chunk_by_direct_body_with_ancestor_headings(self, create_parse_result):
+        """子标题 chunk 只包含自己的正文，但会携带祖先标题"""
+
+        text = """# 第一章
+
+章节引言。
+
+## 1.1 背景
+
+背景正文。
+
+## 1.2 目标
+
+目标正文。"""
+
+        parse_result = create_parse_result(text, OutputFormat.MARKDOWN)
+        config = HeadingChunkConfig(max_chunk_size=2000, overlap_paragraphs=0, preserve_headings=True)
+        strategy = HeadingChunkStrategy(config)
+
+        chunks = await strategy.chunk(parse_result)
+
+        assert [chunk.content for chunk in chunks] == [
+            "# 第一章\n\n章节引言。",
+            "# 第一章\n## 1.1 背景\n\n背景正文。",
+            "# 第一章\n## 1.2 目标\n\n目标正文。",
+        ]
+
 
 class TestHeadingChunkStrategyMaxChunkSize:
     """测试最大块大小限制"""
@@ -310,6 +339,40 @@ Paragraph 5."""
 
         assert len(chunks) > 0
 
+    @pytest.mark.asyncio
+    async def test_overlap_positions_stay_within_chunk_body(self, create_parse_result):
+        """overlap 位置应落在当前 chunk 正文范围内"""
+
+        text = """# Chapter 1
+
+Paragraph 1.
+
+Paragraph 2.
+
+Paragraph 3.
+
+Paragraph 4."""
+
+        parse_result = create_parse_result(text, OutputFormat.MARKDOWN)
+        mapper = CoordinateMapper(parse_result)
+        config = HeadingChunkConfig(max_chunk_size=35, overlap_paragraphs=1, preserve_headings=True)
+        strategy = HeadingChunkStrategy(config)
+
+        chunks = await strategy.chunk(parse_result)
+
+        assert len(chunks) >= 2
+
+        for chunk in chunks[1:]:
+            assert chunk.overlap_start is not None
+            assert chunk.overlap_end is not None
+
+            chunk_start = mapper.page_to_global(chunk.start)
+            chunk_end = mapper.page_to_global(chunk.end) + 1
+            overlap_start = mapper.page_to_global(chunk.overlap_start)
+            overlap_end = mapper.page_to_global(chunk.overlap_end) + 1
+
+            assert chunk_start <= overlap_start < overlap_end <= chunk_end
+
 
 class TestHeadingChunkStrategyFallback:
     """测试回退机制"""
@@ -377,7 +440,7 @@ This is the content under the only heading."""
 
     @pytest.mark.asyncio
     async def test_heading_without_content(self, create_parse_result):
-        """测试没有内容的标题"""
+        """没有正文的标题不应单独产出 chunk"""
 
         text = """# Heading 1
 
@@ -391,8 +454,7 @@ This is the content under the only heading."""
 
         chunks = await strategy.chunk(parse_result)
 
-        # 应该能处理空内容
-        assert len(chunks) > 0
+        assert len(chunks) == 0
 
     @pytest.mark.asyncio
     async def test_custom_heading_pattern(self, create_parse_result):
@@ -434,6 +496,30 @@ class TestHeadingChunkStrategyPositionTracking:
             assert chunk.start is not None
             assert chunk.end is not None
             assert len(chunk.pages) > 0
+
+    @pytest.mark.asyncio
+    async def test_positions_point_to_body_not_prefixed_headings(self, create_parse_result):
+        """chunk 的 start/end 应指向正文，而不是补上的标题前缀"""
+
+        text = """# 第一章
+
+## 1.1 背景
+
+背景正文。"""
+
+        parse_result = create_parse_result(text, OutputFormat.MARKDOWN)
+        mapper = CoordinateMapper(parse_result)
+        config = HeadingChunkConfig(max_chunk_size=2000, preserve_headings=True)
+        strategy = HeadingChunkStrategy(config)
+
+        chunks = await strategy.chunk(parse_result)
+
+        target_chunk = next(chunk for chunk in chunks if "背景正文。" in chunk.content)
+        body_start = mapper.page_to_global(target_chunk.start)
+        body_end = mapper.page_to_global(target_chunk.end) + 1
+
+        assert body_start == text.index("背景正文。")
+        assert text[body_start:body_end] == "背景正文。"
 
     @pytest.mark.asyncio
     async def test_multi_page_headings(self, create_parse_result):

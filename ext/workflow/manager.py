@@ -3,11 +3,14 @@ from datetime import datetime
 from typing import Any
 
 from loguru import logger
+from tortoise.transactions import in_transaction
 
 from ext.ext_tortoise.enums import (
     ActivityStatusEnum,
+    WorkflowConfigFormatEnum,
     WorkflowStatusEnum,
 )
+from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
 from ext.workflow.exceptions import (
     WorkflowNotFoundError,
@@ -38,19 +41,22 @@ class WorkflowManager:
         workflow_uid = uuid.uuid4()
 
         with logger.contextualize(trace_id=str(workflow_uid)):
-            workflow = await Workflow.create(
-                uid=workflow_uid,
-                config=config,
-                config_format=config_format,  # type: ignore
-                status=WorkflowStatusEnum.pending.value,
-            )
+            async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base) as conn:
+                workflow = await Workflow.create(
+                    uid=workflow_uid,
+                    config=config,
+                    config_format=config_format,  # type: ignore
+                    status=WorkflowStatusEnum.pending.value,
+                    using_db=conn,
+                )
 
-            await WorkflowManager.create_activities(
-                workflow_uid=workflow_uid,
-                config=config,
-                config_format=config_format,  # type: ignore
-                initial_inputs=initial_inputs,
-            )
+                await WorkflowManager.create_activities(
+                    workflow_uid=workflow_uid,
+                    config=config,
+                    config_format=config_format,  # type: ignore
+                    initial_inputs=initial_inputs,
+                    using_db=conn,
+                )
 
             logger.info(f"Created workflow {workflow_uid} with {len(config)} activities")
             return workflow
@@ -61,6 +67,7 @@ class WorkflowManager:
         config: dict[str, Any],
         config_format: str = "dict",
         initial_inputs: dict[str, Any] | None = None,
+        using_db: Any | None = None,
     ) -> list[Activity]:
         """Create activity records for existing workflow
 
@@ -78,11 +85,9 @@ class WorkflowManager:
 
             activities = []
             for node_name, node_config in graph.config.items():
-                node_info = graph.get_node_info(node_name)
-
                 activity_input = {}
                 if initial_inputs:
-                    activity_input.update(initial_inputs.get(node_name, {}))
+                    activity_input.update(initial_inputs)
                 activity_input.update(node_config.input)
 
                 activity = await Activity.create(
@@ -94,6 +99,7 @@ class WorkflowManager:
                     retry_count=0,
                     execute_params=node_config.execute_params,
                     status=ActivityStatusEnum.pending.value,
+                    using_db=using_db,
                 )
                 activities.append(activity)
 
@@ -142,7 +148,7 @@ class WorkflowManager:
                     workflow_uid=workflow_uid,
                     config=workflow.config,
                     config_format=workflow.config_format.value
-                    if isinstance(workflow.config_format, WorkflowStatusEnum)
+                    if isinstance(workflow.config_format, WorkflowConfigFormatEnum)
                     else workflow.config_format,  # type: ignore
                     initial_inputs=None,
                 )
@@ -264,6 +270,23 @@ class WorkflowManager:
             return result > 0
 
     @staticmethod
+    async def claim_activity_for_execution(activity_uid: uuid.UUID) -> bool:
+        """Atomically claim an activity before launching execution."""
+        result = await Activity.filter(
+            uid=activity_uid,
+            status__in=[
+                ActivityStatusEnum.pending.value,
+                ActivityStatusEnum.failed.value,
+                ActivityStatusEnum.retrying.value,
+            ],
+        ).update(
+            status=ActivityStatusEnum.running.value,
+            started_at=datetime.now(),
+            canceled_at=None,
+        )
+        return result > 0
+
+    @staticmethod
     async def get_ready_activities(
         workflow_uid: uuid.UUID,
         graph: GraphUtil,
@@ -291,7 +314,6 @@ class WorkflowManager:
                 in [
                     ActivityStatusEnum.pending.value,
                     ActivityStatusEnum.failed.value,
-                    ActivityStatusEnum.canceled.value,
                     ActivityStatusEnum.retrying.value
                 ]
             ]
@@ -367,15 +389,6 @@ class WorkflowManager:
                 completed_at=datetime.now(),
             )
 
-            await Activity.filter(
-                workflow_uid=workflow_uid,
-                status=ActivityStatusEnum.pending.value,
-            ).update(
-                status=ActivityStatusEnum.canceled.value,
-                canceled_at=datetime.now(),
-                error_message=f"Workflow failed: {reason}",
-            )
-
             logger.warning(f"Workflow {workflow_uid} failed: {reason}")
 
     @staticmethod
@@ -390,7 +403,7 @@ class WorkflowManager:
         """
         config_format = (
             workflow.config_format.value
-            if isinstance(workflow.config_format, WorkflowStatusEnum)
+            if isinstance(workflow.config_format, WorkflowConfigFormatEnum)
             else workflow.config_format
         )
         return GraphUtil(config=workflow.config, config_format=config_format)  # type: ignore

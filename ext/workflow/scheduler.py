@@ -209,11 +209,17 @@ class WorkflowScheduler:
                 logger.error(f"Task not found: {task_name}")
                 continue
 
-            # Use task's async_call method for direct execution
-            if hasattr(task, "async_call"):
-                tasks.append(task.async_call(str(activity.uid)))
-            else:
+            if not hasattr(task, "async_call"):
                 logger.error(f"Task {task_name} does not support direct execution")
+                continue
+
+            claimed = await WorkflowManager.claim_activity_for_execution(activity.uid)
+            if not claimed:
+                logger.debug(f"Skip launching {activity.name}, already claimed by another scheduler")
+                continue
+
+            # Use task's async_call method for direct execution
+            tasks.append(task.async_call(str(activity.uid)))
 
         if tasks:
             logger.info(f"Launching {len(tasks)} activities concurrently in direct mode")
@@ -240,10 +246,26 @@ class WorkflowScheduler:
                 logger.error(f"Task not found: {task_name}")
                 continue
 
-            celery_task_result = task.apply_async(args=[str(activity.uid), "celery"], countdown=0)
+            claimed = await WorkflowManager.claim_activity_for_execution(activity.uid)
+            if not claimed:
+                logger.debug(f"Skip dispatching {activity.name}, already claimed by another scheduler")
+                continue
+
+            try:
+                celery_task_result = task.apply_async(args=[str(activity.uid), "celery"], countdown=0)
+            except Exception as e:
+                logger.exception(f"Failed to dispatch task {task_name} for {activity.name}: {e}")
+                await WorkflowManager.update_activity_status(
+                    activity.uid,
+                    ActivityStatusEnum.pending,
+                    error_message=None,
+                    stack_trace=None,
+                )
+                continue
+
             await WorkflowManager.update_activity_status(
                 activity.uid,
-                ActivityStatusEnum.pending,
+                ActivityStatusEnum.running,
                 celery_task_id=celery_task_result.id,
             )
             logger.info(f"Launched task {task_name} for {activity.name}, task_id={celery_task_result.id}")
