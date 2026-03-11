@@ -145,6 +145,11 @@ async def create_document(
             config_flag=config_flag
         )
 
+    workflow_id = await process_document(workflow_uid=None, document_id=document.id, workflow_template=document.workflow_template, execute_mode="direct")
+
+    document.current_workflow_uid = workflow_id  # type: ignore
+    await document.save(update_fields=["current_workflow_uid"])
+
     return Resp(data=DocumentList.model_validate(document))
 
 
