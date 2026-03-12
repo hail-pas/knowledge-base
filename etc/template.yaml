@@ -1,6 +1,7 @@
 extensions:
   rdb_user_center:
     url: "mysql+aiomysql://username:pwd@host:port/user_center?charset=utf8mb4"
+
   rdb_second:
     url: "mysql+aiomysql://username:pwd@host:port/second?charset=utf8mb4"
 
@@ -8,12 +9,9 @@ extensions:
     url: "rediss://username:pwd@host:port/db?ssl_cert_reqs=required&ssl_ca_certs=path/to/file.pem"
     max_connections: 5
 
-  oss:
-    provider: "aliyun"
-    access_key_id:
-    access_key_secret:
-    endpoint:
-    bucket_name: ossgaiappnpd
+  celery:
+    broker_url: "rediss://username:pwd@host:port/db?ssl_cert_reqs=required&ssl_ca_certs=path/to/file.pem"
+    result_backend: "rediss://username:pwd@host:port/db?ssl_cert_reqs=required&ssl_ca_certs=path/to/file.pem"
 
 # 服务相关
 server:
@@ -36,7 +34,7 @@ server:
 
 # 项目相关
 project:
-  unique_code: parse
+  unique_code: KnowledgeBase
   # debug开关
   debug: True
   # sentry
