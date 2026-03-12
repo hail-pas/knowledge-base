@@ -34,13 +34,18 @@ async def captcha_image(
     identifier = uuid.uuid4()
 
     class CustomImageCaptcha(ImageCaptcha):
-        def generate_image(self, chars: str) -> Image:  # type: ignore
+        def generate_image(
+            self,
+            chars: str,
+            bg_color: tuple[int, int, int] | None = None,
+            fg_color: tuple[int, int, int, int] | None = None,
+        ) -> Image:  # type: ignore
             """Generate the image of the given characters.
 
             :param chars: text to be generated.
             """
-            background = random_color(238, 255)
-            color = random_color(10, 200, random.randint(220, 255))
+            background = bg_color or random_color(238, 255)
+            color = fg_color or random_color(10, 200, random.randint(220, 255))
             im = self.create_captcha_image(chars, color, background)
             self.create_noise_dots(im, color, 1, 20)
             self.create_noise_curve(im, color)

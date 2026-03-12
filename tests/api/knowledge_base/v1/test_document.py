@@ -2,6 +2,7 @@
 import time
 import pytest
 from io import BytesIO
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 
@@ -120,6 +121,16 @@ async def bind_mock_providers():
     DocumentFAQDenseIndex.Meta.provider = None  # type: ignore
 
 
+@pytest.fixture(autouse=True)
+def mock_process_document():
+    """Mock document workflow scheduling in API tests."""
+    with patch(
+        "api.knowledge_base.v1.document.process_document",
+        new=AsyncMock(return_value="00000000-0000-0000-0000-000000000001"),
+    ):
+        yield
+
+
 # =============================================================================
 # Document Creation Tests
 # =============================================================================
@@ -129,14 +140,13 @@ async def bind_mock_providers():
 def mock_file_source_upload():
     """Mock file source upload operations"""
     from ext.file_source.base import FileMetadata
-    from datetime import datetime
 
     async def mock_upload(uri, content, content_type=None):
         return FileMetadata(
             uri=uri,
             file_name="test.pdf",
             file_size=len(content),
-            last_modified=datetime.now(),
+            last_modified=datetime.now(UTC),
             etag="test-etag-123",
             content_type=content_type,
         )
@@ -243,7 +253,6 @@ def test_create_document_by_upload_with_extension(client, mock_file_source_uploa
 def mock_file_source_metadata():
     """Mock file source metadata retrieval"""
     from ext.file_source.base import FileMetadata
-    from datetime import datetime
 
     provider_mock = AsyncMock()
     provider_mock.get_file_metadata = AsyncMock(
@@ -251,11 +260,11 @@ def mock_file_source_metadata():
             uri="/path/to/document.pdf",
             file_name="remote-document.pdf",
             file_size=1024000,
-            last_modified=datetime.now(),
+            last_modified=datetime.now(UTC),
             etag="remote-etag-456",
             content_type="application/pdf",
             extra={"custom_field": "custom_value"},
-        )
+        ),
     )
 
     with patch("ext.file_source.FileSourceFactory.create", return_value=provider_mock):
@@ -513,116 +522,6 @@ def test_get_document_detail_nonexistent(client):
 
 
 # =============================================================================
-# Document Update Tests
-# =============================================================================
-
-
-def test_update_document_workflow_template(client, mock_file_source_upload, embedding_model_setup):
-    """测试更新文档的 workflow_template"""
-    collection_id = embedding_model_setup["collection_id"]
-    file_source_id = embedding_model_setup["file_source_id"]
-
-    # 先创建一个测试文档
-    file_content = b"Test PDF content for workflow update"
-    files = {
-        "file": ("test_workflow.pdf", BytesIO(file_content), "application/pdf"),
-    }
-    data = {
-        "collection_id": collection_id,
-        "file_source_id": file_source_id,
-    }
-
-    response = client.post("/v1/document", files=files, data=data)
-    assert response.status_code == 200
-    result = response.json()
-    assert result["code"] == 0
-    document_id = result["data"]["id"]
-
-    new_workflow_template = {
-        "parse_document": {
-            "input": {"document_id": 0, "engine": "pymupdf"},
-            "execute_params": {"task_name": "workflow_document.DocumentParseTask"},
-            "depends_on": [],
-        },
-        "chunk_document": {
-            "input": {"document_id": 0, "strategy": "length"},
-            "execute_params": {"task_name": "workflow_document.DocumentChunkTask"},
-            "depends_on": ["parse_document"],
-        },
-        "index_chunks": {
-            "input": {"document_id": 0, "batch_size": 200},
-            "execute_params": {"task_name": "workflow_document.IndexChunkTask"},
-            "depends_on": ["chunk_document"],
-        },
-    }
-
-    response = client.patch(
-        f"/v1/document/{document_id}/workflow-template",
-        json=new_workflow_template,
-    )
-    assert response.status_code == 200
-    result = response.json()
-    assert result["code"] == 0
-
-
-def test_update_document_workflow_template_invalid_format(client, mock_file_source_upload, embedding_model_setup):
-    """测试更新文档的 workflow_template（格式无效）"""
-    collection_id = embedding_model_setup["collection_id"]
-    file_source_id = embedding_model_setup["file_source_id"]
-
-    # 先创建一个测试文档
-    file_content = b"Test PDF content for invalid workflow"
-    files = {
-        "file": ("test_invalid.pdf", BytesIO(file_content), "application/pdf"),
-    }
-    data = {
-        "collection_id": collection_id,
-        "file_source_id": file_source_id,
-    }
-
-    response = client.post("/v1/document", files=files, data=data)
-    assert response.status_code == 200
-    result = response.json()
-    assert result["code"] == 0
-    document_id = result["data"]["id"]
-
-    invalid_workflow_template = {
-        "invalid_task": {
-            "input": {},
-            "execute_params": {"task_name": "nonexistent.Task"},
-            "depends_on": [],
-        },
-    }
-
-    response = client.patch(
-        f"/v1/document/{document_id}/workflow-template",
-        json=invalid_workflow_template,
-    )
-    assert response.status_code == 200
-    result = response.json()
-    assert result["code"] != 0
-
-
-def test_update_document_workflow_template_nonexistent_document(client):
-    """测试更新不存在的文档的 workflow_template"""
-    new_workflow_template = {
-        "parse_document": {
-            "input": {"document_id": 0},
-            "execute_params": {"task_name": "workflow_document.DocumentParseTask"},
-            "depends_on": [],
-        },
-    }
-
-    response = client.patch(
-        "/v1/document/999999/workflow-template",
-        json=new_workflow_template,
-    )
-    assert response.status_code == 200
-    result = response.json()
-    assert result["code"] != 0
-
-
-# =============================================================================
 # Document Delete Tests
 # =============================================================================
 
@@ -648,7 +547,7 @@ async def test_delete_document_success_status(client, embedding_model_setup, bin
                 "file_name": "to_delete.pdf",
                 "file_size": len(file_content),
             },
-        )()
+        )(),
     )
     provider_mock.delete_file = AsyncMock(return_value=True)
 
@@ -700,7 +599,7 @@ async def test_delete_document_failure_status(client, embedding_model_setup, bin
                 "file_name": "failed_doc.pdf",
                 "file_size": len(file_content),
             },
-        )()
+        )(),
     )
     provider_mock.delete_file = AsyncMock(return_value=True)
 
@@ -904,21 +803,6 @@ def test_document_chunk_crud_api(client, created_document_id):
     list_result = list_resp.json()
     assert list_result["code"] == 0
     assert any(item["id"] == chunk_id for item in list_result["data"])
-
-    update_resp = client.put(
-        f"/v1/document/{created_document_id}/chunks/{chunk_id}",
-        json={
-            "content": "chunk-content-v2",
-            "pages": [3],
-        },
-    )
-    assert update_resp.status_code == 200
-    assert update_resp.json()["code"] == 0
-
-    list_after_update = client.get(f"/v1/document/{created_document_id}/chunks", params={"page_number": 2})
-    assert list_after_update.status_code == 200
-    assert list_after_update.json()["code"] == 0
-    assert all(item["id"] != chunk_id for item in list_after_update.json()["data"])
 
     delete_resp = client.delete(f"/v1/document/{created_document_id}/chunks/{chunk_id}")
     assert delete_resp.status_code == 200

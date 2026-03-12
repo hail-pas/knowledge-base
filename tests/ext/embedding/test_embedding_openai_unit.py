@@ -3,6 +3,7 @@
 
 不依赖真实 API 的单元测试
 """
+import pytest
 
 from ext.embedding import EmbeddingModelFactory
 from ext.embedding.base import BaseEmbeddingModel
@@ -32,7 +33,7 @@ class TestEmbeddingFactory:
         assert "cached_ids" in info
         assert "registered_models" in info
 
-
+@pytest.mark.needs_api_key
 class TestOpenAIEmbeddingModel:
     """测试 OpenAI Embedding 模型"""
 

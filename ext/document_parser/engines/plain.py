@@ -13,13 +13,8 @@ class TextEngine(BaseEngine):
     supported_formats = [".txt"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-
-        print(">>>>>", file_path)
-
         async with aiofiles.open(file_path, encoding="utf-8") as f:
             content = await f.read()
-
-        print(">>>>>content: ", content)
 
         file_path_obj = Path(file_path)
         file_size = file_path_obj.stat().st_size

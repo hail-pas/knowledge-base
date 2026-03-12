@@ -17,9 +17,7 @@ class DocumentParser:
             ".xlsx": ["xlsx"],
             ".pptx": ["markitdown", "pptx"],
             ".html": ["trafilatura"],
-            ".htm": ["trafilatura"],
             ".md": ["markdown"],
-            ".markdown": ["markdown"],
             ".csv": ["csv"],
             ".json": ["json"],
             ".png": ["paddleocr", "tesseract"],
@@ -73,8 +71,6 @@ class DocumentParser:
                 if not result.content:  # or len(result.content.strip()) < 10:
                     logger.warning(f"引擎 {engine_name} 解析结果为空，尝试下一个")
                     continue
-
-                print(">>>" * 20, result.format, type(result.format))
 
                 if processors:
                     for processor in processors:

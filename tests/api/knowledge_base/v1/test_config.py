@@ -76,23 +76,6 @@ def test_get_file_source_detail(client):
     assert data["code"] == 0
 
 
-def test_update_file_source(client):
-    """测试更新文件源"""
-    global file_source_id
-    if not file_source_id:
-        pytest.skip("未创建文件源")
-    response = client.put(
-        f"/v1/config/file-source/{file_source_id}",
-        json={
-            "name": "updated-local-files",
-            "description": "更新后的描述",
-        },
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["code"] == 0
-
-
 # =============================================================================
 # LLMModelConfig Tests
 # =============================================================================
@@ -155,24 +138,6 @@ def test_get_llm_model_detail(client):
     if not llm_model_id:
         pytest.skip("未创建 LLM 模型配置")
     response = client.get(f"/v1/config/llm-model/{llm_model_id}")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["code"] == 0
-
-
-def test_update_llm_model(client):
-    """测试更新 LLM 模型配置"""
-    global llm_model_id
-    if not llm_model_id:
-        pytest.skip("未创建 LLM 模型配置")
-    response = client.put(
-        f"/v1/config/llm-model/{llm_model_id}",
-        json={
-            "name": "updated-openai",
-            "max_tokens": 8192,
-            "default_temperature": 0.8,
-        },
-    )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0

@@ -13,7 +13,7 @@ class EmailSanitizer(BaseProcessor):
 
 class PhoneSanitizer(BaseProcessor):
     async def process(self, result: ParseResult) -> ParseResult:
-        pattern = r"1[3-9]\d{9}"
+        pattern = r"(?<!\d)1[3-9]\d{9}(?!\d)"
         result.content = re.sub(pattern, "[PHONE_REDACTED]", result.content)
         return result
 

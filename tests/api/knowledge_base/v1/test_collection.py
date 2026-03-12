@@ -92,7 +92,6 @@ def test_create_collection_basic(client):
                     "depends_on": ["parse_document"],
                 },
             },
-            "external_config": {},
         },
     )
     assert response.status_code == 200
@@ -122,7 +121,6 @@ def test_create_collection_with_workflow_subset(client):
                     "depends_on": [],
                 },
             },
-            "external_config": {},
         },
     )
     assert response.status_code == 200
@@ -143,7 +141,8 @@ def test_create_external_collection(client):
             "is_external": True,
             "external_config": {
                 "endpoint": "https://external-kb.example.com",
-                "api_key": "external-key-123",
+                "authorization": "Bearer external-key-123",
+                "collection_id": "external-collection-123",
             },
             "workflow_template": {},
             "embedding_model_config_id": None,
@@ -275,7 +274,8 @@ def test_update_external_collection_config(client):
             "description": "更新后的外部知识库",
             "external_config": {
                 "endpoint": "https://new-endpoint.example.com",
-                "api_key": "new-api-key-456",
+                "authorization": "Bearer new-api-key-456",
+                "collection_id": "external-collection-456",
                 "timeout": 30,
             },
         },
@@ -326,7 +326,6 @@ def test_delete_collection_with_no_documents(client, bind_mock_providers):
                     "depends_on": [],
                 },
             },
-            "external_config": {},
         },
     )
     assert response.status_code == 200
@@ -360,6 +359,8 @@ def test_delete_external_collection(client):
             "is_external": True,
             "external_config": {
                 "endpoint": "https://external-test.example.com",
+                "authorization": "Bearer external-test-key",
+                "collection_id": "external-test-collection",
             },
             "workflow_template": {},
             "embedding_model_config_id": None,
@@ -430,7 +431,6 @@ def test_create_collection_minimal(client):
                     "depends_on": [],
                 },
             },
-            "external_config": {},
         },
     )
     assert response.status_code == 200
@@ -447,9 +447,6 @@ def test_create_public_collection_with_empty_user_id(client):
             "name": "public-collection-no-user",
             "description": "公共知识库，无特定用户",
             "is_public": True,
-            "user_id": None,
-            "tenant_id": None,
-            "role_id": None,
             "is_external": False,
             "embedding_model_config_id": embedding_model_id,
             "workflow_template": {
@@ -459,7 +456,6 @@ def test_create_public_collection_with_empty_user_id(client):
                     "depends_on": [],
                 },
             },
-            "external_config": {},
         },
     )
     assert response.status_code == 200

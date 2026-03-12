@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import io
+import os
 from pathlib import Path
 
+import numpy as np
 from paddleocr import PaddleOCR
 from pdf2image import convert_from_path
 
@@ -19,6 +20,7 @@ class PaddleOCREngine(BaseEngine):
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
         if self.ocr is None:
+            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
             self.ocr = PaddleOCR(use_angle_cls=True, lang="ch")
 
         ext = Path(file_path).suffix.lower()
@@ -28,27 +30,15 @@ class PaddleOCREngine(BaseEngine):
         return await self._parse_image(file_path)
 
     async def _parse_pdf(self, file_path: str) -> ParseResult:
-        images = convert_from_path(file_path)
+        images = convert_from_path(file_path, dpi=100)
         all_text = []
         pages_result = []
         total_confidence = []
 
         for page_num, image in enumerate(images):
-            img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format="PNG")
-            img_bytes = img_byte_arr.getvalue()
-
-            result = self.ocr.ocr(img_bytes)
-
-            text_lines = []
-            page_confidence = []
-
-            if result and result[0]:
-                for line in result[0]:
-                    if line:
-                        bbox, (text, confidence) = line
-                        text_lines.append(text)
-                        page_confidence.append(confidence)
+            image_array = np.array(image)
+            result = self.ocr.ocr(image_array)
+            text_lines, page_confidence = self._extract_lines_from_result(result)
 
             page_text = "\n".join(text_lines)
             all_text.append(page_text)
@@ -77,16 +67,7 @@ class PaddleOCREngine(BaseEngine):
 
     async def _parse_image(self, file_path: str) -> ParseResult:
         result = self.ocr.ocr(file_path)
-
-        text_lines = []
-        confidence_scores = []
-
-        if result and result[0]:
-            for line in result[0]:
-                if line:
-                    bbox, (text, confidence) = line
-                    text_lines.append(text)
-                    confidence_scores.append(confidence)
+        text_lines, confidence_scores = self._extract_lines_from_result(result)
 
         avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.75
 
@@ -109,3 +90,38 @@ class PaddleOCREngine(BaseEngine):
             confidence=avg_confidence,
             engine_used="paddleocr",
         )
+
+    def _extract_lines_from_result(self, result: object) -> tuple[list[str], list[float]]:
+        text_lines: list[str] = []
+        confidence_scores: list[float] = []
+
+        if not result:
+            return text_lines, confidence_scores
+
+        # PaddleOCR 3.x returns a list of dict items with rec_texts/rec_scores.
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            for item in result:
+                texts = item.get("rec_texts") or []
+                scores = item.get("rec_scores") or []
+                for text, score in zip(texts, scores, strict=False):
+                    if text:
+                        text_lines.append(str(text))
+                        confidence_scores.append(float(score))
+            return text_lines, confidence_scores
+
+        # PaddleOCR 2.x returns nested tuples: [ [ [bbox, (text, confidence)], ... ] ]
+        if isinstance(result, list) and result:
+            first_page = result[0]
+            if isinstance(first_page, list):
+                for line in first_page:
+                    if not line or len(line) < 2:
+                        continue
+                    _, text_confidence = line[0], line[1]
+                    if not isinstance(text_confidence, list | tuple) or len(text_confidence) < 2:
+                        continue
+                    text, confidence = text_confidence[0], text_confidence[1]
+                    if text:
+                        text_lines.append(str(text))
+                        confidence_scores.append(float(confidence))
+
+        return text_lines, confidence_scores

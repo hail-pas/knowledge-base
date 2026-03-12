@@ -1,0 +1,9 @@
+{
+  "name": "test",
+  "kind": "json",
+  "items": [
+    1,
+    2,
+    3
+  ]
+}
