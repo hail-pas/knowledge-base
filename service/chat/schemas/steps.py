@@ -5,12 +5,12 @@ Step Schema Definitions
 步骤是逻辑处理单元，支持嵌套
 """
 
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
-from service.chat.enums import StepTypeEnum, StepStatusEnum
+from pydantic import Field, BaseModel
 
+from service.chat.enums import StepTypeEnum, StepStatusEnum
 
 # =============================================================================
 # 基础步骤模型
@@ -21,23 +21,23 @@ class BaseStep(BaseModel):
     """步骤基础模型"""
 
     step_id: str = Field(..., description="步骤唯一ID，格式: step_ + UUID")
-    parent_step_id: Optional[str] = Field(None, description="父步骤ID（用于嵌套）")
+    parent_step_id: str | None = Field(None, description="父步骤ID（用于嵌套）")
     step_type: StepTypeEnum = Field(..., description="步骤类型")
     step_name: str = Field(..., description="步骤名称")
     status: StepStatusEnum = Field(default=StepStatusEnum.pending, description="步骤状态")
-    input: Dict[str, Any] = Field(default_factory=dict, description="步骤输入")
-    output: Dict[str, Any] = Field(default_factory=dict, description="步骤输出")
-    artifact_ids: List[str] = Field(default_factory=list, description="产生的产物ID列表")
+    input: dict[str, Any] = Field(default_factory=dict, description="步骤输入")
+    output: dict[str, Any] = Field(default_factory=dict, description="步骤输出")
+    artifact_ids: list[str] = Field(default_factory=list, description="产生的产物ID列表")
 
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    latency_ms: Optional[int] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    latency_ms: int | None = None
 
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
-    stack_trace: Optional[str] = None
+    error_code: str | None = None
+    error_message: str | None = None
+    stack_trace: str | None = None
 
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="步骤元数据")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="步骤元数据")
 
 
 # =============================================================================
@@ -52,13 +52,13 @@ class UserInputProcessingStep(BaseStep):
     step_name: str = "用户输入处理"
 
     class InputData(BaseModel):
-        text: Optional[str] = None
-        images: List[str] = Field(default_factory=list)
-        files: List[str] = Field(default_factory=list)
+        text: str | None = None
+        images: list[str] = Field(default_factory=list)
+        files: list[str] = Field(default_factory=list)
 
     class OutputData(BaseModel):
-        parsed_text: Optional[str] = None
-        language: Optional[str] = None
+        parsed_text: str | None = None
+        language: str | None = None
 
     input: InputData
     output: OutputData
@@ -76,7 +76,7 @@ class IntentRecognitionStep(BaseStep):
     class OutputData(BaseModel):
         intent: str
         confidence: float
-        entities: List[Dict[str, Any]] = Field(default_factory=list)
+        entities: list[dict[str, Any]] = Field(default_factory=list)
 
     input: InputData
     output: OutputData
@@ -89,11 +89,11 @@ class HistoryCompressionStep(BaseStep):
     step_name: str = "历史压缩"
 
     class InputData(BaseModel):
-        messages: List[Dict[str, Any]]
+        messages: list[dict[str, Any]]
         max_tokens: int
 
     class OutputData(BaseModel):
-        compressed_messages: List[Dict[str, Any]]
+        compressed_messages: list[dict[str, Any]]
         original_count: int
         compressed_count: int
         saved_tokens: int
@@ -110,9 +110,9 @@ class RetrievalStep(BaseStep):
 
     class InputData(BaseModel):
         query: str
-        collection_ids: List[int]
+        collection_ids: list[int]
         top_k: int
-        filters: Dict[str, Any] = Field(default_factory=dict)
+        filters: dict[str, Any] = Field(default_factory=dict)
 
     class OutputData(BaseModel):
         results_count: int
@@ -131,13 +131,13 @@ class ToolCallStep(BaseStep):
 
     class InputData(BaseModel):
         tool_name: str
-        tool_args: Dict[str, Any]
+        tool_args: dict[str, Any]
 
     class OutputData(BaseModel):
         tool_name: str
         success: bool
-        result: Optional[Dict[str, Any]] = None
-        error: Optional[str] = None
+        result: dict[str, Any] | None = None
+        error: str | None = None
 
     input: InputData
     output: OutputData
@@ -151,15 +151,15 @@ class LLMCallStep(BaseStep):
 
     class InputData(BaseModel):
         model: str
-        messages: List[Dict[str, Any]]
-        temperature: Optional[float] = None
-        max_tokens: Optional[int] = None
-        tools: Optional[List[Dict[str, Any]]] = None
+        messages: list[dict[str, Any]]
+        temperature: float | None = None
+        max_tokens: int | None = None
+        tools: list[dict[str, Any]] | None = None
 
     class OutputData(BaseModel):
-        text: Optional[str] = None
-        finish_reason: Optional[str] = None
-        tool_calls: Optional[List[Dict[str, Any]]] = None
+        text: str | None = None
+        finish_reason: str | None = None
+        tool_calls: list[dict[str, Any]] | None = None
 
     input: InputData
     output: OutputData
@@ -172,8 +172,8 @@ class ResponseGenerationStep(BaseStep):
     step_name: str = "响应生成"
 
     class InputData(BaseModel):
-        llm_output: Dict[str, Any]
-        artifacts: Dict[str, Any]
+        llm_output: dict[str, Any]
+        artifacts: dict[str, Any]
 
     class OutputData(BaseModel):
         final_response: str
@@ -188,5 +188,5 @@ class CustomStep(BaseStep):
 
     step_type: StepTypeEnum = StepTypeEnum.custom
     step_name: str = Field(..., description="自定义步骤名称")
-    input: Dict[str, Any]
-    output: Dict[str, Any]
+    input: dict[str, Any]
+    output: dict[str, Any]

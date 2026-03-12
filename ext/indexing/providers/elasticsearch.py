@@ -1,19 +1,22 @@
 """Elasticsearch Provider 实现"""
 
-from typing import Any
-from datetime import datetime
 import json
+from enum import StrEnum
+from typing import Any, get_args, get_origin
+from datetime import datetime
 
 from loguru import logger
-
-from enum import StrEnum
-
-from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
-from ext.indexing.base import BaseProvider, BaseIndexModel
-from ext.indexing.providers.types import ElasticsearchConfig
-from ext.indexing.types import FilterClause, DenseSearchClause, SparseSearchClause, HybridSearchClause
 from elasticsearch import AsyncElasticsearch
-from typing import get_origin, get_args
+
+from ext.indexing.base import BaseProvider, BaseIndexModel
+from ext.indexing.types import (
+    FilterClause,
+    DenseSearchClause,
+    HybridSearchClause,
+    SparseSearchClause,
+)
+from ext.indexing.providers.types import ElasticsearchConfig
+from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 
 class IndexMetadataEnum(StrEnum):
@@ -25,7 +28,7 @@ class IndexMetadataEnum(StrEnum):
 class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     """Elasticsearch Provider 实现"""
 
-    def __init__(self, config: IndexingBackendConfig):
+    def __init__(self, config: IndexingBackendConfig) -> None:
         super().__init__(config, ElasticsearchConfig)
 
         # Validate configuration
@@ -34,7 +37,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 f"Invalid vector_similarity: {self.extra_config.vector_similarity}. Must be one of: cosine, l2, ip",
             )
 
-    async def connect(self):
+    async def connect(self) -> None:
         """建立连接"""
 
         scheme = "https" if self.config.verify_ssl else "http"
@@ -54,12 +57,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         )
         await self._client.info()
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """断开连接"""
         if self._client:
             await self._client.close()
 
-    async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False):
+    async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False) -> None:
         """创建索引"""
         # Validate model configuration
         self._validate_model_config(model_class)
@@ -78,7 +81,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         await self._client.indices.create(index=index_name, mappings=mapping, settings=settings)
 
-    async def drop_collection(self, model_class: type[BaseIndexModel]):
+    async def drop_collection(self, model_class: type[BaseIndexModel]) -> None:
         """删除索引"""
         index_name = self.build_collection_name(model_class)
         await self._client.indices.delete(index=index_name, ignore_unavailable=True)
@@ -103,13 +106,13 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                     "index": True,
                     "similarity": index_metadata.get("similarity") or self.extra_config.vector_similarity,
                 }
-            elif field_info.annotation == bool:
+            elif field_info.annotation is bool:
                 mapping["properties"][field_name] = {"type": "boolean"}
-            elif field_info.annotation == int:
+            elif field_info.annotation is int:
                 mapping["properties"][field_name] = {"type": "integer"}
-            elif field_info.annotation == float:
+            elif field_info.annotation is float:
                 mapping["properties"][field_name] = {"type": "float"}
-            elif field_info.annotation == str:
+            elif field_info.annotation is str:
                 mapping["properties"][field_name] = {
                     "type": "text",
                     "analyzer": index_metadata.get("analyzer") or self.extra_config.text_analyzer,
@@ -118,11 +121,11 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 if index_metadata.get(IndexMetadataEnum.enable_keyword.value, False):
                     mapping["properties"][field_name]["fields"] = {"keyword": {"type": "keyword"}}
 
-            elif field_info.annotation == datetime:
+            elif field_info.annotation is datetime:
                 mapping["properties"][field_name] = {"type": "date"}
-            elif field_info.annotation in [dict, dict] or get_origin(field_info.annotation) == dict:
+            elif field_info.annotation is dict or get_origin(field_info.annotation) is dict:
                 mapping["properties"][field_name] = {"type": "object"}
-            elif get_origin(field_info.annotation) == list:
+            elif get_origin(field_info.annotation) is list:
                 # Handle list types: List[str], List[int], etc.
                 args = get_args(field_info.annotation)
                 if not args or args[0] in [str, int, float]:
@@ -149,7 +152,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         field_name = field
         field_type = model_class.model_fields.get(field_name)
-        if field_type and field_type.annotation == str:
+        if field_type and field_type.annotation is str:
             return {"match": {field: value}}
 
         return {"term": {field: value}}
@@ -162,7 +165,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         for field_name, field_info in model_class.model_fields.items():
             if field_name.startswith("_") or field_name == "id":
                 continue
-            if field_info.annotation == str:
+            if field_info.annotation is str:
                 return field_name
         raise RuntimeError("No text fields available for sparse search")
 
@@ -297,7 +300,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         self._log_bulk_errors(response, "insert")
         return self._extract_bulk_results(response, documents, "index")
 
-    def _log_bulk_errors(self, response: Any, operation: str = "bulk"):
+    def _log_bulk_errors(self, response: Any, operation: str = "bulk") -> None:
         """记录批量操作错误"""
         response_dict = response.body if hasattr(response, "body") else response
         if response_dict.get("errors", False):
@@ -353,6 +356,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         return []
 
         self._log_bulk_errors(response, "update")
+        return None
 
     async def bulk_upsert(
         self,
@@ -386,7 +390,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return self._extract_bulk_results(response, documents, "index")
 
-    async def delete(self, model_class: type[BaseIndexModel], ids: list[str]):  # type: ignore
+    async def delete(self, model_class: type[BaseIndexModel], ids: list[str]) -> None:  # type: ignore
         """删除文档（根据 ID，支持 routing）"""
         if not ids:
             return
@@ -410,7 +414,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
             if routing_value:
                 # 删除指定 routing 的文档
-                await self._client.delete(index=index_name, id=doc_id, routing=routing_value, refresh=self.extra_config.auto_flush)
+                await self._client.delete(
+                    index=index_name,
+                    id=doc_id,
+                    routing=routing_value,
+                    refresh=self.extra_config.auto_flush,
+                )
             else:
                 # 没有 routing 值，尝试直接删除（可能会失败）
                 try:
@@ -418,7 +427,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 except Exception as e:
                     logger.warning(f"Failed to delete document {doc_id} without routing: {e}")
 
-    async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause):
+    async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> None:
         """根据条件删除（支持 routing）"""
         index_name = self.build_collection_name(model_class)
         query = self._convert_filter(model_class, filter_clause)
@@ -435,7 +444,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 f"Please include the partition key value in the filter_clause.",
             )
 
-        await self._client.delete_by_query(index=index_name, query=query, routing=routing_value, refresh=self.extra_config.auto_flush)
+        await self._client.delete_by_query(
+            index=index_name,
+            query=query,
+            routing=routing_value,
+            refresh=self.extra_config.auto_flush,
+        )
 
     async def count(self, model_class: type[BaseIndexModel], filter_clause: FilterClause | None) -> int:
         """统计文档数量"""
@@ -645,7 +659,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         filter_clause: FilterClause,
     ) -> dict:
         """应用过滤条件到搜索 body"""
-        if isinstance(query_clause, DenseSearchClause) or isinstance(query_clause, HybridSearchClause):
+        if isinstance(query_clause, DenseSearchClause | HybridSearchClause):
             converted_filter = self._convert_filter(model_class, filter_clause)
             if "knn" in search_body["query"]:
                 search_body["query"]["knn"]["filter"] = converted_filter
@@ -703,5 +717,5 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         """健康检查"""
         try:
             return await self._client.ping()
-        except:
+        except Exception:
             return False

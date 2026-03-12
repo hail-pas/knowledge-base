@@ -6,11 +6,12 @@
 
 import re
 from dataclasses import dataclass
+
 from loguru import logger
 
+from ext.text_chunker.strategies.base import BaseChunkStrategy
 from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.config.strategy_config import DelimiterChunkConfig
-from ext.text_chunker.strategies.base import BaseChunkStrategy
 
 
 @dataclass
@@ -51,7 +52,13 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
 
         # 按优先级尝试分隔符
         chunks = self._split_by_delimiters(
-            text, delimiters, regex_prefix, keep_delimiter, max_chunk_size, overlap, fallback_to_length
+            text,
+            delimiters,
+            regex_prefix,
+            keep_delimiter,
+            max_chunk_size,
+            overlap,
+            fallback_to_length,
         )
 
         # 构建ChunkResult列表
@@ -131,12 +138,11 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
 
             if has_oversized and fallback_to_length:
                 logger.info(
-                    f"Some parts exceed max_chunk_size ({max_chunk_size}), falling back to length-based splitting"
+                    f"Some parts exceed max_chunk_size ({max_chunk_size}), falling back to length-based splitting",
                 )
                 return self._split_by_length(text, max_chunk_size, overlap)
 
-            chunks = self._merge_small_parts(parts, max_chunk_size)
-            return chunks
+            return self._merge_small_parts(parts, max_chunk_size)
 
         if fallback_to_length:
             logger.warning("No delimiter produced valid splits, falling back to length-based")
@@ -241,7 +247,7 @@ class DelimiterChunkStrategy(BaseChunkStrategy[DelimiterChunkConfig]):
             start = end - overlap if overlap > 0 else end
             if overlap >= max_chunk_size and len(chunks) > 1:
                 logger.warning(
-                    f"Overlap ({overlap}) >= max_chunk_size ({max_chunk_size}), breaking to avoid infinite loop"
+                    f"Overlap ({overlap}) >= max_chunk_size ({max_chunk_size}), breaking to avoid infinite loop",
                 )
                 break
 

@@ -10,7 +10,7 @@ class TextCleaner(BaseProcessor):
         remove_extra_whitespace: bool = True,
         normalize_quotes: bool = True,
         remove_control_chars: bool = True,
-    ):
+    ) -> None:
         self.remove_extra_whitespace = remove_extra_whitespace
         self.normalize_quotes = normalize_quotes
         self.remove_control_chars = remove_control_chars

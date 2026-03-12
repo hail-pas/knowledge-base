@@ -21,13 +21,13 @@ from config.main import local_configs  # noqa
 """FastAPI"""
 
 
-def handle_sigterm(signum, frame):
-    logging.error(f"Worker (pid:{os.getpid()}) was sent SIGTERM!")
+def handle_sigterm(signum, frame) -> None:
+    logging.error("Worker (pid:%s) was sent SIGTERM!", os.getpid())
     sys.exit(0)
 
 
 # Function to set up loguru and standard logging
-def setup_logging():
+def setup_logging() -> None:
     # Setup loguru
     logger.remove()  # Remove all loguru handlers
 
@@ -50,7 +50,7 @@ class FastApiApplication(gunicorn.app.base.BaseApplication):
         return self.application
 
 
-def post_fork(server: Any, worker: Any) -> None:  # ruff: noqa
+def post_fork(server: Any, worker: Any) -> None:
     # Important: The import of skywalking should be inside the post_fork function
     # if local_configs.PROJECT.SKYWALKINGT_SERVER:
     #     print({"level": "INFO", "message": "Skywalking agent started"})
@@ -77,7 +77,7 @@ def post_fork(server: Any, worker: Any) -> None:  # ruff: noqa
 
 
 # Pre-fork hook to setup logging before workers are forked
-def pre_fork(server, worker):
+def pre_fork(server, worker) -> None:
     ...
     # setup_logging()
 
@@ -97,7 +97,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run FastAPI application with Gunicorn.")
     parser.add_argument(
         "app_path",
-        help="The FastAPI app to run, in the format 'module:app'. For example: 'apis.user_center.entrypoint.factory:user_center_api'",
+        help=(
+            "The FastAPI app to run, in the format 'module:app'. "
+            "For example: 'apis.user_center.entrypoint.factory:user_center_api'"
+        ),
     )
     args = parser.parse_args()
 

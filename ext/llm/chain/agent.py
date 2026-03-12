@@ -6,19 +6,23 @@ Agent 实现
 """
 
 import json
+import contextlib
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 from collections.abc import AsyncIterator
 
 from loguru import logger
 
-from ext.llm.types import ChatMessage, LLMRequest, LLMResponse
-
-from ext.llm.chain.base import Runnable
-from ext.llm.chain.exceptions import MaxIterationsError, ToolExecutionError, ToolNotFoundError
-from ext.llm.chain.llm import LLM
-from ext.llm.chain.tool import Tool
 from util.general import truncate_content
+from ext.llm.types import LLMRequest, ChatMessage, LLMResponse
+from ext.llm.chain.llm import LLM
+from ext.llm.chain.base import Runnable
+from ext.llm.chain.tool import Tool
+from ext.llm.chain.exceptions import (
+    ToolNotFoundError,
+    MaxIterationsError,
+    ToolExecutionError,
+)
 
 
 class AgentStream:
@@ -35,12 +39,20 @@ class AgentStream:
 
     def __init__(
         self,
-        event_type: Literal["thought", "action", "observation", "content", "error", "max_iterations_reached", "retry"],
+        event_type: Literal[
+            "thought",
+            "action",
+            "observation",
+            "content",
+            "error",
+            "max_iterations_reached",
+            "retry",
+        ],
         content: Any,
         tool_call: dict[str, Any] | None = None,
         tool_result: dict[str, Any] | None = None,
         error: Exception | None = None,
-    ):
+    ) -> None:
         """初始化 AgentStream
 
         Args:
@@ -57,7 +69,8 @@ class AgentStream:
         self.error = error
 
     def __repr__(self) -> str:
-        return f"AgentStream(event_type='{self.event_type}', content={self.content[:50] if isinstance(self.content, str) else self.content})"
+        preview = self.content[:50] if isinstance(self.content, str) else self.content
+        return f"AgentStream(event_type='{self.event_type}', content={preview})"
 
 
 class Agent(Runnable[str, str], ABC):
@@ -72,7 +85,7 @@ class Agent(Runnable[str, str], ABC):
         tools: list[Tool],
         max_iterations: int = 10,
         system_prompt: str | None = None,
-    ):
+    ) -> None:
         """初始化 Agent
 
         Args:
@@ -98,7 +111,7 @@ class Agent(Runnable[str, str], ABC):
         """
 
     @abstractmethod
-    async def astream(self, input: str) -> AsyncIterator[AgentStream]: # type: ignore
+    async def astream(self, input: str) -> AsyncIterator[AgentStream]:  # type: ignore
         """流式执行 Agent
 
         Args:
@@ -144,7 +157,7 @@ class Agent(Runnable[str, str], ABC):
             result = await tool.ainvoke(**arguments)
             return {"result": result, "success": True}
         except Exception as e:
-            raise ToolExecutionError(tool_name, e)
+            raise ToolExecutionError(tool_name, e) from e
 
 
 class FunctionCallingAgent(Agent):
@@ -214,7 +227,7 @@ class FunctionCallingAgent(Agent):
         logger.warning(f"FunctionCallingAgent reached max iterations: {self.max_iterations}")
         raise MaxIterationsError(self.max_iterations)
 
-    async def astream(self, input: str) -> AsyncIterator[AgentStream]: # type: ignore
+    async def astream(self, input: str) -> AsyncIterator[AgentStream]:  # type: ignore
         """流式执行 Function Calling Agent
 
         Args:
@@ -333,15 +346,13 @@ class FunctionCallingAgent(Agent):
             LLM 响应
         """
         # 调用 LLM
-        response = await self.llm.model.chat(
+        return await self.llm.model.chat(
             LLMRequest(
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
             ),
         )
-
-        return response
 
     def _tool_call_to_dict(self, tool_call_data: Any) -> dict[str, str]:
         return {
@@ -373,7 +384,7 @@ class ReActAgent(Agent):
         tools: list[Tool],
         max_iterations: int = 10,
         system_prompt: str | None = None,
-    ):
+    ) -> None:
         """初始化 ReAct Agent
 
         Args:
@@ -424,7 +435,6 @@ Final Answer: 最终答案
         tool_descriptions = "\n".join(f"- {tool.name}: {tool.description}" for tool in self.tools)
 
         # 初始化上下文
-        context = ""
         previous_steps = ""
 
         # 循环推理
@@ -465,17 +475,27 @@ Final Answer: 最终答案
                     logger.debug(f"Tool '{tool_name}' result: {truncate_content(str(tool_result))}")
 
                     observation = f"Observation: {json.dumps(tool_result, ensure_ascii=False)}"
-                    previous_steps += f"\nThought: {parsed['thought']}\nAction: {tool_name}\nAction Input: {json.dumps(tool_input)}\n{observation}\n"
+                    previous_steps += (
+                        f"\nThought: {parsed['thought']}\n"
+                        f"Action: {tool_name}\n"
+                        f"Action Input: {json.dumps(tool_input)}\n"
+                        f"{observation}\n"
+                    )
                 except Exception as e:
                     logger.error(f"ReActAgent tool execution error: {e}")
                     observation = f"Observation: Error: {str(e)}"
-                    previous_steps += f"\nThought: {parsed['thought']}\nAction: {tool_name}\nAction Input: {json.dumps(tool_input)}\n{observation}\n"
+                    previous_steps += (
+                        f"\nThought: {parsed['thought']}\n"
+                        f"Action: {tool_name}\n"
+                        f"Action Input: {json.dumps(tool_input)}\n"
+                        f"{observation}\n"
+                    )
 
         # 达到最大迭代次数
         logger.warning(f"ReActAgent reached max iterations: {self.max_iterations}")
         raise MaxIterationsError(self.max_iterations)
 
-    async def astream(self, input: str) -> AsyncIterator[AgentStream]: # type: ignore
+    async def astream(self, input: str) -> AsyncIterator[AgentStream]:  # type: ignore
         """流式执行 ReAct Agent
 
         Args:
@@ -545,7 +565,12 @@ Final Answer: 最终答案
                     logger.debug(f"Tool '{tool_name}' result: {truncate_content(str(tool_result))}")
 
                     observation = f"Observation: {json.dumps(tool_result, ensure_ascii=False)}"
-                    previous_steps += f"\nThought: {parsed['thought']}\nAction: {tool_name}\nAction Input: {json.dumps(tool_input)}\n{observation}\n"
+                    previous_steps += (
+                        f"\nThought: {parsed['thought']}\n"
+                        f"Action: {tool_name}\n"
+                        f"Action Input: {json.dumps(tool_input)}\n"
+                        f"{observation}\n"
+                    )
 
                     yield AgentStream(
                         event_type="observation",
@@ -555,7 +580,12 @@ Final Answer: 最终答案
                 except Exception as e:
                     logger.error(f"ReActAgent stream tool execution error: {e}")
                     observation = f"Observation: Error: {str(e)}"
-                    previous_steps += f"\nThought: {parsed['thought']}\nAction: {tool_name}\nAction Input: {json.dumps(tool_input)}\n{observation}\n"
+                    previous_steps += (
+                        f"\nThought: {parsed['thought']}\n"
+                        f"Action: {tool_name}\n"
+                        f"Action Input: {json.dumps(tool_input)}\n"
+                        f"{observation}\n"
+                    )
 
                     yield AgentStream(
                         event_type="error",
@@ -592,25 +622,23 @@ Final Answer: 最终答案
         # 提取 Thought
         thought_match = re.search(r"Thought:\s*(.*?)(?=\n(?:Action|Final Answer)|$)", response, re.DOTALL)
         if thought_match:
-            result["thought"] = thought_match.group(1).strip() # type: ignore
+            result["thought"] = thought_match.group(1).strip()  # type: ignore
 
         # 提取 Action
         action_match = re.search(r"Action:\s*(\w+)", response)
         if action_match:
-            result["action"] = action_match.group(1) # type: ignore
+            result["action"] = action_match.group(1)  # type: ignore
 
         # 提取 Action Input
         action_input_match = re.search(r"Action Input:\s*(\{.*?\})", response, re.DOTALL)
         if action_input_match:
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 result["action_input"] = json.loads(action_input_match.group(1))
-            except json.JSONDecodeError:
-                pass
 
         # 提取 Final Answer
         final_answer_match = re.search(r"Final Answer:\s*(.*?)(?:\n|$)", response, re.DOTALL)
         if final_answer_match:
-            result["final_answer"] = final_answer_match.group(1).strip() # type: ignore
+            result["final_answer"] = final_answer_match.group(1).strip()  # type: ignore
 
         return result
 

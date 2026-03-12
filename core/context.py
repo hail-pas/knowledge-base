@@ -7,7 +7,7 @@ from config.default import RegisterExtensionConfig
 from enhance.monkey_patch import patch
 
 
-async def init_ctx():
+async def init_ctx() -> None:
     # patch
     patch()
     # logger
@@ -18,7 +18,7 @@ async def init_ctx():
             await ext_conf.register()
 
 
-async def clear_ctx():
+async def clear_ctx() -> None:
     for _, ext_conf in local_configs.extensions:  # type: ignore
         if isinstance(ext_conf, RegisterExtensionConfig):
             await ext_conf.unregister()

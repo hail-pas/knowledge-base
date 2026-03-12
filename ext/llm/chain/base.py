@@ -5,7 +5,7 @@ Chain 模块基础抽象
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Generic, List, TypeVar
+from typing import Any, List, Generic, TypeVar
 from collections.abc import AsyncIterator
 
 from ext.llm.chain.exceptions import ChainError

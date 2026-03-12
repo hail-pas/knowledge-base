@@ -118,8 +118,7 @@ class ContextMiddlewareWithTraceId(ContextMiddleware):
         try:
             context = await self.set_context(request)
         except MiddleWareValidationError as e:
-            error_response = e.error_response or self.error_response
-            return error_response
+            return e.error_response or self.error_response
 
         # create request-scoped context
         with (

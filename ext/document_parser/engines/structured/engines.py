@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import json
+
 import pandas as pd
+import aiofiles
 
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult, TableFormat
+from ext.document_parser.core.parse_result import (
+    PageResult,
+    ParseResult,
+    TableFormat,
+    OutputFormat,
+)
 
 
 class CSVEngine(BaseEngine):
@@ -12,11 +19,11 @@ class CSVEngine(BaseEngine):
     supported_formats = [".csv"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        df = pd.read_csv(file_path)
+        data_frame = pd.read_csv(file_path)
 
-        headers = df.columns.tolist()
-        rows = df.to_dict("records")
-        raw = df.values.tolist()
+        headers = data_frame.columns.tolist()
+        rows = data_frame.to_dict("records")
+        raw = data_frame.to_numpy().tolist()
 
         table_format = TableFormat(
             headers=headers,
@@ -54,8 +61,8 @@ class JSONEngine(BaseEngine):
     supported_formats = [".json"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        with open(file_path, encoding="utf-8") as f:
-            data = json.load(f)
+        async with aiofiles.open(file_path, encoding="utf-8") as f:
+            data = json.loads(await f.read())
 
         text_content = json.dumps(data, indent=2, ensure_ascii=False)
 

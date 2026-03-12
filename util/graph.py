@@ -1,10 +1,10 @@
 import json
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Set, Dict, List, Tuple, Union, Literal, Optional
 from collections.abc import Iterable
 
+import yaml
 import networkx as nx
 import pydantic
-import yaml
 
 NodeName = str
 ConfigFormat = Literal["yaml", "json", "dict"]
@@ -78,7 +78,6 @@ class GraphUtil:
 
         self._build_graph()
         self._build_node_infos()
-
 
     def _parse_config(
         self,
@@ -169,7 +168,7 @@ class GraphUtil:
 
     def _build_graph(self) -> None:
         # 只添加配置中显式存在的节点
-        for node_name in self.config.keys():
+        for node_name in self.config:
             self.graph.add_node(node_name)
 
         # 依赖建边（严格校验 parent 必须存在，避免“幽灵节点”）
@@ -187,7 +186,7 @@ class GraphUtil:
                 cycle = nx.find_cycle(self.graph, orientation="original")
                 raise DagCycleError(f"The graph contains a cycle: {cycle}")
             except nx.NetworkXNoCycle:
-                raise DagCycleError("The graph contains cycles and is not a valid DAG")
+                raise DagCycleError("The graph contains cycles and is not a valid DAG") from None
 
     def _build_node_infos(self) -> None:
         """构建 NodeInfo（parents/children/ancestors/descendants 等缓存）"""
@@ -289,14 +288,10 @@ class GraphUtil:
 
         return layers
 
-
     def is_node_ready(self, node_name: NodeName, completed_nodes: set[NodeName]) -> bool:
         if node_name not in self.graph:
             raise DagConfigError(f"Node '{node_name}' not found in graph")
-        for parent in self.graph.predecessors(node_name):
-            if parent not in completed_nodes:
-                return False
-        return True
+        return all(parent in completed_nodes for parent in self.graph.predecessors(node_name))
 
     def get_ready_nodes(self, completed_nodes: set[NodeName]) -> list[NodeName]:
         ready: list[NodeName] = []

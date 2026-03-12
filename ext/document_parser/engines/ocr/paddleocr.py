@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+
 from paddleocr import PaddleOCR
 from pdf2image import convert_from_path
 
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult
+from ext.document_parser.core.parse_result import PageResult, ParseResult, OutputFormat
 
 
 class PaddleOCREngine(BaseEngine):
     engine_name = "paddleocr"
     supported_formats = [".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.ocr = None
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:

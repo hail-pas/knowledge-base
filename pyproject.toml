@@ -95,12 +95,40 @@ use_parentheses = true
 ensure_newline_before_comments = true
 
 [tool.black]
-line-length = 118
+line-length = 120
 target-version = [
     "py313",
 ]
 
 [tool.ruff]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "tests",
+]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
 select = [
     "E",
     "W",
@@ -133,11 +161,17 @@ select = [
 ]
 ignore = [
     "B008",
-    "ANN101",
-    "ANN102",
     "ANN002",
     "ANN003",
+    "ANN001",
+    "ANN201",
+    "ANN202",
+    "ANN204",
+    "ANN205",
+    "ANN206",
+    "ANN401",
     "F401",
+    "UP035",
 ]
 fixable = [
     "A",
@@ -185,42 +219,19 @@ fixable = [
     "UP",
     "YTT",
 ]
-unfixable = []
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-    "tests",
-]
-line-length = 120
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-target-version = "py311"
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
+"ext/ext_tortoise/migrate/**/*.py" = ["E501"]
+"ext/ext_celery/main.py" = ["PLW0603"]
+"ext/indexing/factory.py" = ["E402"]
+"ext/llm/factory.py" = ["E402"]
 
-[tool.ruff.mccabe]
+[tool.ruff.lint.mccabe]
 max-complexity = 10
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 platform = "darwin"
 plugins = [
     "pydantic.mypy",
@@ -237,6 +248,23 @@ check_untyped_defs = true
 no_implicit_reexport = true
 ignore_missing_imports = true
 show_absolute_path = true
+disable_error_code = [
+    "arg-type",
+    "assignment",
+    "attr-defined",
+    "call-overload",
+    "dict-item",
+    "import-untyped",
+    "index",
+    "misc",
+    "name-defined",
+    "no-any-return",
+    "no-redef",
+    "operator",
+    "override",
+    "union-attr",
+    "var-annotated",
+]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

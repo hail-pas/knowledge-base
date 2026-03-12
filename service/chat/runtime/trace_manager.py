@@ -9,22 +9,22 @@ Trace Manager - 核心管理器
 """
 
 import asyncio
-from typing import Optional, List, Dict, Any
-from uuid import uuid4
-from datetime import datetime
 import traceback
+from uuid import uuid4
+from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
 
 from fastapi import WebSocket
 
+from service.chat.enums import TraceStatusEnum
 from service.chat.schemas import (
-    TraceStartEvent,
-    TraceProgressEvent,
-    TraceCompleteEvent,
     TraceErrorEvent,
+    TraceStartEvent,
+    TraceCompleteEvent,
+    TraceProgressEvent,
     TraceCancelledEvent,
 )
 from service.chat.schemas.trace import Trace, TraceSummary
-from service.chat.enums import TraceStatusEnum
 from service.chat.runtime.step_context import StepContext
 
 
@@ -65,14 +65,14 @@ class TraceManager:
         user_id: str,
         session_id: str,
         chat_mode: str = "normal",
-        llm_model: Optional[str] = None,
-        websocket: Optional[WebSocket] = None,
+        llm_model: str | None = None,
+        websocket: WebSocket | None = None,
         enable_event_stream: bool = False,
         persist_policy: str = "batch",
         batch_size: int = 3,
         batch_interval: int = 2,
-        message_id: Optional[str] = None,
-    ):
+        message_id: str | None = None,
+    ) -> None:
         """
         初始化 TraceManager
 
@@ -100,9 +100,9 @@ class TraceManager:
         self.status = TraceStatusEnum.pending
 
         # 数据存储
-        self.steps: List[Dict[str, Any]] = []
-        self.artifacts: List[Dict[str, Any]] = []
-        self.event_stream: List[Dict[str, Any]] = []
+        self.steps: list[dict[str, Any]] = []
+        self.artifacts: list[dict[str, Any]] = []
+        self.event_stream: list[dict[str, Any]] = []
 
         # 配置
         self.enable_event_stream = enable_event_stream
@@ -111,7 +111,7 @@ class TraceManager:
         self.batch_interval = batch_interval
 
         # 批量持久化状态
-        self._persist_timer: Optional[asyncio.Task] = None
+        self._persist_timer: asyncio.Task | None = None
         self._pending_persist = False
 
         # 统计
@@ -121,12 +121,12 @@ class TraceManager:
         self.cancelled_steps = 0
 
         # 时间戳
-        self.start_time: Optional[datetime] = None
-        self.end_time: Optional[datetime] = None
+        self.start_time: datetime | None = None
+        self.end_time: datetime | None = None
 
     async def __aenter__(self):
         """进入上下文：发送 on_trace_start 事件"""
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(UTC)
         self.status = TraceStatusEnum.running
 
         await self._emit_event(
@@ -141,9 +141,9 @@ class TraceManager:
                         "session_id": self.session_id,
                         "chat_mode": self.chat_mode,
                         "llm_model": self.llm_model,
-                    }
+                    },
                 },
-            )
+            ),
         )
 
         # 启动批量持久化定时器
@@ -154,7 +154,7 @@ class TraceManager:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """退出上下文：发送完成事件并持久化"""
-        self.end_time = datetime.utcnow()
+        self.end_time = datetime.now(UTC)
 
         # 取消定时器
         if self._persist_timer:
@@ -174,7 +174,7 @@ class TraceManager:
                         "error_message": str(exc_val),
                         "stack_trace": traceback.format_exc(),
                     },
-                )
+                ),
             )
         else:
             self.status = TraceStatusEnum.completed
@@ -196,7 +196,7 @@ class TraceManager:
                         },
                         "total_latency_ms": total_latency_ms,
                     },
-                )
+                ),
             )
 
         # 最后一次持久化
@@ -206,8 +206,8 @@ class TraceManager:
         self,
         step_type: str,
         step_name: str,
-        input: Dict[str, Any],
-        parent_step_id: Optional[str] = None,
+        input: dict[str, Any],
+        parent_step_id: str | None = None,
     ):
         """
         创建步骤上下文管理器
@@ -231,7 +231,7 @@ class TraceManager:
             parent_step_id=parent_step_id,
         )
 
-    async def _emit_event(self, event: Dict[str, Any]):
+    async def _emit_event(self, event: dict[str, Any]) -> None:
         """
         发送事件到 WebSocket
 
@@ -249,7 +249,7 @@ class TraceManager:
         if self.enable_event_stream:
             self.event_stream.append(event)
 
-    async def _persist_to_db(self):
+    async def _persist_to_db(self) -> None:
         """
         持久化到数据库
 
@@ -265,7 +265,7 @@ class TraceManager:
             # 同步持久化
             await self._do_persist()
 
-    async def _do_persist(self):
+    async def _do_persist(self) -> None:
         """
         实际执行持久化
 
@@ -299,10 +299,10 @@ class TraceManager:
         except Exception as e:
             print(f"⚠️  数据库持久化失败: {e}")
 
-    def _start_persist_timer(self):
+    def _start_persist_timer(self) -> None:
         """启动批量持久化定时器"""
 
-        async def persist_timer():
+        async def persist_timer() -> None:
             while True:
                 await asyncio.sleep(self.batch_interval)
                 if self._pending_persist:
@@ -311,7 +311,7 @@ class TraceManager:
 
         self._persist_timer = asyncio.create_task(persist_timer())
 
-    def _mark_pending_persist(self):
+    def _mark_pending_persist(self) -> None:
         """
         标记需要持久化
 
@@ -325,7 +325,7 @@ class TraceManager:
                 asyncio.create_task(self._persist_to_db())
                 self._pending_persist = False
 
-    def set_message_id(self, message_id: str):
+    def set_message_id(self, message_id: str) -> None:
         """
         设置关联的消息ID
 

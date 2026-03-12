@@ -21,7 +21,7 @@ def generate_random_string(
     return "".join(random.SystemRandom().choice(all_char) for _ in range(length))
 
 
-def await_in_sync(to_await: Coroutine) -> Any:  # ruff: noqa
+def await_in_sync(to_await: Coroutine) -> Any:
     """
     同步环境执行异步
     """

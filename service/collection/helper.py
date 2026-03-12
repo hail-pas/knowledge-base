@@ -1,16 +1,19 @@
 from typing import List
 
-from ext.ext_tortoise.models.knowledge_base import Collection, Document, EmbeddingModelConfig
-from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.indexing.models import CollectionIndexModelHelper
-
+from ext.ext_tortoise.enums import DocumentStatusEnum
 from service.workflow.document.schemas import (
-    DocumentParseTaskInput,
-    DocumentChunkTaskInput,
-    DocumentSummarizeTaskInput,
     IndexChunkTaskInput,
-    GenerateTagsTaskInput,
     GenerateFAQTaskInput,
+    GenerateTagsTaskInput,
+    DocumentChunkTaskInput,
+    DocumentParseTaskInput,
+    DocumentSummarizeTaskInput,
+)
+from ext.ext_tortoise.models.knowledge_base import (
+    Document,
+    Collection,
+    EmbeddingModelConfig,
 )
 
 
@@ -85,10 +88,10 @@ class WorkflowTemplateValidator:
 
                 input_schema_class(**input_data, document_id=0)  # template创建时不需要 document_id
             except Exception as e:
-                raise ValueError(f"活动 '{activity_name}' 的 input 验证失败: {str(e)}")
+                raise ValueError(f"活动 '{activity_name}' 的 input 验证失败: {str(e)}") from e
 
     @classmethod
-    def _validate_depends_on(cls, activity_name: str, activity_config: dict, activity_names: List[str]) -> None:
+    def _validate_depends_on(cls, activity_name: str, activity_config: dict, activity_names: list[str]) -> None:
         depends_on = activity_config.get("depends_on", [])
         if not isinstance(depends_on, list):
             raise ValueError(f"活动 '{activity_name}' 的 depends_on 必须是列表")
@@ -135,16 +138,17 @@ class WorkflowTemplateValidator:
                 if activity_index[dep] >= activity_index[activity_name]:
                     raise ValueError(
                         f"活动 '{activity_name}' 依赖的 '{dep}' 必须在它之前定义 "
-                        f"('{dep}' 位置: {activity_index[dep]}, '{activity_name}' 位置: {activity_index[activity_name]})"
+                        f"('{dep}' 位置: {activity_index[dep]}, "
+                        f"'{activity_name}' 位置: {activity_index[activity_name]})",
                     )
 
 
 class CollectionService:
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: Collection) -> None:
         self.collection = collection
         self.collection_index_helper = CollectionIndexModelHelper(collection)
 
-    async def switch_embedding_model(self, new_embedding_model_config: EmbeddingModelConfig):
+    async def switch_embedding_model(self, new_embedding_model_config: EmbeddingModelConfig) -> None:
         """
         Switch embedding model for collection with rollback support.
 
@@ -159,14 +163,13 @@ class CollectionService:
         - Update dense_model and faq_model indexes
         - If any failure, rollback to old embedding model
         """
-        old_config = await self.collection.embedding_model_config  # type: ignore
+        await self.collection.embedding_model_config  # type: ignore
 
         self.collection.embedding_model_config = new_embedding_model_config
 
-        # TODO: 切换embedding触发逻辑
+        # NOTE: Embedding migration side effects are not implemented yet; this method currently updates the config only.
 
         await self.collection.save()
-
 
     async def can_delete_collection(self) -> bool:
         """
@@ -174,7 +177,8 @@ class CollectionService:
         Returns True if all documents are in final status (success/failure).
         """
         documents = await Document.filter(collection_id=self.collection.id, deleted_at=0).values_list(
-            "status", flat=True
+            "status",
+            flat=True,
         )
 
         final_statuses = {

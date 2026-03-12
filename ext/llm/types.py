@@ -4,8 +4,9 @@ LLM 类型定义
 定义 LLM 请求/响应的统一 Pydantic 模型
 """
 
-from typing import List, Dict, Any, Optional, Union, Literal
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Union, Literal, Optional
+
+from pydantic import Field, BaseModel
 
 
 class ChatMessage(BaseModel):
@@ -149,12 +150,14 @@ class BaseExtraConfig(BaseModel):
     response_finish_reason_path: str = Field(default="choices.0.finish_reason", description="响应finish_reason路径")
     response_model_path: str = Field(default="model", description="响应model路径")
     response_tool_calls_path: str | None = Field(
-        default="choices.0.message.tool_calls", description="响应tool_calls路径",
+        default="choices.0.message.tool_calls",
+        description="响应tool_calls路径",
     )
 
     # ========== 重试配置（配置驱动） ==========
     retry_on_status_codes: list[int] = Field(
-        default_factory=lambda: [429, 500, 502, 503, 504], description="重试的状态码列表",
+        default_factory=lambda: [429, 500, 502, 503, 504],
+        description="重试的状态码列表",
     )
     retry_strategy: str = Field(default="exponential", description="重试策略：exponential/linear/constant")
 
@@ -191,7 +194,6 @@ class OpenAIExtraConfig(BaseExtraConfig):
     """
 
 
-
 class AzureOpenAIExtraConfig(BaseExtraConfig):
     """Azure OpenAI 特定配置
 
@@ -209,7 +211,6 @@ class DeepSeekExtraConfig(BaseExtraConfig):
     """
 
 
-
 class AnthropicExtraConfig(BaseExtraConfig):
     """Anthropic 特定配置
 
@@ -220,5 +221,6 @@ class AnthropicExtraConfig(BaseExtraConfig):
     response_content_path: str = Field(default="content.0.text", description="响应内容路径")
     response_stop_reason_path: str = Field(default="stop_reason", description="响应stop_reason路径")
     system_prompt_in_messages: bool = Field(
-        default=False, description="系统提示词是否在messages中（Anthropic使用单独system参数）",
+        default=False,
+        description="系统提示词是否在messages中（Anthropic使用单独system参数）",
     )

@@ -6,9 +6,9 @@
 
 from loguru import logger
 
-from ext.document_parser.core.parse_result import ParseResult
-from ext.text_chunker.core.chunk_result import TextPosition
 from constant.symbol import PAGE_SEPARATOR
+from ext.text_chunker.core.chunk_result import TextPosition
+from ext.document_parser.core.parse_result import ParseResult
 
 
 class CoordinateMapper:
@@ -26,7 +26,7 @@ class CoordinateMapper:
         _page_boundaries = [(0, 3), (5, 8)]
     """
 
-    def __init__(self, parse_result: ParseResult):
+    def __init__(self, parse_result: ParseResult) -> None:
         """
         初始化坐标映射器
 
@@ -38,7 +38,7 @@ class CoordinateMapper:
         self._separator = PAGE_SEPARATOR
         self._build_mapping()
 
-    def _build_mapping(self):
+    def _build_mapping(self) -> None:
         """构建页码边界映射表
 
         计算每个页面的内容在完整content中的全局索引范围
@@ -115,7 +115,7 @@ class CoordinateMapper:
             page_len = end - start
             if position.char_index < 0 or position.char_index > page_len:
                 raise ValueError(
-                    f"Invalid char index {position.char_index} for page {position.page_number} with length {page_len}"
+                    f"Invalid char index {position.char_index} for page {position.page_number} with length {page_len}",
                 )
             return start + position.char_index
 
@@ -154,7 +154,7 @@ class CoordinateMapper:
         except ValueError:
             logger.warning(f"Failed to map range [{start}, {end}) to pages")
 
-        return sorted(list(pages))
+        return sorted(pages)
 
     def get_content_length(self) -> int:
         """

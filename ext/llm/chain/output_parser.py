@@ -6,7 +6,8 @@
 
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Generic, Optional, TypeVar
+from typing import Any, Dict, Generic, TypeVar, Optional
+
 from loguru import logger
 
 from ext.llm.chain.base import Runnable
@@ -70,7 +71,7 @@ class JsonOutputParser(BaseOutputParser[dict[str, Any]]):
     将 LLM 输出解析为 JSON 对象
     """
 
-    def __init__(self, pydantic_object: Any | None = None):
+    def __init__(self, pydantic_object: Any | None = None) -> None:
         """初始化 JSON 解析器
 
         Args:
@@ -99,7 +100,7 @@ class JsonOutputParser(BaseOutputParser[dict[str, Any]]):
             parsed = json.loads(cleaned_text)
         except json.JSONDecodeError as e:
             logger.error(f"JsonOutputParser JSON decode error: {e}")
-            raise ValueError(f"Failed to parse JSON: {e}\nInput: {text}")
+            raise ValueError(f"Failed to parse JSON: {e}\nInput: {text}") from e
 
         # 如果有 Pydantic 模型，进行验证
         if self.pydantic_object is not None:
@@ -108,7 +109,7 @@ class JsonOutputParser(BaseOutputParser[dict[str, Any]]):
                 logger.debug("JsonOutputParser validated with Pydantic model")
             except Exception as e:
                 logger.error(f"JsonOutputParser Pydantic validation error: {e}")
-                raise ValueError(f"Failed to validate with Pydantic model: {e}")
+                raise ValueError(f"Failed to validate with Pydantic model: {e}") from e
 
         logger.debug(f"JsonOutputParser parsed: {parsed}")
         return parsed
@@ -148,7 +149,8 @@ class JsonOutputParser(BaseOutputParser[dict[str, Any]]):
             格式说明字符串
         """
         if self.pydantic_object is not None:
-            return f"Output must be a valid JSON object matching following schema: {self.pydantic_object.model_json_schema()}"
+            schema = self.pydantic_object.model_json_schema()
+            return f"Output must be a valid JSON object matching following schema: {schema}"
         return "Output must be a valid JSON object."
 
 

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import aiofiles
+
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult
+from ext.document_parser.core.parse_result import PageResult, ParseResult, OutputFormat
 
 
 class TextEngine(BaseEngine):
@@ -14,9 +16,8 @@ class TextEngine(BaseEngine):
 
         print(">>>>>", file_path)
 
-        with open(file_path, encoding="utf-8") as f:
-            content = f.read()
-
+        async with aiofiles.open(file_path, encoding="utf-8") as f:
+            content = await f.read()
 
         print(">>>>>content: ", content)
 

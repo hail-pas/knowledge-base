@@ -2,13 +2,12 @@ from datetime import timedelta
 
 from fastapi import Depends, Request, APIRouter
 
-from service.depend import token_required
 from config.main import local_configs
 from util.encrypt import PasswordUtil
 from core.response import Resp
+from ext.ext_redis import keys
+from service.depend import token_required
 from ext.ext_tortoise import enums
-from ext.ext_redis.helper import verify_captcha_code
-from ext.ext_tortoise.curd import obj_prefetch_fields
 from service.auth.helper import (
     code_login,
     password_login,
@@ -22,6 +21,8 @@ from service.auth.schema import (
     ChangePasswordIn,
     PasswordLoginSchema,
 )
+from ext.ext_redis.helper import verify_captcha_code
+from ext.ext_tortoise.curd import obj_prefetch_fields
 from service.account.schema import AccountList, AccountDetail
 from ext.ext_tortoise.models.user_center import Account
 

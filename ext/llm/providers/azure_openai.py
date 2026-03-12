@@ -6,18 +6,18 @@ Azure OpenAI LLM Provider
 
 from typing import Any
 from collections.abc import AsyncIterator
-from loguru import logger
 
+from loguru import logger
 from openai import AsyncAzureOpenAI
 
 from ext.llm.base import BaseLLMModel
+from util.general import truncate_content
 from ext.llm.types import (
-    AzureOpenAIExtraConfig,
     LLMRequest,
     LLMResponse,
     StreamChunk,
+    AzureOpenAIExtraConfig,
 )
-from util.general import truncate_content
 
 
 class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
@@ -27,7 +27,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
     继承 OpenAI 的实现，使用 Azure 专用的 SDK
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         # Azure OpenAI 需要额外的参数
@@ -157,7 +157,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
 
         except Exception as e:
             logger.error(f"Azure OpenAI API error: {e}")
-            raise RuntimeError(f"Azure OpenAI API error: {str(e)}")
+            raise RuntimeError(f"Azure OpenAI API error: {str(e)}") from e
 
     def _parse_response(self, response) -> LLMResponse:
         """
@@ -169,7 +169,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
         Returns:
             统一的 LLMResponse
         """
-        from ext.llm.types import TokenUsage, ToolCall
+        from ext.llm.types import ToolCall, TokenUsage
 
         choice = response.choices[0]
         message = choice.message
@@ -219,7 +219,8 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
             流式响应块
         """
         logger.debug(
-            f"Azure OpenAI chat stream request - deployment: {self._deployment_name}, messages: {len(request.messages)}",
+            f"Azure OpenAI chat stream request - deployment: {self._deployment_name}, "
+            f"messages: {len(request.messages)}",
         )
 
         try:
@@ -248,7 +249,7 @@ class AzureOpenAILLMModel(BaseLLMModel[AzureOpenAIExtraConfig]):
 
         except Exception as e:
             logger.error(f"Azure OpenAI API error in stream: {e}")
-            raise RuntimeError(f"Azure OpenAI API error: {str(e)}")
+            raise RuntimeError(f"Azure OpenAI API error: {str(e)}") from e
 
     def _parse_stream_chunk(self, chunk) -> StreamChunk:
         """

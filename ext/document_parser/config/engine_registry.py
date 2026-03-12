@@ -1,10 +1,9 @@
 from ext.document_parser.core.engine_base import BaseEngine
 
-
 _engines: dict[str, type] = {}
 
 
-def _register_default_engines():
+def _register_default_engines() -> None:
     default_engines = {}
 
     try:
@@ -36,7 +35,11 @@ def _register_default_engines():
         pass
 
     try:
-        from ext.document_parser.engines.office.engines import DocxEngine, XLSXEngine, PPTXEngine
+        from ext.document_parser.engines.office.engines import (
+            DocxEngine,
+            PPTXEngine,
+            XLSXEngine,
+        )
 
         default_engines[DocxEngine.engine_name] = DocxEngine
         default_engines[XLSXEngine.engine_name] = XLSXEngine
@@ -45,7 +48,10 @@ def _register_default_engines():
         pass
 
     try:
-        from ext.document_parser.engines.web.engines import TrafilaturaEngine, MarkdownEngine
+        from ext.document_parser.engines.web.engines import (
+            MarkdownEngine,
+            TrafilaturaEngine,
+        )
 
         default_engines[TrafilaturaEngine.engine_name] = TrafilaturaEngine
         default_engines[MarkdownEngine.engine_name] = MarkdownEngine

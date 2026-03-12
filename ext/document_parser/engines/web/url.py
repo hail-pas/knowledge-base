@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import tempfile
+import contextlib
 from pathlib import Path
 
 from config.main import local_configs
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult
+from ext.document_parser.core.parse_result import ParseResult, OutputFormat
 from ext.document_parser.config.engine_registry import get_engine
 
 
@@ -107,10 +108,8 @@ class URLEngine(BaseEngine):
         finally:
             # Cleanup temp file
             if tmp_path and Path(tmp_path).exists():
-                try:
+                with contextlib.suppress(Exception):
                     Path(tmp_path).unlink()
-                except Exception:
-                    pass
 
     def _get_extension_from_content_type(self, content_type: str) -> str | None:
         """Map content-type to file extension."""

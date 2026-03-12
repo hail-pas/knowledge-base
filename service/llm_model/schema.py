@@ -1,19 +1,19 @@
 from typing import Self
 
-from pydantic import BaseModel, Field
+from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
-from enhance.epydantic import as_query, optional
 from core.types import ApiException
-from ext.ext_tortoise.enums import LLMModelTypeEnum
-from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 from ext.llm.types import (
     BaseExtraConfig,
     OpenAIExtraConfig,
-    AzureOpenAIExtraConfig,
     DeepSeekExtraConfig,
     AnthropicExtraConfig,
+    AzureOpenAIExtraConfig,
 )
+from enhance.epydantic import as_query, optional
+from ext.ext_tortoise.enums import LLMModelTypeEnum
+from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 
 
 class LLMModelConfigCreate(
@@ -33,14 +33,17 @@ class LLMModelConfigCreate(
     def validate_required_fields_by_type(self) -> None:
         type_ = self.type  # type: ignore
 
-        if type_ in (
-            LLMModelTypeEnum.openai,
-            LLMModelTypeEnum.azure_openai,
-            LLMModelTypeEnum.deepseek,
-            LLMModelTypeEnum.anthropic,
-        ):
-            if not self.api_key:  # type: ignore
-                raise ApiException(f"{type_.value} 需要 api_key")
+        if (
+            type_
+            in (
+                LLMModelTypeEnum.openai,
+                LLMModelTypeEnum.azure_openai,
+                LLMModelTypeEnum.deepseek,
+                LLMModelTypeEnum.anthropic,
+            )
+            and not self.api_key
+        ):  # type: ignore
+            raise ApiException(f"{type_.value} 需要 api_key")
 
     def validate_extra_config(self) -> None:
         extra_config = self.extra_config or {}  # type: ignore

@@ -158,7 +158,7 @@ async def captcha_code(
         case _:
             raise ApiException(message="ParameterErrorMsg", code=422)
 
-    code = await generate_captcha_code(
+    await generate_captcha_code(
         unique_key=unique_key,
         all_digits=True,
         length=6,
@@ -180,6 +180,8 @@ async def captcha_code(
     #     if resp.code == 53:
     #         return Resp.fail(message="获取验证码太频繁, 请30s后再试")
     #     return Resp.fail(
-    #         message=(resp.data.detail if hasattr(resp.data, "detail") else resp.message) or "获取验证码失败，未知错误",
+    #         message=(
+    #             (resp.data.detail if hasattr(resp.data, "detail") else resp.message) or "获取验证码失败，未知错误"
+    #         ),
     #     )
     return Resp[CaptchaCodeResponse](data=CaptchaCodeResponse(unique_key=unique_key))

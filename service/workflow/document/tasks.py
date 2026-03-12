@@ -1,39 +1,40 @@
-import tempfile
 import os
+import tempfile
 from typing import Any
 from pathlib import Path
+
 from loguru import logger
 
-from ext.ext_tortoise.enums import DocumentStatusEnum, WorkflowStatusEnum
 from ext.workflow import ActivityTaskTemplate, activity_task
-from ext.document_parser import DocumentParser
-from ext.text_chunker import TextChunker
-from ext.document_parser.core.parse_result import ParseResult, OutputFormat, PageResult
 from ext.embedding import EmbeddingModelFactory
-from ext.indexing.types import FilterClause
-from ext.indexing.models import CollectionIndexModelHelper
 from ext.file_source import FileSourceFactory
-from service.workflow.document.schemas import (
-    DocumentParseTaskInput,
-    DocumentChunkTaskInput,
-    DocumentSummarizeTaskInput,
-    IndexChunkTaskInput,
-    GenerateTagsTaskInput,
-    GenerateFAQTaskInput,
-)
-from service.workflow.document.utils import (
-    get_document_for_workflow,
-    update_document_status,
-    upload_parsed_content,
-    delete_parsed_content,
-    cleanup_document_pages,
-    cleanup_document_chunks,
-)
-from ext.ext_tortoise.models.knowledge_base import (
-    DocumentPages,
-    DocumentChunk,
-)
+from ext.text_chunker import TextChunker
+from ext.indexing.types import FilterClause
+from ext.document_parser import DocumentParser
+from ext.indexing.models import CollectionIndexModelHelper
 from ext.workflow.manager import WorkflowManager
+from ext.ext_tortoise.enums import DocumentStatusEnum, WorkflowStatusEnum
+from service.workflow.document.utils import (
+    delete_parsed_content,
+    upload_parsed_content,
+    cleanup_document_pages,
+    update_document_status,
+    cleanup_document_chunks,
+    get_document_for_workflow,
+)
+from service.workflow.document.schemas import (
+    IndexChunkTaskInput,
+    GenerateFAQTaskInput,
+    GenerateTagsTaskInput,
+    DocumentChunkTaskInput,
+    DocumentParseTaskInput,
+    DocumentSummarizeTaskInput,
+)
+from ext.document_parser.core.parse_result import PageResult, ParseResult, OutputFormat
+from ext.ext_tortoise.models.knowledge_base import (
+    DocumentChunk,
+    DocumentPages,
+)
 
 
 class DocumentWorkflowTask(ActivityTaskTemplate):
@@ -113,7 +114,10 @@ class DocumentParseTask(DocumentWorkflowTask):
 
             # Upload parsed content
             parsed_uri = await upload_parsed_content(
-                document.file_source, task_input.document_id, parse_result.content, parse_result.format.value
+                document.file_source,
+                task_input.document_id,
+                parse_result.content,
+                parse_result.format.value,
             )
 
             # Update document
@@ -137,9 +141,9 @@ class DocumentParseTask(DocumentWorkflowTask):
                             page_number=page.page_number,
                             content=page.content,
                             tables=[t.model_dump() for t in (page.tables or [])],
-                            images=[i for i in (page.images or [])],
+                            images=list(page.images or []),
                             metadata=metadata,
-                        )
+                        ),
                     )
 
                 # 太长了,content 可以不存储到数据库，可以直接从parsed_uri文件获取
@@ -152,7 +156,7 @@ class DocumentParseTask(DocumentWorkflowTask):
             logger.info(
                 f"Document parsed: {document.file_name}, "
                 f"engine={parse_result.engine_used}, "
-                f"format={parse_result.format.value}, pages={page_count}"
+                f"format={parse_result.format.value}, pages={page_count}",
             )
 
             return {
@@ -200,9 +204,8 @@ class DocumentSummarizeTask(DocumentWorkflowTask):
 
         return {
             "short_summary": short_summary,
-            "long_summary": long_summary
+            "long_summary": long_summary,
         }
-
 
     # async def _handle_exception(self, exception: Exception) -> None:
     #     """Cleanup on error"""
@@ -248,7 +251,11 @@ class DocumentChunkTask(DocumentWorkflowTask):
 
         # Create ParseResult
         parse_result = ParseResult(
-            content=content, format=output_format, pages=pages, page_count=len(pages), engine_used=""
+            content=content,
+            format=output_format,
+            pages=pages,
+            page_count=len(pages),
+            engine_used="",
         )
 
         # Get chunking config
@@ -257,7 +264,9 @@ class DocumentChunkTask(DocumentWorkflowTask):
         # Chunk content with configured strategy
         chunker = TextChunker()
         chunks = await chunker.chunk(
-            parse_result, strategy=task_input.strategy, config=chunk_config if chunk_config else None
+            parse_result,
+            strategy=task_input.strategy,
+            config=chunk_config if chunk_config else None,
         )
 
         await cleanup_document_chunks(task_input.document_id)
@@ -277,7 +286,7 @@ class DocumentChunkTask(DocumentWorkflowTask):
                     overlap_start=chunk.overlap_start.model_dump() if chunk.overlap_start else None,
                     overlap_end=chunk.overlap_end.model_dump() if chunk.overlap_end else None,
                     metadata=chunk.metadata or {},
-                )
+                ),
             )
 
         await DocumentChunk.bulk_create(chunk_records)
@@ -331,7 +340,7 @@ class IndexChunkTask(DocumentWorkflowTask):
 
         if len(embeddings) != len(chunks):
             raise ValueError(
-                f"Embedding count mismatch: expected {len(chunks)}, got {len(embeddings)}"
+                f"Embedding count mismatch: expected {len(chunks)}, got {len(embeddings)}",
             )
 
         # Create index helper
@@ -360,12 +369,12 @@ class IndexChunkTask(DocumentWorkflowTask):
                     start_char_index=0,
                     end_page=chunk.max_page or 0,
                     end_char_index=len(chunk.content),
-                )
+                ),
             )
 
         # Prepare dense index documents
         dense_docs = []
-        for chunk, emb in zip(chunks, embeddings):
+        for chunk, emb in zip(chunks, embeddings, strict=False):
             dense_docs.append(
                 dense_model(
                     db_chunk_id=chunk.id,
@@ -381,21 +390,25 @@ class IndexChunkTask(DocumentWorkflowTask):
                     end_page=chunk.max_page or 0,
                     end_char_index=len(chunk.content),
                     dense_vector=emb,
-                )
+                ),
             )
 
         # Bulk insert with configured batch size
         await helper.sparse_model.bulk_insert(
-            sparse_docs, batch_size=task_input.batch_size, concurrent_batches=task_input.concurrent_batches
+            sparse_docs,
+            batch_size=task_input.batch_size,
+            concurrent_batches=task_input.concurrent_batches,
         )
         await dense_model.bulk_insert(
-            dense_docs, batch_size=task_input.batch_size, concurrent_batches=task_input.concurrent_batches
+            dense_docs,
+            batch_size=task_input.batch_size,
+            concurrent_batches=task_input.concurrent_batches,
         )
 
         logger.info(
             f"Indexed {len(chunks)} chunks for document {task_input.document_id} "
             f"(batch_size={task_input.batch_size}, "
-            f"concurrent_batches={task_input.concurrent_batches})"
+            f"concurrent_batches={task_input.concurrent_batches})",
         )
 
         return {
@@ -432,7 +445,7 @@ class GenerateTagsTask(DocumentWorkflowTask):
     async def execute(self) -> dict[str, Any]:
         task_input = GenerateTagsTaskInput(**self.input)
         logger.info(
-            f"Generating tags for document {task_input.document_id} (placeholder), "
+            f"Generating tags for document {task_input.document_id} (placeholder), ",
         )
 
         return {"tags": [], "message": "Placeholder - tag generation not implemented"}
@@ -446,7 +459,7 @@ class GenerateFAQTask(DocumentWorkflowTask):
         task_input = GenerateFAQTaskInput(**self.input)
         logger.info(
             f"Generating FAQ for document {task_input.document_id} (placeholder), "
-            f"max_faq={task_input.max_faq}, style={task_input.llm_model_config_id}"
+            f"max_faq={task_input.max_faq}, style={task_input.llm_model_config_id}",
         )
 
         return {"faq_count": 0, "message": "Placeholder - FAQ generation not implemented"}

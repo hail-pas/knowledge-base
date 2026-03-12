@@ -4,25 +4,25 @@ Anthropic LLM Provider
 使用官方 Anthropic SDK 实现
 """
 
-import orjson
 from typing import Any
 from collections.abc import AsyncIterator
-from loguru import logger
 
+import orjson
 import anthropic
+from loguru import logger
 from anthropic import AsyncAnthropic
 
 from ext.llm.base import BaseLLMModel
+from util.general import truncate_content
 from ext.llm.types import (
-    AnthropicExtraConfig,
+    ToolCall,
     LLMRequest,
+    TokenUsage,
+    ChatMessage,
     LLMResponse,
     StreamChunk,
-    ChatMessage,
-    TokenUsage,
-    ToolCall,
+    AnthropicExtraConfig,
 )
-from util.general import truncate_content
 
 
 class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
@@ -36,10 +36,11 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
     - Vision
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         logger.debug(
-            f"Initializing Anthropic client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}",
+            f"Initializing Anthropic client - base_url: {self.base_url}, "
+            f"timeout: {self.timeout}, max_retries: {self.max_retries}",
         )
         self._client = AsyncAnthropic(
             api_key=self.api_key,
@@ -92,9 +93,11 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                                 "source": {
                                     "type": "base64",
                                     "media_type": "image/jpeg",
-                                    "data": item.get("image_url", {}).get("url", "").split(",")[1]
-                                    if "," in item.get("image_url", {}).get("url", "")
-                                    else "",
+                                    "data": (
+                                        item.get("image_url", {}).get("url", "").split(",")[1]
+                                        if "," in item.get("image_url", {}).get("url", "")
+                                        else ""
+                                    ),
                                 },
                             },
                         )
@@ -208,10 +211,10 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
 
         except anthropic.APIError as e:
             logger.error(f"Anthropic API error: {e}")
-            raise RuntimeError(f"Anthropic API error: {str(e)}")
+            raise RuntimeError(f"Anthropic API error: {str(e)}") from e
         except Exception as e:
             logger.error(f"Unexpected error in chat: {e}")
-            raise RuntimeError(f"Unexpected error: {str(e)}")
+            raise RuntimeError(f"Unexpected error: {str(e)}") from e
 
     def _parse_response(self, response) -> LLMResponse:
         """
@@ -323,14 +326,13 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
                     # 消息结束
                     final_stop_reason = "stop"
 
-                elif event.type == "message_delta":
+                elif event.type == "message_delta" and hasattr(event, "usage"):
                     # 消息级别的增量（使用统计）
-                    if hasattr(event, "usage"):
-                        final_usage = TokenUsage(
-                            prompt_tokens=event.usage.input_tokens,  # type: ignore
-                            completion_tokens=event.usage.output_tokens,
-                            total_tokens=event.usage.input_tokens + event.usage.output_tokens,  # type: ignore
-                        )
+                    final_usage = TokenUsage(
+                        prompt_tokens=event.usage.input_tokens,  # type: ignore
+                        completion_tokens=event.usage.output_tokens,
+                        total_tokens=event.usage.input_tokens + event.usage.output_tokens,  # type: ignore
+                    )
 
             # 发送最终的 usage 和 finish_reason
             if final_usage or final_stop_reason:
@@ -344,7 +346,7 @@ class AnthropicLLMModel(BaseLLMModel[AnthropicExtraConfig]):
 
         except anthropic.APIError as e:
             logger.error(f"Anthropic API error in stream: {e}")
-            raise RuntimeError(f"Anthropic API error: {str(e)}")
+            raise RuntimeError(f"Anthropic API error: {str(e)}") from e
         except Exception as e:
             logger.error(f"Unexpected error in chat_stream: {e}")
-            raise RuntimeError(f"Unexpected error: {str(e)}")
+            raise RuntimeError(f"Unexpected error: {str(e)}") from e

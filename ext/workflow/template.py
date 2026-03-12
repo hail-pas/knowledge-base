@@ -1,18 +1,21 @@
 import uuid
 import traceback
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Any
+from datetime import UTC, datetime
 
 from loguru import logger
 
-from ext.ext_celery.app import celery_app
-from ext.ext_tortoise.enums import ActivityStatusEnum
-from ext.workflow.exceptions import ActivityNotFoundError, DuplicateTaskNameError
-from ext.workflow.manager import WorkflowManager
-from ext.workflow.scheduler import WorkflowScheduler, schedule_activity_handoff_celery_entry
-from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
 from util.graph import GraphUtil
+from ext.ext_celery.app import celery_app
+from ext.workflow.manager import WorkflowManager
+from ext.ext_tortoise.enums import ActivityStatusEnum
+from ext.workflow.scheduler import (
+    WorkflowScheduler,
+    schedule_activity_handoff_celery_entry,
+)
+from ext.workflow.exceptions import ActivityNotFoundError, DuplicateTaskNameError
+from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
 
 
 class ActivityTaskTemplate(ABC):
@@ -22,7 +25,7 @@ class ActivityTaskTemplate(ABC):
     All lifecycle management (state transitions, handoffs) is handled automatically.
     """
 
-    def __init__(self, activity_uid: uuid.UUID | str, execute_mode: str = "direct"):
+    def __init__(self, activity_uid: uuid.UUID | str, execute_mode: str = "direct") -> None:
         """Initialize task
 
         Args:
@@ -82,7 +85,7 @@ class ActivityTaskTemplate(ABC):
         await WorkflowManager.update_activity_status(
             self.activity_uid,
             ActivityStatusEnum.running,
-            started_at=datetime.now(),
+            started_at=datetime.now(UTC),
         )
 
     async def _set_completed(self, output: dict[str, Any]) -> None:
@@ -95,7 +98,7 @@ class ActivityTaskTemplate(ABC):
             self.activity_uid,
             ActivityStatusEnum.completed,
             output=output,
-            completed_at=datetime.now(),
+            completed_at=datetime.now(UTC),
         )
 
         if self.execute_mode == "celery":
@@ -133,7 +136,7 @@ class ActivityTaskTemplate(ABC):
                 ActivityStatusEnum.failed,
                 error_message=error_message,
                 stack_trace=stack_trace,
-                completed_at=datetime.now(),
+                completed_at=datetime.now(UTC),
             )
 
         if self.execute_mode == "celery":
@@ -218,7 +221,11 @@ class ActivityTaskTemplate(ABC):
 
 
 def activity_task(
-    decorator_arg=None, *, prefix: str = "workflow_activity", name: str | None = None, allow_override: bool = False
+    decorator_arg=None,
+    *,
+    prefix: str = "workflow_activity",
+    name: str | None = None,
+    allow_override: bool = False,
 ):
     """Decorator to create Celery task from ActivityTaskTemplate with unique name validation
 
@@ -276,7 +283,7 @@ def activity_task(
             logger.warning(
                 f"Overriding existing task '{task_name}' "
                 f"({existing_name} from {existing_module}) "
-                f"with {task_class.__name__} from {task_class.__module__}"
+                f"with {task_class.__name__} from {task_class.__module__}",
             )
 
         @celery_app.task(name=task_name, bind=True, max_retries=3)
@@ -292,8 +299,7 @@ def activity_task(
                 if loop.is_running():
                     future = asyncio.run_coroutine_threadsafe(_execute(), loop)
                     return future.result()
-                else:
-                    return loop.run_until_complete(_execute())
+                return loop.run_until_complete(_execute())
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -306,14 +312,13 @@ def activity_task(
         _celery_task_wrapper.async_call = _async_wrapper
 
         logger.info(
-            f"Registered activity task: {task_name} (class={task_class.__name__}, module={task_class.__module__})"
+            f"Registered activity task: {task_name} (class={task_class.__name__}, module={task_class.__module__})",
         )
 
         return _celery_task_wrapper
 
     if decorator_arg is None:
         return lambda task_class: _create_task(task_class)
-    elif isinstance(decorator_arg, type):
+    if isinstance(decorator_arg, type):
         return _create_task(decorator_arg)
-    else:
-        raise TypeError(f"Invalid @activity_task usage: {decorator_arg}")
+    raise TypeError(f"Invalid @activity_task usage: {decorator_arg}")

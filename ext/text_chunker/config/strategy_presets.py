@@ -6,17 +6,17 @@
 
 from ext.document_parser.core.parse_result import OutputFormat
 from ext.text_chunker.config.strategy_config import (
-    DelimiterChunkConfig,
-    HeadingChunkConfig,
     JsonChunkConfig,
     LengthChunkConfig,
+    HeadingChunkConfig,
+    DelimiterChunkConfig,
 )
 
 
 class StrategyPreset:
     """策略预设"""
 
-    def __init__(self, strategy: str, config: dict | None = None):
+    def __init__(self, strategy: str, config: dict | None = None) -> None:
         """
         初始化预设
 
@@ -150,8 +150,7 @@ def validate_strategy_for_format(strategy: str, format: OutputFormat | str) -> t
             True,
             f"Strategy '{strategy}' is compatible with {format_str} format (though '{preset.strategy}' is recommended)",
         )
-    else:
-        return (
-            False,
-            f"Warning: Strategy '{strategy}' may not work well with {format_str} format. Recommended: '{preset.strategy}'",
-        )
+    return (
+        False,
+        f"Warning: Strategy '{strategy}' may not work well with {format_str} format. Recommended: '{preset.strategy}'",
+    )

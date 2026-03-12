@@ -1,22 +1,22 @@
 import uuid
-from datetime import datetime
 from typing import Any
+from datetime import UTC, datetime
 
 from loguru import logger
 from tortoise.transactions import in_transaction
 
+from util.graph import GraphUtil
+from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import (
     ActivityStatusEnum,
-    WorkflowConfigFormatEnum,
     WorkflowStatusEnum,
+    WorkflowConfigFormatEnum,
 )
-from ext.ext_tortoise.main import ConnectionNameEnum
-from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
 from ext.workflow.exceptions import (
-    WorkflowNotFoundError,
     ActivityNotFoundError,
+    WorkflowNotFoundError,
 )
-from util.graph import GraphUtil
+from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
 
 
 class WorkflowManager:
@@ -147,9 +147,11 @@ class WorkflowManager:
                 await WorkflowManager.create_activities(
                     workflow_uid=workflow_uid,
                     config=workflow.config,
-                    config_format=workflow.config_format.value
-                    if isinstance(workflow.config_format, WorkflowConfigFormatEnum)
-                    else workflow.config_format,  # type: ignore
+                    config_format=(
+                        workflow.config_format.value
+                        if isinstance(workflow.config_format, WorkflowConfigFormatEnum)
+                        else workflow.config_format
+                    ),  # type: ignore
                     initial_inputs=None,
                 )
 
@@ -281,7 +283,7 @@ class WorkflowManager:
             ],
         ).update(
             status=ActivityStatusEnum.running.value,
-            started_at=datetime.now(),
+            started_at=datetime.now(UTC),
             canceled_at=None,
         )
         return result > 0
@@ -314,7 +316,7 @@ class WorkflowManager:
                 in [
                     ActivityStatusEnum.pending.value,
                     ActivityStatusEnum.failed.value,
-                    ActivityStatusEnum.retrying.value
+                    ActivityStatusEnum.retrying.value,
                 ]
             ]
 
@@ -362,14 +364,14 @@ class WorkflowManager:
                 await WorkflowManager.update_workflow_status(
                     workflow_uid,
                     WorkflowStatusEnum.failed,
-                    completed_at=datetime.now(),
+                    completed_at=datetime.now(UTC),
                 )
                 logger.info(f"Workflow {workflow_uid} marked as failed")
             else:
                 await WorkflowManager.update_workflow_status(
                     workflow_uid,
                     WorkflowStatusEnum.completed,
-                    completed_at=datetime.now(),
+                    completed_at=datetime.now(UTC),
                 )
 
             return True
@@ -386,7 +388,7 @@ class WorkflowManager:
             await WorkflowManager.update_workflow_status(
                 workflow_uid,
                 WorkflowStatusEnum.failed,
-                completed_at=datetime.now(),
+                completed_at=datetime.now(UTC),
             )
 
             logger.warning(f"Workflow {workflow_uid} failed: {reason}")
@@ -434,7 +436,7 @@ class WorkflowManager:
                 await downstream.save()
 
             logger.debug(
-                f"Propagated output from {activity.name} to {len(downstream_activities)} downstream activities"
+                f"Propagated output from {activity.name} to {len(downstream_activities)} downstream activities",
             )
 
     @staticmethod

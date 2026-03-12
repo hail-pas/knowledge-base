@@ -1,56 +1,53 @@
 """Chat schemas package"""
 
+from service.chat.schemas.steps import (
+    BaseStep,
+    CustomStep,
+    LLMCallStep,
+    ToolCallStep,
+    RetrievalStep,
+    IntentRecognitionStep,
+    HistoryCompressionStep,
+    ResponseGenerationStep,
+    UserInputProcessingStep,
+)
 from service.chat.schemas.trace import (
     Trace,
     TraceSummary,
 )
-
 from service.chat.schemas.events import (
+    Event,
     BaseEvent,
-    TraceStartEvent,
-    TraceProgressEvent,
-    TraceCompleteEvent,
-    TraceErrorEvent,
-    TraceCancelledEvent,
     StepStartEvent,
-    StepUpdateEvent,
-    StepProgressEvent,
-    StepCompleteEvent,
     StepFailedEvent,
+    StepUpdateEvent,
+    TraceErrorEvent,
+    TraceStartEvent,
+    WebSocketMessage,
+    StepCompleteEvent,
+    StepProgressEvent,
     StepCancelledEvent,
+    TraceCompleteEvent,
+    TraceProgressEvent,
+    TraceCancelledEvent,
     ArtifactCreatedEvent,
     ArtifactUpdatedEvent,
-    WebSocketMessage,
-    Event,
 )
-
-from service.chat.schemas.steps import (
-    BaseStep,
-    UserInputProcessingStep,
-    IntentRecognitionStep,
-    HistoryCompressionStep,
-    RetrievalStep,
-    ToolCallStep,
-    LLMCallStep,
-    ResponseGenerationStep,
-    CustomStep,
-)
-
 from service.chat.schemas.artifacts import (
+    Artifact,
     BaseArtifact,
-    TextArtifact,
-    JSONArtifact,
-    ImageArtifact,
     FileArtifact,
-    RetrievalResultChunk,
-    RetrievalResultsArtifact,
+    JSONArtifact,
+    TextArtifact,
+    ErrorArtifact,
+    ImageArtifact,
     IntentArtifact,
     ToolCallArtifact,
-    ToolResultArtifact,
     LLMOutputArtifact,
+    ToolResultArtifact,
     UsageStatsArtifact,
-    ErrorArtifact,
-    Artifact,
+    RetrievalResultChunk,
+    RetrievalResultsArtifact,
 )
 
 __all__ = [

@@ -1,8 +1,13 @@
 """Indexing Provider 工厂（管理连接池缓存）"""
 
 from typing import ClassVar
-from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig, IndexingBackendTypeEnum, EmbeddingModelConfig
+
 from ext.indexing.base import BaseProvider, BaseIndexModel
+from ext.ext_tortoise.models.knowledge_base import (
+    EmbeddingModelConfig,
+    IndexingBackendConfig,
+    IndexingBackendTypeEnum,
+)
 
 
 class IndexingProviderFactory:
@@ -12,7 +17,7 @@ class IndexingProviderFactory:
     _instances: dict[int, BaseProvider] = {}
 
     @classmethod
-    def register(cls, backend_type: str, provider_class: type[BaseProvider]):
+    def register(cls, backend_type: str, provider_class: type[BaseProvider]) -> None:
         """注册 provider"""
         cls._providers[backend_type] = provider_class
 
@@ -26,7 +31,7 @@ class IndexingProviderFactory:
         if not provider_class:
             raise RuntimeError(f"Provider not found: {config.type}")
 
-        provider = provider_class(config) # type: ignore
+        provider = provider_class(config)  # type: ignore
         await provider.connect()
 
         if use_cache:
@@ -40,7 +45,9 @@ class IndexingProviderFactory:
         from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
         config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum(backend_type), is_enabled=True, is_default=True,
+            type=IndexingBackendTypeEnum(backend_type),
+            is_enabled=True,
+            is_default=True,
         ).first()
 
         if not config:
@@ -49,15 +56,15 @@ class IndexingProviderFactory:
         return config
 
     @classmethod
-    async def clear_cache(cls):
+    async def clear_cache(cls) -> None:
         """清空缓存"""
         for provider in cls._instances.values():
             await provider.disconnect()
         cls._instances.clear()
 
 
-from ext.indexing.providers.elasticsearch import ElasticsearchProvider
 from ext.indexing.providers.milvus import MilvusProvider
+from ext.indexing.providers.elasticsearch import ElasticsearchProvider
 
 IndexingProviderFactory.register(IndexingBackendTypeEnum.elasticsearch.value, ElasticsearchProvider)
 IndexingProviderFactory.register(IndexingBackendTypeEnum.milvus.value, MilvusProvider)
@@ -92,7 +99,8 @@ class IndexModelFactory:
             embedding_config=emb_config
         )
         # 现在 DynamicChunkIndex.Meta.dense_vector_dimension == 1536
-        # collection name 会自动变为 "chunks_1536"
+        # collection name 会自动变为
+        # "chunks_1536"
     """
 
     _model_registry: dict[str, type[BaseIndexModel]] = {}
@@ -128,7 +136,8 @@ class IndexModelFactory:
         if not base_model.Meta.provider:
             raise RuntimeError(
                 f"base_model.Meta.provider is not bound. "
-                f"Please bind provider in register.py first: {base_model.__name__}.Meta.provider = await IndexingProviderFactory.create(...)"
+                "Please bind provider in register.py first: "
+                f"{base_model.__name__}.Meta.provider = await IndexingProviderFactory.create(...)",
             )
 
         model_key = cls._get_model_key(base_model.__name__, dimension)
@@ -190,9 +199,7 @@ class IndexModelFactory:
             "__annotations__": {"Meta": ClassVar},
         }
 
-        dynamic_class = type(class_name, (base_model,), namespace)
-
-        return dynamic_class
+        return type(class_name, (base_model,), namespace)
 
     @classmethod
     def clear_cache(cls) -> None:

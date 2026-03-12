@@ -1,15 +1,17 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Literal, Any, Dict
+from typing import Any, Dict, Literal, Optional
+
+from pydantic import Field, BaseModel
 
 from ext.document_parser.core.parse_result import OutputFormat
 
 # Reuse existing chunking config models
 from ext.text_chunker.config.strategy_config import (
+    JsonChunkConfig,
     LengthChunkConfig,
     HeadingChunkConfig,
     DelimiterChunkConfig,
-    JsonChunkConfig,
 )
+
 
 class DocumentTaskBaseInput(BaseModel):
     document_id: int = Field(..., description="Document primary key")
@@ -19,7 +21,7 @@ class DocumentParseTaskInput(DocumentTaskBaseInput):
     """Input parameters for DocumentParseTask"""
 
     # Parser configuration
-    engine: Optional[str] = Field(
+    engine: str | None = Field(
         default=None,
         description=(
             "Parser engine to use. None = auto-detect based on file extension. "
@@ -28,15 +30,14 @@ class DocumentParseTaskInput(DocumentTaskBaseInput):
         ),
     )
     output_format: OutputFormat = Field(default=OutputFormat.AUTO, description="Output format for parsed content")
-    options: Optional[Dict[str, Any]] = Field(
-        default=None, description="Additional parser-specific options (passed to engine)"
+    options: dict[str, Any] | None = Field(
+        default=None,
+        description="Additional parser-specific options (passed to engine)",
     )
 
 
 class DocumentSummarizeTaskInput(DocumentTaskBaseInput):
     """Input parameters for GenerateTagsTask (placeholder)"""
-    ...
-
 
 
 class DocumentChunkTaskInput(DocumentTaskBaseInput):
@@ -52,35 +53,40 @@ class DocumentChunkTaskInput(DocumentTaskBaseInput):
     )
 
     # Strategy-specific configs (reuse existing models)
-    length_config: Optional[LengthChunkConfig] = Field(
-        default=None, description="Length-based chunking config (used when strategy='length')"
+    length_config: LengthChunkConfig | None = Field(
+        default=None,
+        description="Length-based chunking config (used when strategy='length')",
     )
-    heading_config: Optional[HeadingChunkConfig] = Field(
-        default=None, description="Heading-based chunking config (used when strategy='heading')"
+    heading_config: HeadingChunkConfig | None = Field(
+        default=None,
+        description="Heading-based chunking config (used when strategy='heading')",
     )
-    delimiter_config: Optional[DelimiterChunkConfig] = Field(
-        default=None, description="Delimiter-based chunking config (used when strategy='delimiter')"
+    delimiter_config: DelimiterChunkConfig | None = Field(
+        default=None,
+        description="Delimiter-based chunking config (used when strategy='delimiter')",
     )
-    json_config: Optional[JsonChunkConfig] = Field(
-        default=None, description="JSON chunking config (used when strategy='json')"
+    json_config: JsonChunkConfig | None = Field(
+        default=None,
+        description="JSON chunking config (used when strategy='json')",
     )
 
     def get_chunk_config(self) -> dict:
         """Get the config dict for the specified strategy"""
         if self.strategy == "length":
             return self.length_config.model_dump() if self.length_config else {}
-        elif self.strategy == "heading":
+        if self.strategy == "heading":
             return self.heading_config.model_dump() if self.heading_config else {}
-        elif self.strategy == "delimiter":
+        if self.strategy == "delimiter":
             return self.delimiter_config.model_dump() if self.delimiter_config else {}
-        elif self.strategy == "json":
+        if self.strategy == "json":
             return self.json_config.model_dump() if self.json_config else {}
-        else:  # auto
-            return {}  # Will use preset defaults
+        # auto
+        return {}  # Will use preset defaults
 
 
 class IndexChunkTaskInput(DocumentTaskBaseInput):
     """Input parameters for IndexChunkTask"""
+
     # Indexing configuration
     batch_size: int = Field(default=20, ge=1, description="Batch size for bulk insert operations")
     concurrent_batches: int = Field(default=2, ge=1, description="Number of concurrent batch operations")
@@ -88,11 +94,11 @@ class IndexChunkTaskInput(DocumentTaskBaseInput):
 
 class GenerateTagsTaskInput(DocumentTaskBaseInput):
     """Input parameters for GenerateTagsTask (placeholder)"""
-    ...
 
 
 class GenerateFAQTaskInput(DocumentTaskBaseInput):
     """Input parameters for GenerateFAQTask (placeholder)"""
+
     # Future parameters for FAQ generation
-    max_faq: Optional[int] = Field(default=5, description="Maximum number of FAQ pairs to generate")
-    llm_model_config_id: Optional[int] = Field(default=0, description="指定使用的大模型配置")
+    max_faq: int | None = Field(default=5, description="Maximum number of FAQ pairs to generate")
+    llm_model_config_id: int | None = Field(default=0, description="指定使用的大模型配置")

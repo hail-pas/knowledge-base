@@ -1,5 +1,5 @@
 # 定义目录和变量
-DIRS = ./config ./api ./constant ./core ./deploy ./enhance ./ext ./util
+DIRS = ./config ./api ./constant ./core ./deploy ./enhance ./ext ./util ./service
 export MYPYPATH=./
 PYTHON_VERSION = 3.13
 VENV_PATH = .venv

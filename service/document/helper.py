@@ -1,28 +1,29 @@
 import time
+import uuid
 import hashlib
 import mimetypes
-import uuid
-from pathlib import Path
 from typing import List
-from urllib.parse import urlparse, unquote
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from loguru import logger
+
+from core.exception import ApiException
+from ext.ext_tortoise.enums import DocumentStatusEnum
+from ext.file_source.factory import FileSourceFactory
+from service.collection.helper import CollectionService
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
+    FileSource,
     DocumentChunk,
     DocumentPages,
     DocumentGeneratedFaq,
-    FileSource,
 )
-from ext.ext_tortoise.enums import DocumentStatusEnum
-from service.collection.helper import CollectionService
-from ext.file_source.factory import FileSourceFactory
-from core.exception import ApiException
 
 
 class DocumentService(CollectionService):
-    async def delete(self, documents: List[Document]):
-        assert all([self.collection.id == doc.collection_id for doc in documents])  # type: ignore
+    async def delete(self, documents: list[Document]) -> None:
+        assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         document_ids = [doc.id for doc in documents]
         await Document.filter(id__in=document_ids).delete()
@@ -33,10 +34,10 @@ class DocumentService(CollectionService):
         await self.collection_index_helper.delete_by_documents(documents)
         await self.delete_filesource_related(documents)
 
-    async def delete_filesource_related(self, documents: List[Document]):
-        # TODO: gather async tasks
+    async def delete_filesource_related(self, documents: list[Document]) -> None:
+        # NOTE: File source cleanup still runs sequentially until batch deletion is implemented.
 
-        assert all([self.collection.id == doc.collection_id for doc in documents])  # type: ignore
+        assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         for d in documents:
             fs = await FileSourceFactory.create(await d.file_source)
@@ -54,7 +55,7 @@ class DocumentService(CollectionService):
         file_name: str,
         display_name: str | None,
         file_source: FileSource,
-        config_flag: int
+        config_flag: int,
     ) -> Document:
         """
         通过上传文件创建文档
@@ -118,7 +119,7 @@ class DocumentService(CollectionService):
         uri: str,
         display_name: str | None,
         file_source: FileSource,
-        config_flag: int
+        config_flag: int,
     ) -> Document:
         """
         通过 URI 创建文档
@@ -131,7 +132,7 @@ class DocumentService(CollectionService):
         Returns:
             创建的 Document 实例
         """
-        is_http_url = uri.startswith("http://") or uri.startswith("https://")
+        is_http_url = uri.startswith(("http://", "https://"))
 
         if is_http_url:
             # HTTP URL: 跳过 metadata 获取，使用默认值

@@ -6,9 +6,9 @@ from fastapi import Depends, Request, APIRouter
 #  tortoise-orm
 from tortoise.queryset import QuerySet
 
-from service.depend import api_permission_check
 from core.schema import CRUDPager
 from core.response import Resp, PageData
+from service.depend import api_permission_check
 from ext.ext_tortoise.curd import (
     DeleteResp,
     list_view,
@@ -31,10 +31,9 @@ router = APIRouter(dependencies=[Depends(api_permission_check)])
 
 
 def get_queryset(request: Request) -> QuerySet[Account]:
-    queryset = Account.filter(
+    return Account.filter(
         deleted_at=0,
     )
-    return queryset
 
 
 @router.post("", description=f"创建{Account.Meta.table_description}", summary=f"创建{Account.Meta.table_description}")
@@ -44,7 +43,9 @@ async def create_account(request: Request, schema: AccountCreate) -> Resp[Accoun
 
 
 @router.put(
-    "/{pk}", description=f"更新{Account.Meta.table_description}", summary=f"更新{Account.Meta.table_description}",
+    "/{pk}",
+    description=f"更新{Account.Meta.table_description}",
+    summary=f"更新{Account.Meta.table_description}",
 )
 async def update_account(request: Request, pk: int, schema: AccountUpdate) -> Resp:
     return await update_view(get_queryset(request), pk, schema)  # type: ignore
@@ -77,7 +78,9 @@ async def get_account_detail(request: Request, pk: int) -> Resp[AccountDetail]:
 
 
 @router.delete(
-    "/{pk}", description=f"删除{Account.Meta.table_description}", summary=f"删除{Account.Meta.table_description}",
+    "/{pk}",
+    description=f"删除{Account.Meta.table_description}",
+    summary=f"删除{Account.Meta.table_description}",
 )
 async def delete_account(request: Request, pk: int) -> Resp[DeleteResp]:
     return await delete_view(pk, get_queryset(request))

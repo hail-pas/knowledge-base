@@ -4,14 +4,16 @@ Local File System Provider
 
 import os
 import hashlib
-from collections.abc import AsyncIterator
+from typing import cast
 from pathlib import Path
-from datetime import datetime
-import aiofiles
+from datetime import datetime, timezone
+from collections.abc import AsyncIterator
 
-from ext.file_source.base import BaseFileSourceProvider, FileMetadata
-from ext.file_source.types import LocalFileSourceExtraConfig
+import aiofiles  # type: ignore[import-untyped]
 from loguru import logger
+
+from ext.file_source.base import FileMetadata, BaseFileSourceProvider
+from ext.file_source.types import LocalFileSourceExtraConfig
 
 
 class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]):
@@ -57,32 +59,30 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
             if not file_path.is_file():
                 continue
 
+            current_path = file_path
             if self.extra_config.follow_symlinks and file_path.is_symlink():
-                file_path = file_path.resolve()
+                current_path = file_path.resolve()
 
-            if self.extra_config.allowed_extensions:
-                if file_path.suffix not in self.extra_config.allowed_extensions:
-                    continue
+            if self.extra_config.allowed_extensions and current_path.suffix not in self.extra_config.allowed_extensions:
+                continue
 
-            if self.extra_config.excluded_extensions:
-                if file_path.suffix in self.extra_config.excluded_extensions:
-                    continue
+            if self.extra_config.excluded_extensions and current_path.suffix in self.extra_config.excluded_extensions:
+                continue
 
-            stat = file_path.stat()
-            if self.extra_config.max_file_size:
-                if stat.st_size > self.extra_config.max_file_size:
-                    continue
+            stat = current_path.stat()
+            if self.extra_config.max_file_size and stat.st_size > self.extra_config.max_file_size:
+                continue
 
-            if self.extra_config.require_readable and not os.access(file_path, os.R_OK):
+            if self.extra_config.require_readable and not os.access(current_path, os.R_OK):
                 continue
 
             files.append(
                 FileMetadata(  # type: ignore[call-arg]
-                    uri=str(file_path),
-                    file_name=file_path.name,
+                    uri=str(current_path),
+                    file_name=current_path.name,
                     file_size=stat.st_size,
-                    last_modified=datetime.fromtimestamp(stat.st_mtime),
-                    etag=self._compute_etag(file_path),
+                    last_modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),  # noqa: UP017
+                    etag=self._compute_etag(current_path),
                 ),
             )
             count += 1
@@ -92,7 +92,7 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
         async with aiofiles.open(uri, "rb") as f:
-            return await f.read()
+            return cast(bytes, await f.read())
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
@@ -111,7 +111,7 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
             uri=uri,
             file_name=path.name,
             file_size=stat.st_size,
-            last_modified=datetime.fromtimestamp(stat.st_mtime),
+            last_modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),  # noqa: UP017
             etag=self._compute_etag(path),
         )
 

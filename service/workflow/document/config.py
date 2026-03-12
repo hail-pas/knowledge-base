@@ -1,10 +1,10 @@
 from service.workflow.document.schemas import (
-    DocumentParseTaskInput,
-    DocumentChunkTaskInput,
-    DocumentSummarizeTaskInput,
     IndexChunkTaskInput,
-    GenerateTagsTaskInput,
     GenerateFAQTaskInput,
+    GenerateTagsTaskInput,
+    DocumentChunkTaskInput,
+    DocumentParseTaskInput,
+    DocumentSummarizeTaskInput,
 )
 
 # Default configuration with auto-detection and defaults

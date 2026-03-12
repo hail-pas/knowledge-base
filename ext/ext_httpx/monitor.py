@@ -3,8 +3,9 @@
 """
 
 import asyncio
+from typing import Any, Dict
+
 import httpx
-from typing import Dict, Any
 from loguru import logger
 
 
@@ -37,9 +38,9 @@ class HttpxConnectionPoolMonitor:
                 pool = transport._pool  # type: ignore
                 stats["pool"] = {  # type: ignore
                     "max_connections": pool._max_connections if hasattr(pool, "_max_connections") else "unknown",
-                    "max_keepalive": pool._max_keepalive_connections
-                    if hasattr(pool, "_max_keepalive_connections")
-                    else "unknown",
+                    "max_keepalive": (
+                        pool._max_keepalive_connections if hasattr(pool, "_max_keepalive_connections") else "unknown"
+                    ),
                 }
 
                 # 尝试获取当前连接数
@@ -51,7 +52,7 @@ class HttpxConnectionPoolMonitor:
         return stats
 
     @staticmethod
-    async def log_stats(client: httpx.AsyncClient | None):
+    async def log_stats(client: httpx.AsyncClient | None) -> None:
         """打印连接池统计信息到日志
 
         Args:
@@ -74,7 +75,11 @@ class HttpxConnectionPoolMonitor:
         logger.info("===================================")
 
     @staticmethod
-    async def monitor_pool(client: httpx.AsyncClient | None, interval: float = 60.0, duration: float = 3600.0):
+    async def monitor_pool(
+        client: httpx.AsyncClient | None,
+        interval: float = 60.0,
+        duration: float = 3600.0,
+    ) -> None:
         """持续监控连接池状态
 
         Args:
@@ -98,7 +103,10 @@ class HttpxConnectionPoolMonitor:
 
     @staticmethod
     def recommend_config(
-        current_max_connections: int, current_keepalive: int, active_connections: int, idle_connections: int,
+        current_max_connections: int,
+        current_keepalive: int,
+        active_connections: int,
+        idle_connections: int,
     ) -> dict[str, Any]:
         """
         根据当前连接使用情况推荐配置

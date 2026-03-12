@@ -4,8 +4,9 @@ Embedding Model Factory
 提供embedding模型的创建、缓存和注册功能
 """
 
-from typing import Dict, Type, Any
 import asyncio
+from typing import Any, Dict, Type
+
 from loguru import logger
 
 from ext.embedding.base import BaseEmbeddingModel
@@ -78,7 +79,7 @@ class EmbeddingModelFactory:
         # 获取provider类
         provider_cls = cls._providers.get(config.type)
         if not provider_cls:
-            available_types = ", ".join([t.value for t in cls._providers.keys()])
+            available_types = ", ".join([t.value for t in cls._providers])
             raise ValueError(f"Unsupported model type: {config.type.value}, available: {available_types}")
 
         # 如果不使用缓存，直接创建新实例
@@ -259,5 +260,5 @@ class EmbeddingModelFactory:
         return {
             "cached_count": len(cls._instances),
             "cached_ids": list(cls._instances.keys()),
-            "registered_models": [t.value for t in cls._providers.keys()],
+            "registered_models": [t.value for t in cls._providers],
         }

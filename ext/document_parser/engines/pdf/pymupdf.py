@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import fitz
 
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult, TableFormat
+from ext.document_parser.core.parse_result import (
+    PageResult,
+    ParseResult,
+    TableFormat,
+    OutputFormat,
+)
 
 
 class PyMUPDFEngine(BaseEngine):

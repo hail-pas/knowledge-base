@@ -2,22 +2,22 @@
 MinIO Provider
 """
 
-from collections.abc import AsyncIterator
+import asyncio
 from typing import Any
+from collections.abc import AsyncIterator
 
 from minio import Minio
-from minio.error import S3Error
-import asyncio
-
-from ext.file_source.base import BaseFileSourceProvider, FileMetadata
-from ext.file_source.types import MinIOExtraConfig
 from loguru import logger
+from minio.error import S3Error
+
+from ext.file_source.base import FileMetadata, BaseFileSourceProvider
+from ext.file_source.types import MinIOExtraConfig
 
 
 class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
     """MinIO Provider（S3 兼容）"""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
         self._client = None
 
@@ -105,7 +105,7 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
         key = self._extract_key(uri)
         loop = asyncio.get_event_loop()
 
-        def get_object():  # type: ignore[misc]
+        def get_object() -> Any:  # noqa: ANN401
             return self.client.get_object(self.storage_location or "", key)  # type: ignore[arg-type]
 
         response = await loop.run_in_executor(None, get_object)

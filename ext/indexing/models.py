@@ -1,10 +1,16 @@
 from typing import cast
+
 from pydantic import Field
 
 from core.types import StrEnum
-from ext.indexing.base import BaseIndexModel, FilterClause
+from ext.indexing.base import FilterClause, BaseIndexModel
 from ext.indexing.factory import IndexModelFactory
-from ext.ext_tortoise.models.knowledge_base import Collection, Document, EmbeddingModelConfig
+from ext.ext_tortoise.models.knowledge_base import (
+    Document,
+    Collection,
+    EmbeddingModelConfig,
+)
+
 
 class SourceTypeEnum(StrEnum):
     document_content = "document_content"
@@ -19,7 +25,7 @@ class _DocumentBaseIndexModel(BaseIndexModel):
     tags: list[str]
     source_type: str
 
-    extras: dict # = Field(index_metadata={"json_support": False}) # type: ignore
+    extras: dict  # = Field(index_metadata={"json_support": False}) # type: ignore
     # tenant_id: str
 
 
@@ -41,7 +47,7 @@ class DocumentContentSparseIndex(_DocumentBaseIndexModel):
 
 class DocumentContentDenseIndex(DocumentContentSparseIndex):
 
-    id: int = Field(default_factory=lambda: DocumentContentDenseIndex._get_id_default(), index_metadata={}) # type: ignore
+    id: int = Field(default_factory=lambda: DocumentContentDenseIndex._get_id_default(), index_metadata={})  # type: ignore
     dense_vector: list[float]
 
     class Meta:  # type: ignore
@@ -51,7 +57,7 @@ class DocumentContentDenseIndex(DocumentContentSparseIndex):
 
 class DocumentFAQDenseIndex(_DocumentBaseIndexModel):
 
-    id: int = Field(default_factory=lambda: DocumentContentDenseIndex._get_id_default(), index_metadata={}) # type: ignore
+    id: int = Field(default_factory=lambda: DocumentContentDenseIndex._get_id_default(), index_metadata={})  # type: ignore
     question: str
     dense_vector: list[float]
     answer: str
@@ -60,7 +66,6 @@ class DocumentFAQDenseIndex(_DocumentBaseIndexModel):
     class Meta:  # type: ignore
         index_name: str = "document_gfaq"
         # partition_key = "tenant_id"
-
 
 
 class CollectionIndexModelHelper:
@@ -81,7 +86,7 @@ class CollectionIndexModelHelper:
         results = await dense_model.search(query_clause, ...)
     """
 
-    def __init__(self, collection: Collection):
+    def __init__(self, collection: Collection) -> None:
         self.collection = collection
         assert self.collection.embedding_model_config
         assert isinstance(self.collection.embedding_model_config, EmbeddingModelConfig)
@@ -117,7 +122,7 @@ class CollectionIndexModelHelper:
             ),
         )
 
-    async def delete_by_collection(self):
+    async def delete_by_collection(self) -> None:
         equal_clause = FilterClause(equals={"collection_id": self.collection.id})
         dense_model = await self.get_dense_model()
         faq_model = await self.get_faq_model()
@@ -126,8 +131,8 @@ class CollectionIndexModelHelper:
         await self.sparse_model.delete_by_query(equal_clause)
         await faq_model.delete_by_query(equal_clause)
 
-    async def delete_by_documents(self, documents: list[Document]):
-        assert all([self.collection.id == doc.collection_id for doc in documents])  # type: ignore
+    async def delete_by_documents(self, documents: list[Document]) -> None:
+        assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         equal_clause = FilterClause(in_list={"document_id": [doc.id for doc in documents]})
         dense_model = await self.get_dense_model()

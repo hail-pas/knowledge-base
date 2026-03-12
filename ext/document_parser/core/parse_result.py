@@ -1,7 +1,8 @@
-from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field
 from typing import Any, Optional
+from datetime import datetime
+
+from pydantic import Field, BaseModel
 
 
 class OutputFormat(Enum):

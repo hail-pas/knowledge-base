@@ -4,7 +4,8 @@ Prompt Template 实现
 提供灵活的提示词模板支持
 """
 
-from typing import Any, TypeAlias, Union
+from typing import Any, Union
+
 from loguru import logger
 
 from ext.llm.types import ChatMessage
@@ -17,7 +18,7 @@ class PromptTemplate(Runnable[dict[str, Any], str]):
     使用 Python f-string 风格的模板语法
     """
 
-    def __init__(self, template: str, input_variables: list[str] | None = None):
+    def __init__(self, template: str, input_variables: list[str] | None = None) -> None:
         """初始化提示词模板
 
         Args:
@@ -87,12 +88,9 @@ class PromptTemplate(Runnable[dict[str, Any], str]):
         return result
 
 
-ChatPromptMessage: TypeAlias = Union[
-    str,
-    PromptTemplate,
-    "MessagesPlaceholder",
-    tuple[str, Union[str, PromptTemplate, "MessagesPlaceholder"]],
-]
+type ChatPromptMessage = (
+    str | PromptTemplate | "MessagesPlaceholder" | tuple[str, str | PromptTemplate | "MessagesPlaceholder"]
+)
 
 
 class ChatPromptTemplate(Runnable[dict[str, Any], list[ChatMessage]]):
@@ -101,7 +99,7 @@ class ChatPromptTemplate(Runnable[dict[str, Any], list[ChatMessage]]):
     支持构建多消息的聊天提示词
     """
 
-    def __init__(self, messages: list[ChatPromptMessage]):
+    def __init__(self, messages: list[ChatPromptMessage]) -> None:
         """初始化聊天提示词模板
 
         Args:
@@ -150,7 +148,7 @@ class ChatPromptTemplate(Runnable[dict[str, Any], list[ChatMessage]]):
             else:
                 # (role, content) 元组
                 if isinstance(msg, tuple) and len(msg) == 2:
-                    role, content = msg # type: ignore
+                    role, content = msg  # type: ignore
                     if isinstance(content, str):
                         result.append(ChatMessage(role=role, content=content))
                     elif isinstance(content, PromptTemplate):
@@ -169,7 +167,7 @@ class MessagesPlaceholder:
     用于在聊天提示词模板中插入动态消息列表
     """
 
-    def __init__(self, variable_name: str):
+    def __init__(self, variable_name: str) -> None:
         """初始化消息占位符
 
         Args:

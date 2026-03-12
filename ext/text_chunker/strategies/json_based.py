@@ -5,12 +5,13 @@ JSON数据切块策略
 """
 
 import json
-from loguru import logger
 from typing import Any
 
+from loguru import logger
+
+from ext.text_chunker.strategies.base import BaseChunkStrategy
 from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.config.strategy_config import JsonChunkConfig
-from ext.text_chunker.strategies.base import BaseChunkStrategy
 
 
 class JsonChunkStrategy(BaseChunkStrategy[JsonChunkConfig]):
@@ -279,8 +280,8 @@ class JsonChunkStrategy(BaseChunkStrategy[JsonChunkConfig]):
         Returns:
             切块结果列表
         """
-        from ext.text_chunker.strategies.length_based import LengthChunkStrategy
         from ext.text_chunker.config.strategy_config import LengthChunkConfig
+        from ext.text_chunker.strategies.length_based import LengthChunkStrategy
 
         logger.info("Content is not valid JSON, treating as plain text")
 

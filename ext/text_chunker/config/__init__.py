@@ -1,8 +1,8 @@
 from .strategy_config import (
-    DelimiterChunkConfig,
-    HeadingChunkConfig,
     JsonChunkConfig,
     LengthChunkConfig,
+    HeadingChunkConfig,
+    DelimiterChunkConfig,
 )
 from .strategy_presets import (
     STRATEGY_PRESETS,

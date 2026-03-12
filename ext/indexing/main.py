@@ -1,12 +1,18 @@
 from typing import override
-from pydantic import ConfigDict
-from config.default import RegisterExtensionConfig
+
 from loguru import logger
+from pydantic import ConfigDict
+
+from config.default import RegisterExtensionConfig
 from ext.indexing.base import BaseProvider
+from ext.indexing.models import (
+    DocumentFAQDenseIndex,
+    DocumentContentDenseIndex,
+    DocumentContentSparseIndex,
+)
 from ext.indexing.factory import IndexingProviderFactory
-from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 from ext.ext_tortoise.enums import IndexingBackendTypeEnum
-from ext.indexing.models import DocumentContentDenseIndex, DocumentContentSparseIndex, DocumentFAQDenseIndex
+from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 
 class ModelProviderConfig(RegisterExtensionConfig):
@@ -22,10 +28,14 @@ class ModelProviderConfig(RegisterExtensionConfig):
         logger.info("Registering model provider")
 
         es_config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum.elasticsearch, is_enabled=True, is_default=True
+            type=IndexingBackendTypeEnum.elasticsearch,
+            is_enabled=True,
+            is_default=True,
         ).first()
         milvus_config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum.milvus, is_enabled=True, is_default=True
+            type=IndexingBackendTypeEnum.milvus,
+            is_enabled=True,
+            is_default=True,
         ).first()
 
         assert es_config

@@ -1,10 +1,15 @@
-from pydantic import BaseModel, Field
+from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from enhance.epydantic import optional
-from ext.ext_tortoise.models.knowledge_base import Document, DocumentPages, DocumentChunk, DocumentGeneratedFaq
 from service.collection.schema import CollectionList
 from service.file_source.schema import FileSourceList
+from ext.ext_tortoise.models.knowledge_base import (
+    Document,
+    DocumentChunk,
+    DocumentPages,
+    DocumentGeneratedFaq,
+)
 
 
 class DocumentList(
@@ -26,10 +31,9 @@ class DocumentUpdate(
     pydantic_model_creator(
         Document,
         name="DocumentList",
-        include=("display_name", "config_flag", "workflow_template", )
+        include=("display_name", "config_flag", "workflow_template"),
     ),
-):
-    ...
+): ...
 
 
 class DocumentPageList(

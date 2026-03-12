@@ -7,7 +7,7 @@ from IPython import start_ipython
 from traitlets.config import Config
 
 
-def sync_clear_ctx():
+def sync_clear_ctx() -> None:
     import asyncio
     from core.context import clear_ctx
     loop = asyncio.get_event_loop()

@@ -5,8 +5,9 @@ from pathlib import Path
 
 from markitdown import MarkItDown
 from markitdown import __version__ as markitdown_version
+
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult
+from ext.document_parser.core.parse_result import PageResult, ParseResult, OutputFormat
 
 
 class MarkitdownEngine(BaseEngine):

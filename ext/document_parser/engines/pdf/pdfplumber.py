@@ -3,7 +3,12 @@ from __future__ import annotations
 import pdfplumber
 
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult, TableFormat
+from ext.document_parser.core.parse_result import (
+    PageResult,
+    ParseResult,
+    TableFormat,
+    OutputFormat,
+)
 
 
 class PDFPlumberEngine(BaseEngine):

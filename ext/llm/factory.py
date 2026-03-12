@@ -4,8 +4,9 @@ LLM Model Factory
 提供 LLM 模型的创建、缓存和注册功能
 """
 
-from typing import Dict, Type, Any
 import asyncio
+from typing import Any, Dict, Type
+
 from loguru import logger
 
 from ext.llm.base import BaseLLMModel
@@ -71,7 +72,8 @@ class LLMModelFactory:
             >>> model = await LLMModelFactory.create(config)
         """
         logger.debug(
-            f"Creating LLM model - name: {config.name}, type: {config.type.value}, id: {config.id}, use_cache: {use_cache}",
+            f"Creating LLM model - name: {config.name}, type: {config.type.value}, "
+            f"id: {config.id}, use_cache: {use_cache}",
         )
 
         if not config.is_enabled:
@@ -80,7 +82,7 @@ class LLMModelFactory:
 
         provider_cls = cls._providers.get(config.type)
         if not provider_cls:
-            available_types = ", ".join([t.value for t in cls._providers.keys()])
+            available_types = ", ".join([t.value for t in cls._providers])
             logger.error(f"Unsupported model type: {config.type.value}, available: {available_types}")
             raise ValueError(f"Unsupported model type: {config.type.value}, available: {available_types}")
 
@@ -270,15 +272,15 @@ class LLMModelFactory:
         return {
             "cached_count": len(cls._instances),
             "cached_ids": list(cls._instances.keys()),
-            "registered_models": [t.value for t in cls._providers.keys()],
+            "registered_models": [t.value for t in cls._providers],
         }
 
 
+from ext.ext_tortoise.enums import LLMModelTypeEnum
 from ext.llm.providers.openai import OpenAILLMModel
-from ext.llm.providers.azure_openai import AzureOpenAILLMModel
 from ext.llm.providers.deepseek import DeepSeekLLMModel
 from ext.llm.providers.anthropic import AnthropicLLMModel
-from ext.ext_tortoise.enums import LLMModelTypeEnum
+from ext.llm.providers.azure_openai import AzureOpenAILLMModel
 
 LLMModelFactory.register(LLMModelTypeEnum.openai, OpenAILLMModel)
 LLMModelFactory.register(LLMModelTypeEnum.azure_openai, AzureOpenAILLMModel)

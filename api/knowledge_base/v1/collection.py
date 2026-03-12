@@ -1,33 +1,36 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
 
-from service.depend import api_permission_check
+from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from core.types import ApiException
+from service.depend import api_permission_check
 from ext.ext_tortoise.curd import (
-    create_obj,
+    DeleteResp,
     list_view,
+    create_obj,
+    update_obj,
     detail_view,
     pagination_factory,
-    update_obj,
-    DeleteResp,
 )
-from ext.ext_tortoise.models.knowledge_base import Collection, EmbeddingModelConfig, Document
-from ext.ext_tortoise.models.user_center import Account
-
+from service.document.helper import DocumentService
+from service.collection.helper import CollectionService
 from service.collection.schema import (
-    CollectionCreate,
-    CollectionUpdate,
     CollectionList,
+    CollectionCreate,
     CollectionDetail,
+    CollectionUpdate,
     CollectionFilterSchema,
 )
-from service.collection.helper import CollectionService
-from service.document.helper import DocumentService
+from ext.ext_tortoise.models.user_center import Account
+from ext.ext_tortoise.models.knowledge_base import (
+    Document,
+    Collection,
+    EmbeddingModelConfig,
+)
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
 
@@ -85,7 +88,7 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
             await service.switch_embedding_model(new_config)
         except Exception as e:
             await queryset.filter(pk=pk).update(embedding_model_config_id=old_config_id)
-            raise ApiException(f"切换Embedding模型失败: {str(e)}")
+            raise ApiException(f"切换Embedding模型失败: {str(e)}") from e
     else:
         await update_obj(obj, queryset, update_data)
 

@@ -20,7 +20,7 @@ def gte_all_uris(
     uri_list = []
     paths = []
 
-    def get_uri_list(_app: FastAPI | Mount, prefix: str = ""):
+    def get_uri_list(_app: FastAPI | Mount, prefix: str = "") -> None:
         for route in _app.routes:
             route_info = {
                 "path": f"{prefix}{route.path}",  # type: ignore

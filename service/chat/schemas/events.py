@@ -5,18 +5,18 @@ WebSocket Event Schema Definitions
 用于 WebSocket 实时通信
 """
 
-from typing import Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field
+from typing import Any, Dict, Literal, Optional
 from datetime import datetime
 
+from pydantic import Field, BaseModel
+
 from service.chat.enums import (
-    EventTypeEnum,
     StepTypeEnum,
+    ErrorCodeEnum,
+    EventTypeEnum,
     ArtifactTypeEnum,
     StepUpdateTypeEnum,
-    ErrorCodeEnum,
 )
-
 
 # =============================================================================
 # 通用事件基础模型
@@ -30,8 +30,8 @@ class BaseEvent(BaseModel):
     event_type: EventTypeEnum = Field(..., description="事件类型")
     timestamp: datetime = Field(..., description="事件时间戳（ISO 8601）")
     trace_id: str = Field(..., description="关联的追踪ID，格式: trace_ + UUID")
-    step_id: Optional[str] = Field(None, description="关联的步骤ID，格式: step_ + UUID")
-    parent_step_id: Optional[str] = Field(None, description="父步骤ID（用于嵌套步骤）")
+    step_id: str | None = Field(None, description="关联的步骤ID，格式: step_ + UUID")
+    parent_step_id: str | None = Field(None, description="父步骤ID（用于嵌套步骤）")
 
 
 # =============================================================================
@@ -42,10 +42,10 @@ class BaseEvent(BaseModel):
 class TraceMetadata(BaseModel):
     """追踪元数据"""
 
-    user_id: Optional[str] = None
-    session_id: Optional[str] = None
-    chat_mode: Optional[str] = None
-    llm_model: Optional[str] = None
+    user_id: str | None = None
+    session_id: str | None = None
+    chat_mode: str | None = None
+    llm_model: str | None = None
 
 
 class TraceStartEventData(BaseModel):
@@ -65,7 +65,7 @@ class TraceProgressEventData(BaseModel):
     """进度更新事件数据"""
 
     progress_percentage: float = Field(..., ge=0, le=100, description="进度百分比")
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class TraceProgressEvent(BaseEvent):
@@ -103,7 +103,7 @@ class TraceErrorEventData(BaseModel):
 
     error_code: ErrorCodeEnum
     error_message: str
-    stack_trace: Optional[str] = None
+    stack_trace: str | None = None
 
 
 class TraceErrorEvent(BaseEvent):
@@ -116,7 +116,7 @@ class TraceErrorEvent(BaseEvent):
 class TraceCancelledEventData(BaseModel):
     """请求取消事件数据"""
 
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class TraceCancelledEvent(BaseEvent):
@@ -136,7 +136,7 @@ class StepStartEventData(BaseModel):
 
     step_type: StepTypeEnum
     step_name: str
-    input: Dict[str, Any]
+    input: dict[str, Any]
 
 
 class StepStartEvent(BaseEvent):
@@ -164,14 +164,14 @@ class ProgressUpdate(BaseModel):
     """进度更新数据"""
 
     progress_percentage: float = Field(..., ge=0, le=100)
-    current_status: Optional[str] = None
+    current_status: str | None = None
 
 
 class StepUpdateEventData(BaseModel):
     """步骤更新事件数据"""
 
     update_type: StepUpdateTypeEnum
-    update_data: Dict[str, Any]
+    update_data: dict[str, Any]
 
 
 class StepUpdateEvent(BaseEvent):
@@ -185,7 +185,7 @@ class StepProgressEventData(BaseModel):
     """步骤进度事件数据"""
 
     progress_percentage: float = Field(..., ge=0, le=100)
-    current_status: Optional[str] = None
+    current_status: str | None = None
 
 
 class StepProgressEvent(BaseEvent):
@@ -198,7 +198,7 @@ class StepProgressEvent(BaseEvent):
 class StepCompleteEventData(BaseModel):
     """步骤完成事件数据"""
 
-    output: Dict[str, Any]
+    output: dict[str, Any]
     latency_ms: int
     artifact_ids: list[str] = Field(default_factory=list)
 
@@ -215,7 +215,7 @@ class StepFailedEventData(BaseModel):
 
     error_code: ErrorCodeEnum
     error_message: str
-    stack_trace: Optional[str] = None
+    stack_trace: str | None = None
 
 
 class StepFailedEvent(BaseEvent):
@@ -228,7 +228,7 @@ class StepFailedEvent(BaseEvent):
 class StepCancelledEventData(BaseModel):
     """步骤取消事件数据"""
 
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class StepCancelledEvent(BaseEvent):
@@ -248,7 +248,7 @@ class ArtifactCreatedEventData(BaseModel):
 
     artifact_id: str = Field(..., description="产物ID，格式: artifact_ + UUID")
     artifact_type: ArtifactTypeEnum
-    artifact_data: Dict[str, Any]
+    artifact_data: dict[str, Any]
 
 
 class ArtifactCreatedEvent(BaseEvent):
@@ -262,7 +262,7 @@ class ArtifactUpdatedEventData(BaseModel):
     """产物更新事件数据"""
 
     artifact_id: str
-    updated_fields: Dict[str, Any]
+    updated_fields: dict[str, Any]
 
 
 class ArtifactUpdatedEvent(BaseEvent):
@@ -306,9 +306,9 @@ class WebSocketMessage(BaseModel):
     event_type: EventTypeEnum
     timestamp: datetime
     trace_id: str
-    step_id: Optional[str] = None
-    parent_step_id: Optional[str] = None
-    data: Dict[str, Any]
+    step_id: str | None = None
+    parent_step_id: str | None = None
+    data: dict[str, Any]
 
     class Config:
         json_schema_extra = {
@@ -320,5 +320,5 @@ class WebSocketMessage(BaseModel):
                 "step_id": "step_123",
                 "parent_step_id": None,
                 "data": {"step_type": "retrieval", "step_name": "知识库检索", "input": {}},
-            }
+            },
         }

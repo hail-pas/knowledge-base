@@ -3,6 +3,7 @@ from typing import Any
 from pydantic import ValidationError
 from fastapi._compat import ModelField
 from fastapi._compat.v2 import _regenerate_error_with_loc
+
 # # from pymysql.converters import escape_item, escape_bytes_prefixed
 # # from aiomysql.connection import Connection
 # # from tortoise.expressions import RawSQL
@@ -10,7 +11,7 @@ from fastapi._compat.v2 import _regenerate_error_with_loc
 
 def validate(
     self: ModelField,
-    value: Any,  # ruff: noqa: ANN401
+    value: Any,
     values: dict[str, Any] = {},  # noqa: B006
     *,
     loc: tuple[int | str, ...] = (),
@@ -57,4 +58,6 @@ def validate(
 def patch() -> None:
     # ValidationError loc 字段改为使用 title
     ModelField.validate = validate  # type: ignore
+
+
 #     Connection.escape = escape  # type: ignore

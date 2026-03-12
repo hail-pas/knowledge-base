@@ -75,7 +75,7 @@ class InterceptHandler(logging.Handler):
             return
 
         frame, depth = logging.currentframe(), 2
-        while frame.f_code.co_filename == logging.__file__:  # noqa: WPS609
+        while frame.f_code.co_filename == logging.__file__:
             frame = cast(FrameType, frame.f_back)
             depth += 1
 
@@ -98,7 +98,7 @@ def setup_loguru_logging_intercept(
 
 
 class GunicornLogger(glogging.Logger):
-    def __init__(self, cfg: Any) -> None:  # ruff: noqa: ANN401
+    def __init__(self, cfg: Any) -> None:
         super().__init__(cfg)
         LOGGING_MODULES = (
             LoggerNameEnum.gunicorn_error.value,
@@ -132,16 +132,17 @@ def edit_record_and_gen_format(record: loguru.Record) -> str:
     if ENVIRONMENT in [EnvironmentEnum.local.value]:
         format_s = (
             "<green>[{time:YYYY-MM-DD HH:mm:ss}]</green> | "
-            + f"<{level_color}>"
-            + "<bold>[{level}]</bold>"
-            + f"</{level_color}>"
-            + " | <fg 0,75,0><underline>{name}:{line}</underline> >> {function}</fg 0,75,0> | <cyan>{message}</cyan>\n"
+            f"<{level_color}>"
+            "<bold>[{level}]</bold>"
+            f"</{level_color}>"
+            " | <fg 0,75,0><underline>{name}:{line}</underline> >> {function}</fg 0,75,0> | "
+            "<cyan>{message}</cyan>\n"
         )
     else:
         format_s = "[{time:YYYY-MM-DD HH:mm:ss}] | [{level}] | {name}:{line} >> {function} | {message}\n"
 
     if extra:
-            format_s += " | " + "{extra}"
+        format_s += " | " + "{extra}"
 
     return format_s + "\n"
 
@@ -213,7 +214,7 @@ def setup_loguru(
     logging.captureWarnings(True)
     showwarning_ = warnings.showwarning
 
-    def showwarning(message, *args, **kwargs):
+    def showwarning(message, *args, **kwargs) -> None:
         logger.warning(message)
         showwarning_(message, *args, **kwargs)
 

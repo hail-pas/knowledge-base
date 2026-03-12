@@ -5,12 +5,13 @@
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import field, dataclass
+
 from loguru import logger
 
+from ext.text_chunker.strategies.base import BaseChunkStrategy
 from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.config.strategy_config import HeadingChunkConfig
-from ext.text_chunker.strategies.base import BaseChunkStrategy
 from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 
 
@@ -54,9 +55,8 @@ class HeadingChunkStrategy(BaseChunkStrategy[HeadingChunkConfig]):
         self._build_heading_tree(headings)
 
         results = []
-        chunk_index = 0
 
-        for chunk_data in self._split_by_headings(text, headings):
+        for chunk_index, chunk_data in enumerate(self._split_by_headings(text, headings)):
             chunk = self._build_chunk(
                 content=chunk_data.content,
                 global_start=chunk_data.body_start,
@@ -66,7 +66,6 @@ class HeadingChunkStrategy(BaseChunkStrategy[HeadingChunkConfig]):
                 metadata={"chunk_index": chunk_index, "strategy": "heading"},
             )
             results.append(chunk)
-            chunk_index += 1
 
         logger.info(f"Chunked text into {len(results)} chunks using heading strategy")
         return results
@@ -90,7 +89,7 @@ class HeadingChunkStrategy(BaseChunkStrategy[HeadingChunkConfig]):
                     title=stripped_line,
                     start=match.start(),
                     line_end=match.start() + len(line),
-                )
+                ),
             )
 
         logger.debug(f"Parsed {len(headings)} headings")

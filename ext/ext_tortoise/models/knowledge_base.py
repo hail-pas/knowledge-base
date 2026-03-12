@@ -1,18 +1,20 @@
 from enum import IntEnum
+
 from tortoise import fields
+
 from constant.symbol import PAGE_SEPARATOR
-from ext.ext_tortoise.base.models import BaseModel, CreateOnlyModel
 from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import (
+    LLMModelTypeEnum,
     ActivityStatusEnum,
     DocumentStatusEnum,
-    EmbeddingModelTypeEnum,
     FileSourceTypeEnum,
+    WorkflowStatusEnum,
+    EmbeddingModelTypeEnum,
     IndexingBackendTypeEnum,
     WorkflowConfigFormatEnum,
-    WorkflowStatusEnum,
-    LLMModelTypeEnum,
 )
+from ext.ext_tortoise.base.models import BaseModel, CreateOnlyModel
 
 _KBConnectionName = ConnectionNameEnum.knowledge_base.value
 
@@ -50,7 +52,7 @@ class Collection(BaseModel):
         unique_together = ("user_id", "name")
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.user_id})"
 
 
@@ -109,7 +111,7 @@ class FileSource(BaseModel):
         indexes = [("type", "is_enabled"), ("is_default", "is_enabled"), ("created_at",)]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.type})"
 
 
@@ -172,7 +174,7 @@ class Document(BaseModel):
         ]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.file_name} ({self.status})"
 
 
@@ -180,7 +182,7 @@ class DocumentPages(BaseModel):
     document = fields.ForeignKeyField(f"{_KBConnectionName}.Document", related_name="pages", description="文档ID")
     page_number = fields.SmallIntField(description="页码")
     content = fields.TextField(
-        description="页面内容，当只有一页的时候content太长可以不存，但是必须要有page记录，content可以从parsed_uri获取"
+        description="页面内容，当只有一页的时候content太长可以不存，但是必须要有page记录，content可以从parsed_uri获取",
     )
     tables = fields.JSONField(description="页面表格信息")
     images = fields.JSONField(description="页面图片信息, list[keys]")
@@ -191,7 +193,6 @@ class DocumentPages(BaseModel):
         # 和 text chunker 的 coordinate mapper 保持一致
         return PAGE_SEPARATOR.join([page.content for page in pages])
 
-
     class Meta:  # type: ignore
         table = "document_page"
         indexes = [
@@ -200,7 +201,7 @@ class DocumentPages(BaseModel):
         ]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.document_id} - Page {self.page_number}"  # type: ignore
 
 
@@ -228,7 +229,7 @@ class DocumentChunk(BaseModel):
         ]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.document_id} - Page {self.pages}"  # type: ignore
 
 
@@ -236,7 +237,9 @@ class DocumentGeneratedFaq(BaseModel):
     """文档生成FAQ表"""
 
     document = fields.ForeignKeyField(
-        f"{_KBConnectionName}.Document", related_name="generated_faqs", description="文档"
+        f"{_KBConnectionName}.Document",
+        related_name="generated_faqs",
+        description="文档",
     )
     content = fields.TextField(null=True, description="相关文档内容块")
     question = fields.TextField(null=True, description="问题")
@@ -252,7 +255,7 @@ class DocumentGeneratedFaq(BaseModel):
         ]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.document_id} - {self.question}"  # type: ignore
 
 
@@ -284,7 +287,7 @@ class Workflow(BaseModel):
         app = _KBConnectionName
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Workflow({self.uid})"
 
 
@@ -325,7 +328,7 @@ class Activity(CreateOnlyModel):
         ]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.workflow_uid}: {self.name} ({self.status})"  # type: ignore
 
 
@@ -417,7 +420,7 @@ class IndexingBackendConfig(BaseModel):
         ]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.type.value})"
 
 
@@ -469,5 +472,5 @@ class LLMModelConfig(BaseModel):
         ]
         ordering = ["-id"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.type.value})"

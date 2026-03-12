@@ -1,20 +1,20 @@
-from typing import Self
 from uuid import UUID
+from typing import Self
 
-from pydantic import BaseModel, Field
-from tortoise.contrib.pydantic import pydantic_model_creator
+from pydantic import Field, BaseModel
 from tortoise.expressions import Q
+from tortoise.contrib.pydantic import pydantic_model_creator
 
-from enhance.epydantic import as_query, optional
 from core.types import ApiException
+from enhance.epydantic import as_query, optional
+from ext.file_source.types import (
+    S3ExtraConfig,
+    MinIOExtraConfig,
+    AliyunOSSExtraConfig,
+    LocalFileSourceExtraConfig,
+)
 from ext.ext_tortoise.enums import FileSourceTypeEnum
 from ext.ext_tortoise.models.knowledge_base import FileSource
-from ext.file_source.types import (
-    LocalFileSourceExtraConfig,
-    MinIOExtraConfig,
-    S3ExtraConfig,
-    AliyunOSSExtraConfig,
-)
 
 
 class FileSourceCreate(
@@ -30,9 +30,7 @@ class FileSourceCreate(
             MinIOExtraConfig(**extra_config)
         elif type_ == FileSourceTypeEnum.aliyun_oss:
             AliyunOSSExtraConfig(**extra_config)
-        elif type_ == FileSourceTypeEnum.sharepoint:
-            pass
-        elif type_ == FileSourceTypeEnum.api:
+        elif type_ == FileSourceTypeEnum.sharepoint or type_ == FileSourceTypeEnum.api:
             pass
 
     def validate_required_fields_by_type(self) -> None:
@@ -56,9 +54,8 @@ class FileSourceCreate(
             if not self.endpoint:  # type: ignore
                 raise ApiException("SharePoint 需要 endpoint (site_url)")
 
-        elif type_ == FileSourceTypeEnum.api:
-            if not self.endpoint:  # type: ignore
-                raise ApiException("API 文件源需要 endpoint")
+        elif type_ == FileSourceTypeEnum.api and not self.endpoint:  # type: ignore
+            raise ApiException("API 文件源需要 endpoint")
 
     def validate_extra_config(self) -> None:
         extra_config = self.extra_config or {}  # type: ignore

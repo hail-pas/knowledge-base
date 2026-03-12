@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Quick start script
 
@@ -6,23 +5,24 @@ Quickly start and run a simple workflow example.
 No configuration required, works out of the box.
 """
 
-import argparse
-import asyncio
 import os
 import sys
+import asyncio
+import argparse
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from core.context import ctx
-from ext.workflow import schedule_workflow, WorkflowManager
-from ext.workflow import demo_tasks  # Import demo tasks to register them
-from ext.ext_tortoise.enums import WorkflowStatusEnum
 from loguru import logger
 
+from core.context import ctx
+from ext.workflow import demo_tasks  # Import demo tasks to register them
+from ext.workflow import WorkflowManager, schedule_workflow
+from ext.ext_tortoise.enums import WorkflowStatusEnum
 
-def setup_logger():
+
+def setup_logger() -> None:
     """Configure simple logger"""
     logger.remove()
     logger.add(
@@ -40,7 +40,7 @@ def create_temp_file(content: str) -> str:
     return path
 
 
-async def quick_start(execute_mode: str = "direct"):
+async def quick_start(execute_mode: str = "direct") -> None:
     """Quick start workflow
 
     Args:
@@ -105,7 +105,7 @@ The system will process this file through multiple tasks:
             config=workflow_config,
             config_format="dict",
             initial_inputs={},
-            execute_mode=execute_mode, # type: ignore
+            execute_mode=execute_mode,  # type: ignore
         )
 
         logger.success(f"✓ Workflow started: {workflow_uid}")
@@ -195,7 +195,7 @@ The system will process this file through multiple tasks:
     try:
         os.unlink(file_path)
         logger.success("✓ Removed temporary file")
-    except:
+    except OSError:
         pass
 
     logger.info("\n" + "=" * 60)
@@ -218,12 +218,17 @@ def parse_args():
         "--mode",
         choices=["direct", "celery"],
         default="direct",
-        help="Execution mode: direct (execute in process) or celery (execute via Celery worker:\nuv run celery -A ext.ext_celery.worker worker -Q workflow_handoff -c 1\nuv run celery -A ext.ext_celery.worker worker -c 8)",
+        help=(
+            "Execution mode: direct (execute in process) or celery "
+            "(execute via Celery worker:\n"
+            "uv run celery -A ext.ext_celery.worker worker -Q workflow_handoff -c 1\n"
+            "uv run celery -A ext.ext_celery.worker worker -c 8)"
+        ),
     )
     return parser.parse_args()
 
 
-async def main():
+async def main() -> None:
     args = parse_args()
     async with ctx():
         await quick_start(execute_mode=args.mode)

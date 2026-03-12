@@ -7,8 +7,8 @@
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 
-from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.core.chunk_result import ChunkResult
+from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.core.coordinate_mapper import CoordinateMapper
 
 ConfigT = TypeVar("ConfigT")
@@ -23,7 +23,7 @@ class BaseChunkStrategy(ABC, Generic[ConfigT]):
         ConfigT: 配置类型
     """
 
-    def __init__(self, config: ConfigT):
+    def __init__(self, config: ConfigT) -> None:
         """
         初始化策略
 
@@ -33,7 +33,7 @@ class BaseChunkStrategy(ABC, Generic[ConfigT]):
         self.config = config
         self._mapper: CoordinateMapper | None = None
 
-    def _set_mapper(self, mapper: CoordinateMapper):
+    def _set_mapper(self, mapper: CoordinateMapper) -> None:
         """
         设置坐标映射器
 
@@ -53,7 +53,6 @@ class BaseChunkStrategy(ABC, Generic[ConfigT]):
         Returns:
             切块结果列表
         """
-        pass
 
     def _build_chunk(
         self,

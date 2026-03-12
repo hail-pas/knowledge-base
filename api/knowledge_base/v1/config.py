@@ -1,53 +1,52 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import Depends, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
 
-from service.depend import api_permission_check
+from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from core.types import ApiException
+from service.depend import api_permission_check
 from ext.ext_tortoise.curd import (
-    create_obj,
     list_view,
+    create_obj,
+    update_obj,
     detail_view,
     pagination_factory,
-    update_obj,
-)
-from ext.ext_tortoise.models.knowledge_base import (
-    FileSource,
-    LLMModelConfig,
-    IndexingBackendConfig,
-    EmbeddingModelConfig,
-)
-from ext.ext_tortoise.models.user_center import Account
-
-from service.file_source.schema import (
-    FileSourceCreate,
-    FileSourceUpdate,
-    FileSourceList,
-    FileSourceDetail,
-    FileSourceFilterSchema,
 )
 from service.llm_model.schema import (
-    LLMModelConfigCreate,
-    LLMModelConfigUpdate,
     LLMModelConfigList,
+    LLMModelConfigCreate,
     LLMModelConfigDetail,
+    LLMModelConfigUpdate,
     LLMModelConfigFilterSchema,
 )
+from service.file_source.schema import (
+    FileSourceList,
+    FileSourceCreate,
+    FileSourceDetail,
+    FileSourceUpdate,
+    FileSourceFilterSchema,
+)
+from service.embedding_model.schema import (
+    EmbeddingModelConfigList,
+    EmbeddingModelConfigCreate,
+    EmbeddingModelConfigDetail,
+    EmbeddingModelConfigFilterSchema,
+)
 from service.indexing_backend.schema import (
-    IndexingBackendConfigCreate,
     IndexingBackendConfigList,
+    IndexingBackendConfigCreate,
     IndexingBackendConfigDetail,
     IndexingBackendConfigFilterSchema,
 )
-from service.embedding_model.schema import (
-    EmbeddingModelConfigCreate,
-    EmbeddingModelConfigList,
-    EmbeddingModelConfigDetail,
-    EmbeddingModelConfigFilterSchema,
+from ext.ext_tortoise.models.user_center import Account
+from ext.ext_tortoise.models.knowledge_base import (
+    FileSource,
+    LLMModelConfig,
+    EmbeddingModelConfig,
+    IndexingBackendConfig,
 )
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
@@ -201,7 +200,8 @@ def get_indexing_backend_queryset(request: Request) -> QuerySet[IndexingBackendC
 
 @router.post("/indexing-backend", summary="创建索引后端配置")
 async def create_indexing_backend(
-    request: Request, schema: IndexingBackendConfigCreate
+    request: Request,
+    schema: IndexingBackendConfigCreate,
 ) -> Resp[IndexingBackendConfigList]:
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
@@ -210,8 +210,8 @@ async def create_indexing_backend(
 
     if obj.is_default:  # type: ignore
         await (
-            IndexingBackendConfig.filter(is_default=True, type=obj.type, deleted_at=0) # type: ignore
-            .exclude(pk=obj.id) # type: ignore
+            IndexingBackendConfig.filter(is_default=True, type=obj.type, deleted_at=0)  # type: ignore
+            .exclude(pk=obj.id)  # type: ignore
             .update(is_default=False)
         )  # type: ignore
 
@@ -249,7 +249,8 @@ def get_embedding_model_queryset(request: Request) -> QuerySet[EmbeddingModelCon
 
 @router.post("/embedding-model", summary="创建Embedding模型配置")
 async def create_embedding_model(
-    request: Request, schema: EmbeddingModelConfigCreate
+    request: Request,
+    schema: EmbeddingModelConfigCreate,
 ) -> Resp[EmbeddingModelConfigList]:
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
@@ -258,8 +259,8 @@ async def create_embedding_model(
 
     if obj.is_default:  # type: ignore
         await (
-            EmbeddingModelConfig.filter(is_default=True, type=obj.type, deleted_at=0) # type: ignore
-            .exclude(pk=obj.id) # type: ignore
+            EmbeddingModelConfig.filter(is_default=True, type=obj.type, deleted_at=0)  # type: ignore
+            .exclude(pk=obj.id)  # type: ignore
             .update(is_default=False)
         )  # type: ignore
 

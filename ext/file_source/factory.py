@@ -4,14 +4,14 @@ File Source Factory
 负责根据数据库配置动态创建 file source provider 实例
 """
 
-from typing import Any
 import asyncio
+from typing import Any
+
 from loguru import logger
 
 from ext.file_source.base import BaseFileSourceProvider
 from ext.ext_tortoise.enums import FileSourceTypeEnum
 from ext.ext_tortoise.models.knowledge_base import FileSource
-from ext.ext_tortoise.enums import FileSourceTypeEnum
 
 
 class FileSourceFactory:
@@ -40,7 +40,7 @@ class FileSourceFactory:
 
         provider_cls = cls._providers.get(config.type)
         if not provider_cls:
-            available_types = ", ".join([t.value for t in cls._providers.keys()])
+            available_types = ", ".join([t.value for t in cls._providers])
             raise ValueError(f"Unsupported file source type: {config.type.value}, available: {available_types}")
 
         if not use_cache or not config._saved_in_db:
@@ -62,7 +62,11 @@ class FileSourceFactory:
             return provider
 
     @classmethod
-    def _create_instance(cls, provider_cls: type[BaseFileSourceProvider], config: FileSource) -> BaseFileSourceProvider:
+    def _create_instance(
+        cls,
+        provider_cls: type[BaseFileSourceProvider],
+        config: FileSource,
+    ) -> BaseFileSourceProvider:
         """创建 provider 实例的内部方法"""
         return provider_cls(
             access_key=config.access_key,
@@ -117,7 +121,7 @@ class FileSourceFactory:
         return {
             "cached_count": len(cls._instances),
             "cached_ids": list(cls._instances.keys()),
-            "registered_providers": [t.value for t in cls._providers.keys()],
+            "registered_providers": [t.value for t in cls._providers],
         }
 
 

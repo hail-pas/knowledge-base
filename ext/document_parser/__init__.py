@@ -1,21 +1,19 @@
 from ext.document_parser.core import (
     BaseEngine,
-    ParseResult,
     PageResult,
+    ParseResult,
     TableFormat,
     OutputFormat,
     DocumentParser,
 )
-
-from ext.document_parser.config import list_engines, get_engine, register_engine
-
+from ext.document_parser.config import get_engine, list_engines, register_engine
 from ext.document_parser.processors import (
-    BaseProcessor,
     TextCleaner,
-    ContentDeduplicator,
+    BaseProcessor,
     EmailSanitizer,
     PhoneSanitizer,
     IDCardSanitizer,
+    ContentDeduplicator,
 )
 
 __version__ = "1.0.0"

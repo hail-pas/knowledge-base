@@ -1,26 +1,31 @@
 """Milvus Provider 实现"""
 
-from datetime import datetime, timezone
 from enum import StrEnum
 from types import UnionType
-from typing import Any, get_origin, get_args, Union
+from typing import Any, Union, get_args, get_origin
+from datetime import UTC, datetime, timezone
 
-from ext.indexing.base import BaseProvider, BaseIndexModel
-from ext.indexing.providers.types import MilvusConfig
-from ext.indexing.types import DenseSearchClause, SparseSearchClause, HybridSearchClause, FilterClause
-
-from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 from pymilvus import (
-    AsyncMilvusClient,
-    FieldSchema,
-    CollectionSchema,
     DataType,
     Function,
+    RRFRanker,
+    FieldSchema,
     FunctionType,
     AnnSearchRequest,
-    RRFRanker,
+    CollectionSchema,
+    AsyncMilvusClient,
 )
 from pymilvus.milvus_client.index import IndexParams
+
+from ext.indexing.base import BaseProvider, BaseIndexModel
+from ext.indexing.types import (
+    FilterClause,
+    DenseSearchClause,
+    HybridSearchClause,
+    SparseSearchClause,
+)
+from ext.indexing.providers.types import MilvusConfig
+from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 
 class IndexMetadataEnum(StrEnum):
@@ -36,7 +41,7 @@ class IndexMetadataEnum(StrEnum):
 class MilvusProvider(BaseProvider[MilvusConfig]):
     """Milvus Provider 实现"""
 
-    def __init__(self, config: "IndexingBackendConfig"):
+    def __init__(self, config: "IndexingBackendConfig") -> None:
         super().__init__(config, MilvusConfig)
 
         # Validate configuration
@@ -48,7 +53,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         if self.extra_config.metric_type not in ["IP"]:
             raise ValueError(f"Invalid metric_type: {self.extra_config.metric_type}. Must be one of: COSINE, L2, IP")
 
-    async def connect(self):
+    async def connect(self) -> None:
         """建立连接（Milvus SDK 是同步的，需要用 executor）"""
         scheme = "https" if self.config.verify_ssl else "http"
         uri = (
@@ -72,12 +77,12 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         self._client = AsyncMilvusClient(**kwargs)
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """断开连接"""
         if self._client:
             await self._client.close()
 
-    async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False):
+    async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False) -> None:
         """创建集合"""
         self._validate_model_config(model_class)
 
@@ -144,13 +149,13 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             if origin in [Union, UnionType]:
                 args = get_args(id_field_info.annotation)
                 assert str in args  # 默认使用str
-            elif id_field_info.annotation == int:
+            elif id_field_info.annotation is int:
                 id_type = DataType.INT64
             else:
                 raise RuntimeError(f"Not supported id type {id_field_info.annotation}")
 
         if id_type is DataType.VARCHAR and model_class.Meta.auto_generate_id:
-            raise RuntimeError(f"auto_generate_id not supported when id type is VARCHAR")
+            raise RuntimeError("auto_generate_id not supported when id type is VARCHAR")
 
         fs = FieldSchema(name="id", dtype=id_type, is_primary=True, auto_id=model_class.Meta.auto_generate_id)
         if id_type is DataType.VARCHAR:
@@ -187,9 +192,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             return True
         if model_class.Meta.partition_key and field_name == model_class.Meta.partition_key:
             return True
-        if field_name.endswith("_sparse_vector"):
-            return True
-        return False
+        return bool(field_name.endswith("_sparse_vector"))
 
     def _get_sparse_vector_field_name(self, text_field: str) -> str:
         """根据文本字段名生成对应的稀疏向量字段名"""
@@ -216,13 +219,13 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             )
 
         # 标量字段
-        if field_info.annotation == bool:
+        if field_info.annotation is bool:
             return FieldSchema(name=field_name, dtype=DataType.BOOL)
-        if field_info.annotation == int:
+        if field_info.annotation is int:
             return FieldSchema(name=field_name, dtype=DataType.INT64)
-        if field_info.annotation == float:
+        if field_info.annotation is float:
             return FieldSchema(name=field_name, dtype=DataType.DOUBLE)
-        if field_info.annotation == str:
+        if field_info.annotation is str:
             field_params = {
                 "name": field_name,
                 "dtype": DataType.VARCHAR,
@@ -230,24 +233,26 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
                 "nullable": not field_info.is_required,
             }
             if index_metadata.get(IndexMetadataEnum.enable_match, False) or index_metadata.get(
-                IndexMetadataEnum.enable_analyzer, False
+                IndexMetadataEnum.enable_analyzer,
+                False,
             ):
                 field_params["analyzer_params"] = index_metadata.get(
-                    IndexMetadataEnum.analyzer_params, self.extra_config.analyzer_params
+                    IndexMetadataEnum.analyzer_params,
+                    self.extra_config.analyzer_params,
                 )
                 field_params["enable_match"] = index_metadata.get(IndexMetadataEnum.enable_match, False)
                 field_params["enable_analyzer"] = index_metadata.get(IndexMetadataEnum.enable_analyzer, False)
 
             return FieldSchema(**field_params)
-        if field_info.annotation == datetime:
+        if field_info.annotation is datetime:
             if index_metadata.get(IndexMetadataEnum.server_incompatible):
                 return FieldSchema(name=field_name, dtype=DataType.INT64, nullable=not field_info.is_required)
             return FieldSchema(name=field_name, dtype=DataType.TIMESTAMPTZ, nullable=not field_info.is_required)
-        if field_info.annotation in [dict, dict] or get_origin(field_info.annotation) == dict:
+        if field_info.annotation is dict or get_origin(field_info.annotation) is dict:
             return FieldSchema(name=field_name, dtype=DataType.JSON, nullable=not field_info.is_required)
 
         # ARRAY 字段
-        if get_origin(field_info.annotation) == list:
+        if get_origin(field_info.annotation) is list:
             return self._build_array_field_schema(field_name, field_info)
 
         raise RuntimeError(f"Not supported field type: {field_name} - {field_info.annotation}")
@@ -339,16 +344,16 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             if self._should_skip_field(field_name, model_class):
                 continue
 
-            if field_info.annotation == str:
+            if field_info.annotation is str:
                 index_metadata = {}
                 if field_info.json_schema_extra and isinstance(field_info.json_schema_extra, dict):
                     extra_dict = field_info.json_schema_extra
                     index_metadata = extra_dict.get("index_metadata", {})
 
-                if (
-                    index_metadata.get(IndexMetadataEnum.enable_match, False)  # type: ignore
-                    or index_metadata.get(IndexMetadataEnum.enable_analyzer, False)  # type: ignore
-                ):
+                if index_metadata.get(IndexMetadataEnum.enable_match, False) or index_metadata.get(  # type: ignore
+                    IndexMetadataEnum.enable_analyzer,
+                    False,
+                ):  # type: ignore
                     text_fields.append(field_name)
 
         return text_fields
@@ -365,16 +370,16 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             if self._should_skip_field(field_name, model_class):
                 continue
 
-            if field_info.annotation == str:
+            if field_info.annotation is str:
                 index_metadata = {}
                 if field_info.json_schema_extra and isinstance(field_info.json_schema_extra, dict):
                     extra_dict = field_info.json_schema_extra
                     index_metadata = extra_dict.get("index_metadata", {})
 
-                if (
-                    index_metadata.get(IndexMetadataEnum.enable_match, False)  # type: ignore
-                    or index_metadata.get(IndexMetadataEnum.enable_analyzer, False)  # type: ignore
-                ):
+                if index_metadata.get(IndexMetadataEnum.enable_match, False) or index_metadata.get(  # type: ignore
+                    IndexMetadataEnum.enable_analyzer,
+                    False,
+                ):  # type: ignore
                     sparse_field_name = self._get_sparse_vector_field_name(field_name)
                     text_fields_info.append((field_name, sparse_field_name))
 
@@ -388,16 +393,16 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             if self._should_skip_field(field_name, model_class):
                 continue
 
-            if field_info.annotation == str:
+            if field_info.annotation is str:
                 index_metadata = {}
                 if field_info.json_schema_extra and isinstance(field_info.json_schema_extra, dict):
                     extra_dict = field_info.json_schema_extra
                     index_metadata = extra_dict.get("index_metadata", {})
 
-                if (
-                    index_metadata.get(IndexMetadataEnum.enable_match, False)  # type: ignore
-                    or index_metadata.get(IndexMetadataEnum.enable_analyzer, False)  # type: ignore
-                ):
+                if index_metadata.get(IndexMetadataEnum.enable_match, False) or index_metadata.get(  # type: ignore
+                    IndexMetadataEnum.enable_analyzer,
+                    False,
+                ):  # type: ignore
                     sparse_field_name = self._get_sparse_vector_field_name(field_name)
                     sparse_fields.append(FieldSchema(name=sparse_field_name, dtype=DataType.SPARSE_FLOAT_VECTOR))
 
@@ -420,7 +425,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         return functions
 
-    async def drop_collection(self, model_class: type[BaseIndexModel]):
+    async def drop_collection(self, model_class: type[BaseIndexModel]) -> None:
         """删除集合（使用 Partition Key，无需手动删除 partition）"""
         collection_name = self.build_collection_name(model_class)
 
@@ -456,10 +461,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             field_name = parts[0]
             direction = parts[1] if len(parts) > 1 else "asc"
             # If primary field is not id, add secondary sort by id desc
-            if field_name != "id":
-                order_by_field = f"{field_name} {direction}, id desc"
-            else:
-                order_by_field = f"{field_name} {direction}"
+            order_by_field = f"{field_name} {direction}, id desc" if field_name != "id" else f"{field_name} {direction}"
 
         results = await self._client.query(
             collection_name=collection_name,
@@ -555,7 +557,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         return None
 
-    async def delete(self, model_class: type[BaseIndexModel], ids: list[str]):
+    async def delete(self, model_class: type[BaseIndexModel], ids: list[str]) -> None:
         """删除文档（带 partition）"""
         if not ids:
             return
@@ -569,7 +571,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         if self.extra_config.auto_flush:
             await self._client.flush(collection_name)
 
-    async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause):
+    async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> None:
         """根据条件删除（带 partition）"""
         collection_name = self.build_collection_name(model_class)
 
@@ -715,13 +717,12 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
                 query_clause,
                 filter_expr,
             )
-        else:
-            return await self._execute_legacy_hybrid_search(
-                collection_name,
-                model_class,
-                query_clause,
-                filter_expr,
-            )
+        return await self._execute_legacy_hybrid_search(
+            collection_name,
+            model_class,
+            query_clause,
+            filter_expr,
+        )
 
     async def _execute_native_hybrid_search(
         self,
@@ -967,21 +968,17 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             return False
 
         # 判断是否为 List 类型
-        if get_origin(field_info.annotation) != list:
+        if get_origin(field_info.annotation) is not list:
             return False
 
         # 排除向量字段（向量字段是 List[float] 但不是 ARRAY 标量）
         if field_name == model_class.Meta.dense_vector_field:
             return False
-        if field_name.endswith("_sparse_vector"):
-            return False
-
-        return True
+        return not field_name.endswith("_sparse_vector")
 
     def _escape_string(self, value: str) -> str:
         """转义 Milvus 表达式中的字符串特殊字符"""
-        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-        return escaped
+        return value.replace("\\", "\\\\").replace('"', '\\"')
 
     def _is_datetime_incompatible(self, field_name: str, model_class: type[BaseIndexModel]) -> bool:
         """Check if a datetime field needs INT64 conversion"""
@@ -997,7 +994,9 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         return False
 
     def _convert_datetime_for_write(
-        self, documents: list[dict[str, Any]], model_class: type[BaseIndexModel]
+        self,
+        documents: list[dict[str, Any]],
+        model_class: type[BaseIndexModel],
     ) -> list[dict[str, Any]]:
         """Convert datetime fields to INT64 timestamps if server_incompatible"""
         converted = []
@@ -1007,13 +1006,13 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             for field_name, field_value in doc.items():
                 if field_value is not None and self._is_datetime_incompatible(field_name, model_class):
                     if isinstance(field_value, datetime):
-                        new_doc[field_name] = int(field_value.astimezone(timezone.utc).timestamp() * 1000)
+                        new_doc[field_name] = int(field_value.astimezone(UTC).timestamp() * 1000)
                     elif isinstance(field_value, str):
                         try:
                             dt = datetime.fromisoformat(field_value.replace("Z", "+00:00"))
                             if dt.tzinfo is None:
-                                dt = dt.replace(tzinfo=timezone.utc)
-                            new_doc[field_name] = int(dt.astimezone(timezone.utc).timestamp() * 1000)
+                                dt = dt.replace(tzinfo=UTC)
+                            new_doc[field_name] = int(dt.astimezone(UTC).timestamp() * 1000)
                         except (ValueError, AttributeError):
                             new_doc[field_name] = field_value
                     else:
@@ -1025,7 +1024,9 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         return converted
 
     def _convert_datetime_for_read(
-        self, documents: list[dict[str, Any]], model_class: type[BaseIndexModel]
+        self,
+        documents: list[dict[str, Any]],
+        model_class: type[BaseIndexModel],
     ) -> list[dict[str, Any]]:
         """Convert INT64 timestamps back to datetime if server_incompatible"""
         converted = []
@@ -1035,10 +1036,10 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             for field_name, field_value in doc.items():
                 if (
                     field_value is not None
-                    and isinstance(field_value, (int, float))
+                    and isinstance(field_value, int | float)
                     and self._is_datetime_incompatible(field_name, model_class)
                 ):
-                    new_doc[field_name] = datetime.fromtimestamp(field_value / 1000, tz=timezone.utc)
+                    new_doc[field_name] = datetime.fromtimestamp(field_value / 1000, tz=UTC)
                 else:
                     new_doc[field_name] = field_value
             converted.append(new_doc)
@@ -1051,13 +1052,13 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             for field_name, value in list(filter_clause.equals.items()):
                 if self._is_datetime_incompatible(field_name, model_class):
                     if isinstance(value, datetime):
-                        filter_clause.equals[field_name] = int(value.astimezone(timezone.utc).timestamp() * 1000)
+                        filter_clause.equals[field_name] = int(value.astimezone(UTC).timestamp() * 1000)
                     elif isinstance(value, str):
                         try:
                             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
                             if dt.tzinfo is None:
-                                dt = dt.replace(tzinfo=timezone.utc)
-                            filter_clause.equals[field_name] = int(dt.astimezone(timezone.utc).timestamp() * 1000)
+                                dt = dt.replace(tzinfo=UTC)
+                            filter_clause.equals[field_name] = int(dt.astimezone(UTC).timestamp() * 1000)
                         except (ValueError, AttributeError):
                             pass
 
@@ -1067,13 +1068,13 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
                     for op, value in list(range_value.items()):
                         if self._is_datetime_incompatible(field_name, model_class):
                             if isinstance(value, datetime):
-                                range_value[op] = int(value.astimezone(timezone.utc).timestamp() * 1000)  # type: ignore
+                                range_value[op] = int(value.astimezone(UTC).timestamp() * 1000)  # type: ignore
                             elif isinstance(value, str):
                                 try:
                                     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
                                     if dt.tzinfo is None:
-                                        dt = dt.replace(tzinfo=timezone.utc)
-                                    range_value[op] = int(dt.astimezone(timezone.utc).timestamp() * 1000)  # type: ignore
+                                        dt = dt.replace(tzinfo=UTC)
+                                    range_value[op] = int(dt.astimezone(UTC).timestamp() * 1000)  # type: ignore
                                 except (ValueError, AttributeError):
                                     pass
 

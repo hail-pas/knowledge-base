@@ -1,5 +1,6 @@
 from json import load
 from posixpath import split
+
 from core.types import IntEnum, StrEnum
 
 

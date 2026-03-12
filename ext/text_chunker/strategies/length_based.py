@@ -6,10 +6,10 @@
 
 from loguru import logger
 
+from util.token import TokenCounter
+from ext.text_chunker.strategies.base import BaseChunkStrategy
 from ext.document_parser.core.parse_result import ParseResult
 from ext.text_chunker.config.strategy_config import LengthChunkConfig
-from ext.text_chunker.strategies.base import BaseChunkStrategy
-from util.token import TokenCounter
 
 
 class LengthChunkStrategy(BaseChunkStrategy[LengthChunkConfig]):
@@ -81,10 +81,7 @@ class LengthChunkStrategy(BaseChunkStrategy[LengthChunkConfig]):
                 break
 
             # 移动起始位置（考虑overlap）
-            if overlap > 0 and end > overlap:
-                start = end - overlap
-            else:
-                start = end
+            start = end - overlap if overlap > 0 and end > overlap else end
             chunk_index += 1
 
             # 避免无限循环（overlap >= chunk_size时）

@@ -1,55 +1,54 @@
-from typing import Literal
 import mimetypes
+from typing import Literal
 from urllib.parse import quote
 
+from fastapi import Body, File, Form, Depends, Request, APIRouter, UploadFile
 from pydantic import BaseModel
-from fastapi import APIRouter, Request, Depends, Form, File, UploadFile, Body
 from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
 
-from ext.ext_tortoise.main import ConnectionNameEnum
-from service.depend import api_permission_check
+from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from core.types import ApiException
+from service.depend import api_permission_check
+from ext.file_source import FileSourceFactory
 from ext.ext_tortoise.curd import (
-    create_obj,
+    DeleteResp,
     list_view,
+    create_obj,
+    update_obj,
     detail_view,
     pagination_factory,
-    update_obj,
-    DeleteResp,
 )
-from ext.ext_tortoise.models.knowledge_base import (
-    Activity,
-    Document,
-    Collection,
-    FileSource,
-    DocumentPages,
-    DocumentChunk,
-    DocumentGeneratedFaq,
-    Workflow,
-)
-from ext.ext_tortoise.models.user_center import Account
+from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import ActivityStatusEnum, DocumentStatusEnum
-from ext.file_source import FileSourceFactory
-
+from service.document.helper import DocumentService
 from service.document.schema import (
     DocumentList,
     DocumentDetail,
+    DocumentUpdate,
     DocumentPageList,
     DocumentChunkList,
-    DocumentGeneratedFaqList,
     DocumentChunkCreate,
     DocumentChunkUpdate,
+    DocumentGeneratedFaqList,
     DocumentGeneratedFaqCreate,
     DocumentGeneratedFaqUpdate,
-    DocumentUpdate,
 )
-from service.document.helper import DocumentService
 from service.collection.helper import WorkflowTemplateValidator
 from service.workflow.document import process_document
+from ext.ext_tortoise.models.user_center import Account
+from ext.ext_tortoise.models.knowledge_base import (
+    Activity,
+    Document,
+    Workflow,
+    Collection,
+    FileSource,
+    DocumentChunk,
+    DocumentPages,
+    DocumentGeneratedFaq,
+)
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
 
@@ -85,7 +84,7 @@ async def create_document(
     file: UploadFile | None = File(None, description="上传的文件"),
     uri: str | None = Form(None, description="文件URI"),
     display_name: str | None = Form(None, description="显示名称"),
-    config_flag: int = Form(0, description="")
+    config_flag: int = Form(0, description=""),
 ) -> Resp[DocumentList]:
     """
     创建文档，支持两种方式：
@@ -101,7 +100,9 @@ async def create_document(
     user: Account = request.scope["user"]
 
     # 1. 验证 collection
-    collection = await Collection.get_or_none(id=collection_id, deleted_at=0).prefetch_related("embedding_model_config")
+    collection = await Collection.get_or_none(id=collection_id, deleted_at=0).prefetch_related(
+        "embedding_model_config",
+    )
     if not collection:
         raise ApiException("Collection不存在")
 
@@ -134,7 +135,7 @@ async def create_document(
             file_name=file_name,  # type: ignore
             display_name=display_name,
             file_source=file_source,
-            config_flag=config_flag
+            config_flag=config_flag,
         )
     else:
         # URI 方式
@@ -142,10 +143,15 @@ async def create_document(
             uri=uri,  # type: ignore
             display_name=display_name,
             file_source=file_source,
-            config_flag=config_flag
+            config_flag=config_flag,
         )
 
-    workflow_id = await process_document(workflow_uid=None, document_id=document.id, workflow_template=document.workflow_template, execute_mode="direct")
+    workflow_id = await process_document(
+        workflow_uid=None,
+        document_id=document.id,
+        workflow_template=document.workflow_template,
+        execute_mode="direct",
+    )
 
     document.current_workflow_uid = workflow_id  # type: ignore
     await document.save(update_fields=["current_workflow_uid"])
@@ -180,7 +186,9 @@ async def delete_document(request: Request, pk: int) -> Resp[DeleteResp]:
 
 @router.put("/{pk}", summary="更新Document")
 async def update_document(
-    request: Request, pk: int, schema: DocumentUpdate
+    request: Request,
+    pk: int,
+    schema: DocumentUpdate,
 ) -> Resp:
     user: Account = request.scope["user"]
     queryset = get_document_queryset(request, user)
@@ -192,11 +200,11 @@ async def update_document(
     update_data = schema.model_dump(exclude_unset=True)
 
     if "workflow_template" in update_data:
-    # 验证 workflow_template 格式
+        # 验证 workflow_template 格式
         try:
             WorkflowTemplateValidator.validate(update_data["workflow_template"])
         except ValueError as e:
-            raise ApiException(str(e))
+            raise ApiException(str(e)) from e
 
     await update_obj(obj, queryset, update_data)
 
@@ -260,7 +268,12 @@ async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["w
             await Activity.filter(workflow_uid=obj.current_workflow_uid).delete()
             await Workflow.filter(uid=obj.current_workflow_uid).delete()
 
-    workflow_id = await process_document(workflow_uid=None, document_id=obj.id, workflow_template=obj.workflow_template, execute_mode="direct")
+    workflow_id = await process_document(
+        workflow_uid=None,
+        document_id=obj.id,
+        workflow_template=obj.workflow_template,
+        execute_mode="direct",
+    )
 
     obj.current_workflow_uid = workflow_id  # type: ignore
     await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
@@ -280,7 +293,7 @@ async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["wor
         if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
             raise ApiException("当前状态不支持")
 
-        workflow_uid=str(obj.current_workflow_uid) if obj.current_workflow_uid else None
+        workflow_uid = str(obj.current_workflow_uid) if obj.current_workflow_uid else None
 
         if workflow_uid:
             chunk_activity_uids = []
@@ -303,7 +316,12 @@ async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["wor
         obj.status = DocumentStatusEnum.pending
         await obj.save(using_db=conn, update_fields=["status"])
 
-    workflow_id = await process_document(workflow_uid=str(obj.current_workflow_uid), document_id=obj.id, workflow_template=obj.workflow_template, execute_mode="direct")
+    workflow_id = await process_document(
+        workflow_uid=str(obj.current_workflow_uid),
+        document_id=obj.id,
+        workflow_template=obj.workflow_template,
+        execute_mode="direct",
+    )
     if not obj.current_workflow_uid or str(obj.current_workflow_uid) != workflow_id:
         obj.current_workflow_uid = workflow_id  # type: ignore
         await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
@@ -331,7 +349,11 @@ async def get_document_stream(request: Request, pk: int) -> StreamingResponse:
 
 
 @router.get("/{pk}/pages", summary="DocumentPages列表")
-async def list_document_pages(request: Request, pk: int, page_number: int | None = None) -> Resp[list[DocumentPageList]]:
+async def list_document_pages(
+    request: Request,
+    pk: int,
+    page_number: int | None = None,
+) -> Resp[list[DocumentPageList]]:
     document = await get_document_or_raise(request, pk)
 
     pages_queryset = DocumentPages.filter(document_id=document.id, deleted_at=0).order_by("page_number")
@@ -350,7 +372,11 @@ async def list_document_pages(request: Request, pk: int, page_number: int | None
 
 
 @router.get("/{pk}/chunks", summary="DocumentChunk列表")
-async def list_document_chunks(request: Request, pk: int, page_number: int | None = None) -> Resp[list[DocumentChunkList]]:
+async def list_document_chunks(
+    request: Request,
+    pk: int,
+    page_number: int | None = None,
+) -> Resp[list[DocumentChunkList]]:
     document = await get_document_or_raise(request, pk)
 
     chunks_queryset = DocumentChunk.filter(document_id=document.id, deleted_at=0).order_by("-id")
@@ -390,7 +416,8 @@ async def create_document_chunk(request: Request, pk: int, schema: DocumentChunk
 @router.put("/{pk}/chunks/{chunk_id}", summary="修改DocumentChunk")
 async def update_document_chunk(request: Request, pk: int, chunk_id: int, schema: DocumentChunkUpdate) -> Resp:
     await get_document_or_raise(request, pk)
-    # TODO
+    _ = (chunk_id, schema)
+    # Placeholder endpoint: current implementation intentionally performs no update yet.
     return Resp()
 
 

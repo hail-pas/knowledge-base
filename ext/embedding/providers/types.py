@@ -5,7 +5,9 @@ Provider 特定的 extra_config 类型
 """
 
 from typing import Optional
+
 from pydantic import Field
+
 from ext.embedding.types import BaseExtraConfig
 
 

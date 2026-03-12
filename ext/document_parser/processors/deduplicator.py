@@ -8,15 +8,15 @@ class ContentDeduplicator(BaseProcessor):
         unique_paragraphs = []
         seen = set()
 
-        for para in paragraphs:
-            para = para.strip()
-            if not para:
+        for paragraph in paragraphs:
+            stripped_paragraph = paragraph.strip()
+            if not stripped_paragraph:
                 continue
 
-            para_hash = hash(para)
+            para_hash = hash(stripped_paragraph)
             if para_hash not in seen:
                 seen.add(para_hash)
-                unique_paragraphs.append(para)
+                unique_paragraphs.append(stripped_paragraph)
 
         result.content = "\n\n".join(unique_paragraphs)
         return result

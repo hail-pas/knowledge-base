@@ -4,9 +4,10 @@ Embedding 模型泛型基类
 提供embedding模型的抽象接口和默认实现
 """
 
-from abc import ABC
-from typing import TypeVar, Generic, List, Dict, Any, Optional, Type
 import asyncio
+from abc import ABC
+from typing import Any, Dict, List, Type, Generic, TypeVar, Optional
+
 import httpx
 from loguru import logger
 
@@ -47,7 +48,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
         timeout: int,
         rate_limit: int,
         extra_config: dict[str, Any],
-    ):
+    ) -> None:
         """
         初始化embedding模型
 
@@ -251,7 +252,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
         # 添加模型字段（如果配置了）
         if model_in_body and model_field:
-            body[model_field] = self.model_name # type: ignore
+            body[model_field] = self.model_name  # type: ignore
 
         # 添加额外参数
         body.update(self._get_extra_request_params())
@@ -334,7 +335,10 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
         return result
 
     def _sort_by_index(
-        self, items: list[dict[str, Any]], embeddings: list[list[float]], index_field: str,
+        self,
+        items: list[dict[str, Any]],
+        embeddings: list[list[float]],
+        index_field: str,
     ) -> list[list[float]]:
         """根据index字段排序"""
         indexed = list(zip(items, embeddings, strict=False))
@@ -447,7 +451,7 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
                 response_data = response.json()
                 try:
                     return self.parse_response(response_data)
-                except:
+                except Exception:
                     ...
 
                 # 错误
@@ -469,14 +473,14 @@ class BaseEmbeddingModel(Generic[ExtraConfigT], ABC):
 
             except httpx.TimeoutException as e:
                 if attempt == self.max_retries:
-                    raise RuntimeError(f"请求超时: {str(e)}")
+                    raise RuntimeError(f"请求超时: {str(e)}") from e
                 delay = self.get_retry_delay(attempt)
                 logger.warning(f"请求超时: {str(e)}，{delay}秒后重试")
                 await asyncio.sleep(delay)
 
             except httpx.ConnectError as e:
                 if attempt == self.max_retries:
-                    raise RuntimeError(f"连接错误: {str(e)}")
+                    raise RuntimeError(f"连接错误: {str(e)}") from e
                 delay = self.get_retry_delay(attempt)
                 logger.warning(f"连接错误: {str(e)}，{delay}秒后重试")
                 await asyncio.sleep(delay)

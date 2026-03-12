@@ -5,7 +5,8 @@ Chain 组合实现
 """
 
 from typing import Any, TypeVar
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable, AsyncIterator
+
 from loguru import logger
 
 from ext.llm.chain.base import Runnable
@@ -21,7 +22,7 @@ class RunnableSequence(Runnable[InputT, OutputT]):
     将多个 Runnable 串联起来，按顺序执行
     """
 
-    def __init__(self, steps: list[Runnable]):
+    def __init__(self, steps: list[Runnable]) -> None:
         """初始化顺序执行 Chain
 
         Args:
@@ -103,7 +104,7 @@ class RunnableBranch(Runnable[InputT, OutputT]):
     根据条件选择不同的执行路径
     """
 
-    def __init__(self, branches: list[tuple[Callable[[InputT], bool], Runnable[InputT, OutputT]]]):
+    def __init__(self, branches: list[tuple[Callable[[InputT], bool], Runnable[InputT, OutputT]]]) -> None:
         """初始化条件分支 Chain
 
         Args:
@@ -156,7 +157,7 @@ class RunnableMap(Runnable[InputT, dict[str, Any]]):
     将输入传递到多个 Runnable 并行执行，返回字典
     """
 
-    def __init__(self, mappings: dict[str, Runnable]):
+    def __init__(self, mappings: dict[str, Runnable]) -> None:
         """初始化并行执行 Chain
 
         Args:

@@ -1,20 +1,20 @@
 """查询条件类型定义（Provider 无感知）"""
 
-from abc import ABC
 from enum import StrEnum
-from typing import Any, Dict, List, Optional, Literal
-from pydantic import BaseModel, Field, field_validator
+from typing import Any, Literal, Optional
 from dataclasses import dataclass
+
+from pydantic import Field, BaseModel, field_validator
 
 
 class QueryTypeEnum(StrEnum):
     dense = "dense"
     sparse = "sparse"
     hybrid = "hybrid"
-    graph = "graph"  # TODO
+    graph = "graph"
 
 
-class QueryClause(ABC):
+class QueryClause:
     """查询条件基类（Provider 无感知）"""
 
     output_fields: list[str] = Field(default=["*"], description="返回字段")

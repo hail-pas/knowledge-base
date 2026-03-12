@@ -31,8 +31,7 @@ class AESUtil:
 
     def encrypt(self, data) -> bytes:
         pad_data = pad(data.encode(), AES.block_size, style=self.style)
-        cipher_text = self.cipher.encrypt(pad_data)
-        return cipher_text
+        return self.cipher.encrypt(pad_data)
 
     def decrypt(self, cipher_text: str) -> str:
         decrypted_data = self.cipher.decrypt(cipher_text)
@@ -108,8 +107,7 @@ class RSAUtil:
             raise TypeError("dict required")
         # for k in sorted(data.keys()):
         #     params_str += str(k)+ str(data[k])
-        params_str = orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode()
-        return params_str
+        return orjson.dumps(data, option=orjson.OPT_SORT_KEYS).decode()
 
     def sign(self, data: dict) -> str:
         """Rsa 签名."""
@@ -241,7 +239,7 @@ class JwtUtil:
         issuer: str | None = None,
         subject: str | None = None,
     ) -> dict:
-        payload = jwt.decode(
+        return jwt.decode(
             token=token,
             key=key,
             algorithms=algorithms if algorithms else cls.default_algorithm,
@@ -250,4 +248,3 @@ class JwtUtil:
             issuer=issuer,
             subject=subject,
         )
-        return payload

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import openpyxl
 from docx import Document
 from pptx import Presentation
-import openpyxl
 
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult, TableFormat
+from ext.document_parser.core.parse_result import (
+    PageResult,
+    ParseResult,
+    TableFormat,
+    OutputFormat,
+)
 
 
 class DocxEngine(BaseEngine):

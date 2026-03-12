@@ -46,14 +46,14 @@ def paginate(
         search: str = param_type(
             None,
             description="搜索关键字."
-            + (f" 匹配字段: {', '.join(search_fields)}" if search_fields else "无可匹配的字段"),  # ruff: noqa: E501
+            + (f" 匹配字段: {', '.join(search_fields)}" if search_fields else "无可匹配的字段"),  # noqa: E501
         ),
         order_by: set[str] = param_type(
             default=set(),
             # examples=["-id"],
             description=(
                 "排序字段. 升序保持原字段名, 降序增加前缀-."
-                + (f" 可选字段: {', '.join(order_fields)}" if order_fields else " 无可排序字段")  # ruff: noqa: E501
+                + (f" 可选字段: {', '.join(order_fields)}" if order_fields else " 无可排序字段")  # noqa: E501
             ),
         ),
         selected_fields: set[str] = param_type(

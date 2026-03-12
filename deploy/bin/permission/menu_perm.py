@@ -2,24 +2,23 @@ import sys
 import asyncio
 import argparse
 from uuid import UUID
+from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))  # type: ignore
 
 from loguru import logger
-
-from core.api import ApiApplication
-from util.route import gte_all_uris
-from core.context import ctx
-from ext.ext_tortoise import enums
-from api.entrypoint.main import import_app
-from deploy.bin.permission.data import MenuAndPerm
-from ext.ext_tortoise.models.user_center import Account, Resource, Permission
-
 from fastapi import FastAPI
 from pydantic import BaseModel
 from starlette.routing import Mount, Route, WebSocketRoute
 
+from core.api import ApiApplication
+from util.route import gte_all_uris
+from core.context import ctx
 from service.depend import token_required, api_permission_check
+from ext.ext_tortoise import enums
+from api.entrypoint.main import import_app
+from deploy.bin.permission.data import MenuAndPerm
+from ext.ext_tortoise.models.user_center import Account, Resource, Permission
 
 
 def filter_uri(r: Route | WebSocketRoute | Mount) -> bool:
@@ -45,16 +44,16 @@ async def update_or_create_perm_code(app: ApiApplication) -> None:
     latest_codes = set()
     url_list = gte_all_uris(app, _filter=filter_uri)
     unique_code = app.code
-    for url in url_list:
-        url = UriItem(**url)
-        if not url.method:
+    for url_info in url_list:
+        uri_item = UriItem(**url_info)
+        if not uri_item.method:
             continue
-        code = f"{unique_code}:{url.method}:{url.path}"
-        logger.info(f"{code}, {url.name}")
+        code = f"{unique_code}:{uri_item.method}:{uri_item.path}"
+        logger.info(f"{code}, {uri_item.name}")
         await Permission.update_or_create(
             code=code,
             defaults={
-                "label": url.name,
+                "label": uri_item.name,
                 "permission_type": enums.PermissionTypeEnum.api,  # type: ignore
                 "is_deprecated": False,
             },
@@ -71,7 +70,7 @@ async def update_or_create_perm_code(app: ApiApplication) -> None:
             await permission.save(update_fields=["is_deprecated"])
 
 
-async def permission_init(app: FastAPI):
+async def permission_init(app: FastAPI) -> None:
     for route in app.routes:
         if isinstance(route, Mount):
             await update_or_create_perm_code(route.app)  # type: ignore
@@ -81,8 +80,10 @@ async def create_single_menu_and_perm(
     *,
     menu_item: dict,
     parent_id: int | UUID | None = None,
-    parent_id_dict: dict = {},
-):
+    parent_id_dict: dict = None,
+) -> None:
+    if parent_id_dict is None:
+        parent_id_dict = {}
     code = menu_item.pop("code", None)
     if not code:
         logger.warning(f"Menu {code} has no code, skip it.")
@@ -118,7 +119,7 @@ async def create_single_menu_and_perm(
             )
 
 
-async def create_menu_and_perm():
+async def create_menu_and_perm() -> None:
     parent_id_dict = {}
 
     for menu_item in MenuAndPerm:
@@ -132,7 +133,7 @@ async def create_menu_and_perm():
     logger.info(f"Deleted {count} extra resources")
 
 
-async def refresh_permissions():
+async def refresh_permissions() -> None:
     accounts = await Account.filter(deleted_at=0)
     for acc in accounts:
         acc: Account
@@ -140,7 +141,7 @@ async def refresh_permissions():
         await acc.update_cache_permissions()
 
 
-async def main(app_path: str):
+async def main(app_path: str) -> None:
     app = import_app(app_path)
     async with ctx():
         await permission_init(app=app)
@@ -150,12 +151,12 @@ async def main(app_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Update menu and permissions for the application"
+        description="Update menu and permissions for the application",
     )
     parser.add_argument(
         "app_path",
         type=str,
-        help="Path to the application module (e.g., 'api.entrypoint.main')"
+        help="Path to the application module (e.g., 'api.entrypoint.main')",
     )
 
     args = parser.parse_args()

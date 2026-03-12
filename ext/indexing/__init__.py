@@ -3,13 +3,13 @@
 from ext.indexing.base import BaseIndexModel
 from ext.indexing.types import (
     QueryClause,
-    DenseSearchClause,
-    SparseSearchClause,
-    HybridSearchClause,
     FilterClause,
     SearchCursor,
+    DenseSearchClause,
+    HybridSearchClause,
+    SparseSearchClause,
 )
-from ext.indexing.factory import IndexingProviderFactory, IndexModelFactory
+from ext.indexing.factory import IndexModelFactory, IndexingProviderFactory
 
 __all__ = [
     "BaseIndexModel",

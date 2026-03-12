@@ -12,8 +12,8 @@ from core.types import ApiException, RequestHeaderKeyEnum
 from config.main import local_configs
 from util.encrypt import HashUtil
 from core.response import ResponseCodeEnum
-from ext.ext_tortoise.models.user_center import Account
 from ext.ext_redis import keys
+from ext.ext_tortoise.models.user_center import Account
 
 
 class TheBearer(HTTPBearer):
@@ -70,42 +70,42 @@ async def _validate_jwt_token(request: Request, token: HTTPAuthorizationCredenti
     #         ),
     #     )
 
-        # if not token_identifier:
-        #     logger.warning("token缓存失效")
-        #     raise ApiException(
-        #         code=ResponseCodeEnum.unauthorized.value,
-        #         message="登录失效或已在其他地方登录",
-        #     )
+    # if not token_identifier:
+    #     logger.warning("token缓存失效")
+    #     raise ApiException(
+    #         code=ResponseCodeEnum.unauthorized.value,
+    #         message="登录失效或已在其他地方登录",
+    #     )
 
-        # account_id, scene = token_identifier.split(":")
+    # account_id, scene = token_identifier.split(":")
 
-        account_id = 1
-        scene = "Web"
+    account_id = 1
+    scene = "Web"
 
-        # if request.headers.get(RequestHeaderKeyEnum.front_scene.value) and scene != request.headers.get(
-        #     RequestHeaderKeyEnum.front_scene.value,
-        # ):
-        #     logger.warning("token场景不匹配")
-        #     raise ApiException(
-        #         code=ResponseCodeEnum.unauthorized.value,
-        #         message="token异常使用",
-        #     )
+    # if request.headers.get(RequestHeaderKeyEnum.front_scene.value) and scene != request.headers.get(
+    #     RequestHeaderKeyEnum.front_scene.value,
+    # ):
+    #     logger.warning("token场景不匹配")
+    #     raise ApiException(
+    #         code=ResponseCodeEnum.unauthorized.value,
+    #         message="token异常使用",
+    #     )
 
-        account = await _get_account_by_id(account_id)
+    account = await _get_account_by_id(account_id)
 
-        if not account:
-            logger.warning("token账户不存在")
-            raise ApiException(
-                code=ResponseCodeEnum.unauthorized.value,
-                message="授权头无效",
-            )
+    if not account:
+        logger.warning("token账户不存在")
+        raise ApiException(
+            code=ResponseCodeEnum.unauthorized.value,
+            message="授权头无效",
+        )
 
-        # set scope
-        request.scope["user"] = account
-        request.scope["scene"] = scene
-        request.scope["is_staff"] = account.is_staff
-        request.scope["is_super_admin"] = account.is_super_admin
-        return account
+    # set scope
+    request.scope["user"] = account
+    request.scope["scene"] = scene
+    request.scope["is_staff"] = account.is_staff
+    request.scope["is_super_admin"] = account.is_super_admin
+    return account
 
 
 class TokenRequired:
@@ -244,17 +244,16 @@ class ApiKeyPermissionCheck:
             api_key=x_api_key,
         )
 
-        async with local_configs.extensions.redis.instance as r:
-            async with r.pipeline() as pipe:
-                pipe.get(redis_api_secret_key)
-                pipe.smismember(
-                    name=redis_perm_key,
-                    values=[
-                        f"{request.app.code}:*",
-                        f'{request.app.code}:{request.method}:{request.scope["root_path"]}{request.scope["route"].path}',
-                    ],
-                )
-                secret_key, is_ok = await pipe.execute()
+        async with local_configs.extensions.redis.instance as r, r.pipeline() as pipe:
+            pipe.get(redis_api_secret_key)
+            pipe.smismember(
+                name=redis_perm_key,
+                values=[
+                    f"{request.app.code}:*",
+                    f'{request.app.code}:{request.method}:{request.scope["root_path"]}{request.scope["route"].path}',
+                ],
+            )
+            secret_key, is_ok = await pipe.execute()
         if not secret_key:
             raise ApiException(
                 message="无效的ApiKey",

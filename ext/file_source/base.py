@@ -4,17 +4,18 @@ File Source Provider 基类
 定义统一的文件操作接口和基类实现
 """
 
-import aiofiles
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Generic, TypeVar
+from pathlib import Path
+from datetime import datetime, timezone
+from collections.abc import AsyncIterator
 
-from datetime import datetime
+import aiofiles  # type: ignore[import-untyped]
 from loguru import logger
-from pydantic import BaseModel, Field
-from ext.ext_tortoise.models.knowledge_base import FileSource
+from pydantic import Field, BaseModel
+
 from ext.file_source.types import BaseFileSourceExtraConfig
+from ext.ext_tortoise.models.knowledge_base import FileSource
 
 ExtraConfigT = TypeVar("ExtraConfigT")
 
@@ -190,12 +191,12 @@ class BaseFileSourceProvider(ABC, Generic[ExtraConfigT]):
             return {
                 "status": "healthy" if is_connected else "unhealthy",
                 "connected": is_connected,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),  # noqa: UP017
             }
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return {
                 "status": "error",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),  # noqa: UP017
             }

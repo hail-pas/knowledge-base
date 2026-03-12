@@ -115,25 +115,22 @@ class Account(BaseModel):
                 name=UserCenterKey.AccountApiPermissionSet.format(uuid=str(self.id)),  # type: ignore
                 values=apis,
             )
-        if 1 in result:
-            return True
-        return False
+        return 1 in result
 
     async def update_cache_permissions(
         self,
         conn_name: ConnectionNameEnum = ConnectionNameEnum.user_center,
     ) -> None:
         perms = await self.get_permission_codes()
-        async with local_configs.extensions.redis.instance as r:
-            async with r.pipeline() as pipe:
-                pipe.delete(UserCenterKey.AccountApiPermissionSet.format(uuid=str(self.id)))
-                if perms:
-                    # 刷新接口权限
-                    pipe.sadd(
-                        UserCenterKey.AccountApiPermissionSet.format(uuid=str(self.id)),  # type: ignore
-                        *perms,  # type: ignore
-                    )
-                await pipe.execute()
+        async with local_configs.extensions.redis.instance as r, r.pipeline() as pipe:
+            pipe.delete(UserCenterKey.AccountApiPermissionSet.format(uuid=str(self.id)))
+            if perms:
+                # 刷新接口权限
+                pipe.sadd(
+                    UserCenterKey.AccountApiPermissionSet.format(uuid=str(self.id)),  # type: ignore
+                    *perms,  # type: ignore
+                )
+            await pipe.execute()
 
     async def get_permission_codes(self) -> list[str]:
         """获取用户的全部permission codes
@@ -185,7 +182,7 @@ class Account(BaseModel):
 
         return await cls.filter(**filter_, deleted_at=0).first()
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table_description = "用户"
         app = UserCenterConnection
         ordering = ["-id"]
@@ -210,7 +207,7 @@ class Role(BaseModel):
     accounts: fields.ReverseRelation[Account]
     resources: fields.ManyToManyRelation["Resource"]
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table_description = "角色"
         ordering = ["-id"]
         app = UserCenterConnection
@@ -230,7 +227,7 @@ class Permission(models.Model):
     # reversed relations
     resources: fields.ManyToManyRelation["Resource"]
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table_description = "权限"
         ordering = ["-code"]
         app = UserCenterConnection
@@ -298,7 +295,7 @@ class Resource(BigIntegerIDPrimaryKeyModel, CreateOnlyModel):
     def scene_display(self) -> str:
         return self.scene.label
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table_description = "系统资源"
         ordering = ["order_num"]
         unique_together = (("code", "parent", "scene"),)
@@ -310,7 +307,7 @@ class Config(models.Model):
     value = fields.JSONField(default=dict, description="配置项值")
     description = fields.CharField(max_length=255, description="配置项描述")
 
-    class Meta: # type: ignore
+    class Meta:  # type: ignore
         table_description = "系统配置"
         ordering = ["-id"]
         app = UserCenterConnection

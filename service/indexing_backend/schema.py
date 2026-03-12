@@ -1,11 +1,11 @@
-from pydantic import BaseModel, Field
+from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
-from enhance.epydantic import as_query
 from core.types import ApiException
+from enhance.epydantic import as_query
 from ext.ext_tortoise.enums import IndexingBackendTypeEnum
+from ext.indexing.providers.types import MilvusConfig, ElasticsearchConfig
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
-from ext.indexing.providers.types import ElasticsearchConfig, MilvusConfig
 
 
 class IndexingBackendConfigCreate(
@@ -25,9 +25,8 @@ class IndexingBackendConfigCreate(
             if not self.host or not self.port:
                 raise ApiException("Elasticsearch 需要 host 和 port")
 
-        elif type_ == IndexingBackendTypeEnum.milvus:
-            if not self.host or not self.port:
-                raise ApiException("Milvus 需要 host 和 port")
+        elif type_ == IndexingBackendTypeEnum.milvus and (not self.host or not self.port):
+            raise ApiException("Milvus 需要 host 和 port")
 
     def validate_extra_config(self) -> None:
         self.validate_extra_config_by_type(self.type, self.extra_config)

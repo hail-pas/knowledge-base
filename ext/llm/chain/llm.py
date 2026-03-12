@@ -8,10 +8,10 @@ import asyncio
 from typing import Any
 from collections.abc import AsyncIterator
 
-from ext.llm.base import BaseLLMModel
-from ext.llm.types import ChatMessage, LLMRequest
 from loguru import logger
 
+from ext.llm.base import BaseLLMModel
+from ext.llm.types import LLMRequest, ChatMessage
 from ext.llm.chain.base import Runnable
 
 
@@ -26,7 +26,7 @@ class LLM(Runnable[str, str]):
         model: BaseLLMModel,
         default_temperature: float | None = None,
         default_max_tokens: int | None = None,
-    ):
+    ) -> None:
         """初始化 LLM
 
         Args:
@@ -43,11 +43,15 @@ class LLM(Runnable[str, str]):
         temperature: float | None,
         max_tokens: int | None,
     ) -> tuple[float, int]:
-        resolved_temperature = temperature if temperature is not None else (
-            self.default_temperature if self.default_temperature is not None else self.model.default_temperature
+        resolved_temperature = (
+            temperature
+            if temperature is not None
+            else (self.default_temperature if self.default_temperature is not None else self.model.default_temperature)
         )
-        resolved_max_tokens = max_tokens if max_tokens is not None else (
-            self.default_max_tokens if self.default_max_tokens is not None else self.model.max_tokens
+        resolved_max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else (self.default_max_tokens if self.default_max_tokens is not None else self.model.max_tokens)
         )
         return resolved_temperature, resolved_max_tokens
 
@@ -136,7 +140,7 @@ class LLM(Runnable[str, str]):
             return response.content or ""
         except Exception as e:
             logger.error(f"LLM invocation failed: {e}")
-            raise RuntimeError(f"LLM invocation failed: {e}")
+            raise RuntimeError(f"LLM invocation failed: {e}") from e
 
     async def astream(
         self,
@@ -182,7 +186,7 @@ class LLM(Runnable[str, str]):
             logger.debug(f"LLM astream completed - total chunks: {chunk_count}")
         except Exception as e:
             logger.error(f"LLM streaming failed: {e}")
-            raise RuntimeError(f"LLM streaming failed: {e}")
+            raise RuntimeError(f"LLM streaming failed: {e}") from e
 
     async def ainvoke_with_messages(
         self,
@@ -221,7 +225,7 @@ class LLM(Runnable[str, str]):
             return response.content or ""
         except Exception as e:
             logger.error(f"LLM invocation with messages failed: {e}")
-            raise RuntimeError(f"LLM invocation with messages failed: {e}")
+            raise RuntimeError(f"LLM invocation with messages failed: {e}") from e
 
     async def abatch(
         self,
@@ -256,7 +260,7 @@ class _LLMFactoryWrapper:
         model_name: str,
         default_temperature: float | None,
         default_max_tokens: int | None,
-    ):
+    ) -> None:
         self._model_name = model_name
         self._default_temperature = default_temperature
         self._default_max_tokens = default_max_tokens

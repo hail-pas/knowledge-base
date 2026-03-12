@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from PIL import Image
 import pytesseract
+from PIL import Image
 
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult
+from ext.document_parser.core.parse_result import PageResult, ParseResult, OutputFormat
 
 
 class TesseractOCREngine(BaseEngine):

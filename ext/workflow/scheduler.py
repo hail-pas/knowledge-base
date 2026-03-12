@@ -1,26 +1,26 @@
-import asyncio
 import uuid
-from datetime import datetime
+import asyncio
 from typing import Literal
 from weakref import WeakValueDictionary
+from datetime import UTC, datetime
 
 from celery import Task as CeleryTask
 from loguru import logger
 
+from util.graph import GraphUtil
 from ext.ext_celery.app import celery_app
+from ext.workflow.manager import WorkflowManager
 from ext.ext_tortoise.enums import (
     ActivityStatusEnum,
     WorkflowStatusEnum,
 )
-from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
 from ext.workflow.exceptions import (
-    WorkflowNotFoundError,
-    ActivityNotFoundError,
     TaskNotFoundError,
+    ActivityNotFoundError,
+    WorkflowNotFoundError,
     WorkflowAlreadyCompletedError,
 )
-from ext.workflow.manager import WorkflowManager
-from util.graph import GraphUtil
+from ext.ext_tortoise.models.knowledge_base import Activity, Workflow
 
 
 class WorkflowScheduler:
@@ -86,7 +86,7 @@ class WorkflowScheduler:
                 await WorkflowManager.update_workflow_status(
                     workflow.uid,
                     WorkflowStatusEnum.running,
-                    started_at=datetime.now() if not workflow.started_at else None,
+                    started_at=datetime.now(UTC) if not workflow.started_at else None,
                 )
 
             ready_activities = await WorkflowManager.get_ready_activities(workflow.uid, graph)
@@ -185,7 +185,6 @@ class WorkflowScheduler:
                     if is_completed:
                         logger.info(f"Workflow {workflow.uid} completed in direct mode")
             return str(activity.uid)
-
 
     @staticmethod
     async def _launch_activity_tasks_direct(activities: list[Activity]) -> None:
@@ -299,9 +298,8 @@ def schedule_workflow_celery_entry(
             # Use run_coroutine_threadsafe with existing loop
             future = asyncio.run_coroutine_threadsafe(_schedule(), loop)
             return str(future.result())
-        else:
-            # Loop exists but not running
-            return str(loop.run_until_complete(_schedule()))
+        # Loop exists but not running
+        return str(loop.run_until_complete(_schedule()))
     except RuntimeError:
         # No event loop exists, create new one (test environment)
         loop = asyncio.new_event_loop()
@@ -332,9 +330,8 @@ def schedule_activity_handoff_celery_entry(celery_task: CeleryTask, activity_uid
             # Use run_coroutine_threadsafe with existing loop
             future = asyncio.run_coroutine_threadsafe(_handoff(), loop)
             return str(future.result())
-        else:
-            # Loop exists but not running
-            return str(loop.run_until_complete(_handoff()))
+        # Loop exists but not running
+        return str(loop.run_until_complete(_handoff()))
     except RuntimeError:
         # No event loop exists, create new one (test environment)
         loop = asyncio.new_event_loop()

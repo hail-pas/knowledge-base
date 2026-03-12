@@ -1,8 +1,9 @@
+from starlette.middleware.cors import CORSMiddleware
+
 from core.api import ApiApplication, lifespan
 from config.main import local_configs
-from api.knowledge_base.factory import knowledge_api
 from api.user_center.factory import user_center_api
-from starlette.middleware.cors import CORSMiddleware
+from api.knowledge_base.factory import knowledge_api
 
 
 class RootApi(ApiApplication):

@@ -1,15 +1,15 @@
 from typing import Literal
+
 from ext.workflow import schedule_workflow
+from service.workflow.document import tasks
 from service.workflow.document.config import DOCUMENT_PROCESSING_WORKFLOW_DEFAULTS
 from service.workflow.document.schemas import (
-    DocumentParseTaskInput,
-    DocumentChunkTaskInput,
     IndexChunkTaskInput,
-    GenerateTagsTaskInput,
     GenerateFAQTaskInput,
+    GenerateTagsTaskInput,
+    DocumentChunkTaskInput,
+    DocumentParseTaskInput,
 )
-
-from service.workflow.document import tasks
 
 
 async def process_document(
@@ -19,12 +19,13 @@ async def process_document(
     config_format: str = "dict",
     execute_mode: Literal["celery", "direct"] = "celery",
 ) -> str:
-    workflow_uid = await schedule_workflow(
+    return await schedule_workflow(
         workflow_uid=workflow_uid,
-        config=workflow_template, config_format=config_format, initial_inputs={"document_id": document_id}, execute_mode=execute_mode  # type: ignore
+        config=workflow_template,
+        config_format=config_format,
+        initial_inputs={"document_id": document_id},
+        execute_mode=execute_mode,  # type: ignore
     )
-
-    return workflow_uid
 
 
 __all__ = [

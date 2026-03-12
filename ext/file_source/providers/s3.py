@@ -2,31 +2,31 @@
 AWS S3 Provider (async with aiobotocore)
 """
 
-from collections.abc import AsyncIterator
 from typing import Any
+from collections.abc import AsyncIterator
 
+from loguru import logger
 from aiobotocore.config import AioConfig
 from aiobotocore.session import AioSession
 from botocore.exceptions import ClientError
 
-from ext.file_source.base import BaseFileSourceProvider, FileMetadata
+from ext.file_source.base import FileMetadata, BaseFileSourceProvider
 from ext.file_source.types import S3ExtraConfig
-from loguru import logger
 
 
 class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
     """AWS S3 Provider (async with aiobotocore)"""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
         self._session = None
         self._client = None
 
     @property
-    async def client(self) -> Any:
+    async def client(self) -> Any:  # noqa: ANN401
         """懒加载 aiobotocore client"""
         if self._client is None:
-            s3_config = {}
+            s3_config: dict[str, Any] = {}
             if self.extra_config.addressing_style:
                 s3_config["addressing_style"] = self.extra_config.addressing_style
             if self.extra_config.payload_transfer_threshold is not None:
@@ -34,7 +34,8 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             if self.extra_config.signature_version:
                 signature_version_map = {"s3v4": "v4", "s3v2": "v2"}
                 s3_config["signature_version"] = signature_version_map.get(
-                    self.extra_config.signature_version.lower(), "v4",
+                    self.extra_config.signature_version.lower(),
+                    "v4",
                 )
 
             config = AioConfig(
@@ -90,7 +91,10 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             return False
 
     async def list_files(
-        self, prefix: str = "", recursive: bool = False, limit: int | None = None,
+        self,
+        prefix: str = "",
+        recursive: bool = False,
+        limit: int | None = None,
     ) -> list[FileMetadata]:
         """列出文件"""
         client = await self.client

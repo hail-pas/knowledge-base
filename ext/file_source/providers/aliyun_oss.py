@@ -4,36 +4,37 @@ Aliyun OSS Provider
 支持 CryptoBucket 和普通 Bucket，支持 RSA 密钥对认证
 """
 
-from collections.abc import AsyncIterator
+import asyncio
 from typing import Any
+from datetime import datetime, timezone
+from collections.abc import AsyncIterator
 
 import oss2
+from loguru import logger
 from oss2.crypto import RsaProvider
 from oss2.exceptions import OssError, NoSuchKey
-import asyncio
-from loguru import logger
 
-from ext.file_source.base import BaseFileSourceProvider, FileMetadata
+from ext.file_source.base import FileMetadata, BaseFileSourceProvider
 from ext.file_source.types import AliyunOSSExtraConfig
 
 
 class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
     """阿里云 OSS Provider（支持 CryptoBucket）"""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
         self._bucket = None
         self._auth = None
 
     @property
-    def auth(self):  # type: ignore[no-untyped-def]
+    def auth(self) -> oss2.AuthV4:
         """懒加载认证对象"""
         if self._auth is None:
             self._auth = oss2.AuthV4(self.access_key, self.secret_key)
         return self._auth
 
     @property
-    def bucket(self):  # type: ignore[no-untyped-def]
+    def bucket(self) -> oss2.Bucket | oss2.CryptoBucket:
         """懒加载 Bucket 对象（支持加密）"""
         if self._bucket is None:
             bucket_name = self.storage_location
@@ -46,7 +47,11 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
                     "public_key": self.extra_config.public_key_content,
                 }
 
-                mat_desc = {self.extra_config.mat_desc_vendor: self.extra_config.mat_desc_vendor} if self.extra_config.mat_desc_vendor else {"kbService": "kbService"}
+                mat_desc = (
+                    {self.extra_config.mat_desc_vendor: self.extra_config.mat_desc_vendor}
+                    if self.extra_config.mat_desc_vendor
+                    else {"kbService": "kbService"}
+                )
 
                 crypto_provider = RsaProvider(key_pair, mat_desc=mat_desc)
 
@@ -130,7 +135,10 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
             nonlocal count
             max_keys = limit if limit else 1000
             for obj in oss2.ObjectIterator(
-                self.bucket, prefix=prefix, delimiter="" if recursive else "/", max_keys=max_keys,
+                self.bucket,
+                prefix=prefix,
+                delimiter="" if recursive else "/",
+                max_keys=max_keys,
             ):
                 if limit and count >= limit:
                     break
@@ -181,9 +189,7 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
 
         last_modified_val = meta.last_modified
         if isinstance(last_modified_val, int):
-            from datetime import datetime
-
-            last_modified_val = datetime.fromtimestamp(last_modified_val)
+            last_modified_val = datetime.fromtimestamp(last_modified_val, tz=timezone.utc)  # noqa: UP017
 
         return FileMetadata(
             uri=uri,

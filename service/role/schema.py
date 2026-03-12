@@ -11,7 +11,10 @@ class OverridePydanticMeta:
 
 class RoleList(
     pydantic_model_creator(  # type: ignore
-        Role, name="RoleList", exclude=("resources",), meta_override=OverridePydanticMeta,
+        Role,
+        name="RoleList",
+        exclude=("resources",),
+        meta_override=OverridePydanticMeta,
     ),
 ): ...
 

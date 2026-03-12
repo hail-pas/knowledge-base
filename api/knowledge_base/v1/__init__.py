@@ -3,10 +3,10 @@ from fastapi import Request, APIRouter
 from util.route import gte_all_uris
 from core.response import Resp
 from api.knowledge_base.tags import TagsEnum
-from api.knowledge_base.v1.config import router as config_router
-from api.knowledge_base.v1.collection import router as collection_router
-from api.knowledge_base.v1.document import router as document_router
 from api.knowledge_base.v1.chat import router as chat_router
+from api.knowledge_base.v1.config import router as config_router
+from api.knowledge_base.v1.document import router as document_router
+from api.knowledge_base.v1.collection import router as collection_router
 
 router = APIRouter(prefix="/v1")
 

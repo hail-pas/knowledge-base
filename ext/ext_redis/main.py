@@ -11,7 +11,7 @@ from redis.backoff import NoBackoff
 from config.default import InstanceExtensionConfig, RegisterExtensionConfig
 
 
-class RedisConfig(RegisterExtensionConfig, InstanceExtensionConfig[AsyncGenerator[Redis, None]]):
+class RedisConfig(RegisterExtensionConfig, InstanceExtensionConfig[AsyncGenerator[Redis]]):
     url: RedisDsn
     max_connections: int = 10
 
@@ -29,7 +29,7 @@ class RedisConfig(RegisterExtensionConfig, InstanceExtensionConfig[AsyncGenerato
     @property
     @asynccontextmanager
     @override
-    async def instance(self) -> AsyncGenerator[Redis, None]:  # type: ignore
+    async def instance(self) -> AsyncGenerator[Redis]:  # type: ignore
         r: Redis | None = None
         try:
             r = Redis.from_pool(

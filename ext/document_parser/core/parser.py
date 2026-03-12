@@ -1,15 +1,16 @@
 from pathlib import Path
+
 from loguru import logger
 
+from ext.document_parser.processors.base import BaseProcessor
 from ext.document_parser.core.parse_result import ParseResult, OutputFormat
 from ext.document_parser.config.engine_registry import get_engine, list_engines
-from ext.document_parser.processors.base import BaseProcessor
 
 
 class DocumentParser:
     """简化的文档解析器"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._selection_rules = {
             ".pdf": ["pymupdf", "pdfplumber", "paddleocr"],
             ".docx": ["markitdown", "docx"],

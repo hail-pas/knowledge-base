@@ -4,24 +4,24 @@ OpenAI LLM Provider
 使用官方 OpenAI SDK 实现
 """
 
-from typing import Optional, Any
+from typing import Any, Optional
 from collections.abc import AsyncIterator
-from loguru import logger
 
 import openai
+from loguru import logger
 from openai import AsyncOpenAI
 
 from ext.llm.base import BaseLLMModel
+from util.general import truncate_content
 from ext.llm.types import (
-    OpenAIExtraConfig,
+    ToolCall,
     LLMRequest,
+    TokenUsage,
+    ChatMessage,
     LLMResponse,
     StreamChunk,
-    ChatMessage,
-    TokenUsage,
-    ToolCall,
+    OpenAIExtraConfig,
 )
-from util.general import truncate_content
 
 
 class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
@@ -36,10 +36,11 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
     - Vision (GPT-4 Vision)
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         logger.debug(
-            f"Initializing OpenAI client - base_url: {self.base_url}, timeout: {self.timeout}, max_retries: {self.max_retries}",
+            f"Initializing OpenAI client - base_url: {self.base_url}, "
+            f"timeout: {self.timeout}, max_retries: {self.max_retries}",
         )
         self._client = AsyncOpenAI(
             api_key=self.api_key,
@@ -65,9 +66,9 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
             # 处理多模态内容
             if isinstance(content, list):
                 # content 已经是多模态格式
-                content_dict = {"type": "text", "text": content[0].get("text", "") if content else ""}
+                {"type": "text", "text": content[0].get("text", "") if content else ""}
                 if len(content) > 1 and content[1].get("type") == "image_url":
-                    content_dict = content
+                    pass
                 converted_msg = {"role": msg.role, "content": content}
             else:
                 # 纯文本
@@ -184,10 +185,10 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
 
         except openai.APIError as e:
             logger.error(f"OpenAI API error: {e}")
-            raise RuntimeError(f"OpenAI API error: {str(e)}")
+            raise RuntimeError(f"OpenAI API error: {str(e)}") from e
         except Exception as e:
             logger.error(f"Unexpected error in chat: {e}")
-            raise RuntimeError(f"Unexpected error: {str(e)}")
+            raise RuntimeError(f"Unexpected error: {str(e)}") from e
 
     def _parse_response(self, response) -> LLMResponse:
         """
@@ -251,7 +252,8 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
             流式响应块
         """
         logger.debug(
-            f"OpenAI chat stream request - model: {request.model or self.model_name}, messages: {len(request.messages)}",
+            f"OpenAI chat stream request - model: {request.model or self.model_name}, "
+            f"messages: {len(request.messages)}",
         )
 
         try:
@@ -288,10 +290,10 @@ class OpenAILLMModel(BaseLLMModel[OpenAIExtraConfig]):
 
         except openai.APIError as e:
             logger.error(f"OpenAI API error in stream: {e}")
-            raise RuntimeError(f"OpenAI API error: {str(e)}")
+            raise RuntimeError(f"OpenAI API error: {str(e)}") from e
         except Exception as e:
             logger.error(f"Unexpected error in chat_stream: {e}")
-            raise RuntimeError(f"Unexpected error: {str(e)}")
+            raise RuntimeError(f"Unexpected error: {str(e)}") from e
 
     def _parse_stream_chunk(self, chunk) -> StreamChunk:
         """

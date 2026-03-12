@@ -4,10 +4,17 @@ from fastapi import Depends, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
 
-from service.depend import api_permission_check
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
+from service.depend import api_permission_check
+from service.role.schema import (
+    RoleList,
+    RoleCreate,
+    RoleDetail,
+    RoleUpdate,
+    RoleFilterSchema,
+)
 from ext.ext_tortoise.curd import (
     list_view,
     create_obj,
@@ -15,13 +22,6 @@ from ext.ext_tortoise.curd import (
     update_view,
     pagination_factory,
     obj_prefetch_fields,
-)
-from service.role.schema import (
-    RoleList,
-    RoleCreate,
-    RoleDetail,
-    RoleUpdate,
-    RoleFilterSchema,
 )
 from service.resource.helper import resource_list_to_trees
 from ext.ext_tortoise.models.user_center import Role

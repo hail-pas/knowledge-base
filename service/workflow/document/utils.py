@@ -1,12 +1,13 @@
 from loguru import logger
-from ext.document_parser.core.parse_result import OutputFormat
-from ext.ext_tortoise.enums import DocumentStatusEnum
+
 from ext.file_source import FileSourceFactory
+from ext.ext_tortoise.enums import DocumentStatusEnum
+from ext.document_parser.core.parse_result import OutputFormat
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
-    DocumentPages,
-    DocumentChunk,
     FileSource,
+    DocumentChunk,
+    DocumentPages,
 )
 
 _ALLOWED_STATUS_TRANSITIONS: dict[DocumentStatusEnum, set[DocumentStatusEnum]] = {
@@ -65,7 +66,7 @@ async def update_document_status(document_id: int, status: DocumentStatusEnum) -
         latest = await Document.filter(id=document_id).only("status").first()
         if latest:
             raise ValueError(
-                f"Document status changed concurrently: expected {current_status.value}, got {latest.status}"
+                f"Document status changed concurrently: expected {current_status.value}, got {latest.status}",
             )
 
 

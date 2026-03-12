@@ -1,13 +1,34 @@
 """IndexModel 数据层定义"""
 
 import asyncio
-from datetime import datetime
-from typing import Generic, Optional, TypeVar, Any, TYPE_CHECKING, Self, Union, get_origin, get_args, ClassVar
 from abc import ABC, abstractmethod
-from pydantic import BaseModel, Field
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Self,
+    Union,
+    Generic,
+    TypeVar,
+    ClassVar,
+    Optional,
+    get_args,
+    get_origin,
+)
+from datetime import UTC, datetime
 
-from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig, EmbeddingModelConfig
-from ext.indexing.types import FilterClause, SearchCursor, DenseSearchClause, SparseSearchClause, HybridSearchClause
+from pydantic import Field, BaseModel
+
+from ext.indexing.types import (
+    FilterClause,
+    SearchCursor,
+    DenseSearchClause,
+    HybridSearchClause,
+    SparseSearchClause,
+)
+from ext.ext_tortoise.models.knowledge_base import (
+    EmbeddingModelConfig,
+    IndexingBackendConfig,
+)
 
 if TYPE_CHECKING:
     from ext.indexing.base import BaseIndexModel
@@ -19,7 +40,7 @@ ExtraConfigT = TypeVar("ExtraConfigT", bound=BaseModel)
 class BaseProvider(ABC, Generic[ExtraConfigT]):
     """Provider 抽象基类"""
 
-    def __init__(self, config: IndexingBackendConfig, extra_config_type: type[ExtraConfigT]):
+    def __init__(self, config: IndexingBackendConfig, extra_config_type: type[ExtraConfigT]) -> None:
         self.config = config
         self.extra_config = extra_config_type.model_validate(config.extra_config or {})
         self._client = None
@@ -32,12 +53,14 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
             and model_class.Meta.dense_vector_field not in model_class.__pydantic_fields__
         ):
             raise ValueError(
-                f"Model {model_class.__name__} must have an '{model_class.Meta.dense_vector_field}' field when enable dense search"
+                f"Model {model_class.__name__} must have "
+                f"an '{model_class.Meta.dense_vector_field}' field when enable dense search",
             )
 
         if model_class.Meta.partition_key and model_class.Meta.partition_key not in model_class.__pydantic_fields__:
             raise ValueError(
-                f"Model {model_class.__name__} must have an '{model_class.Meta.partition_key}' field when enable partition"
+                f"Model {model_class.__name__} must have "
+                f"an '{model_class.Meta.partition_key}' field when enable partition",
             )
 
         if model_class.Meta.dense_vector_field and (
@@ -49,7 +72,7 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
 
         if model_class.Meta.partition_key:
             partition_key_type = model_class.__pydantic_fields__.get(model_class.Meta.partition_key)
-            if partition_key_type and partition_key_type.annotation != str:
+            if partition_key_type and partition_key_type.annotation is not str:
                 raise ValueError(f"Partition key '{model_class.Meta.partition_key}' must be of type str")
 
     @abstractmethod
@@ -205,8 +228,14 @@ class BaseIndexModel(BaseModel):
                         setattr(cls.Meta, attr_name, attr_value)
 
     id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={})  # type: ignore
-    created_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
-    updated_at: datetime = Field(default_factory=datetime.now, index_metadata={"server_incompatible": True})  # type: ignore
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        index_metadata={"server_incompatible": True},
+    )  # type: ignore
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        index_metadata={"server_incompatible": True},
+    )  # type: ignore
 
     @staticmethod
     def _extract_type(annotation):
@@ -217,7 +246,7 @@ class BaseIndexModel(BaseModel):
         return annotation
 
     @classmethod
-    def _get_id_default(cls):
+    def _get_id_default(cls) -> str | int:
         id_field = cls.model_fields.get("id")
         if not id_field:
             return ""
@@ -228,7 +257,7 @@ class BaseIndexModel(BaseModel):
 
         # 否则使用 _extract_type 处理 Union 类型
         id_type = cls._extract_type(id_field.annotation)
-        if id_type == int:
+        if id_type is int:
             return 0
 
         return ""
@@ -240,13 +269,13 @@ class BaseIndexModel(BaseModel):
         return cls.Meta.provider
 
     @classmethod
-    async def create_schema(cls, drop_existing: bool = False):
+    async def create_schema(cls, drop_existing: bool = False) -> None:
         """创建索引 schema"""
         provider = cls.get_provider()
         await provider.create_collection(cls, drop_existing=drop_existing)
 
     @classmethod
-    async def drop_schema(cls):
+    async def drop_schema(cls) -> None:
         """删除索引 schema"""
         provider = cls.get_provider()
         await provider.drop_collection(cls)
@@ -313,7 +342,7 @@ class BaseIndexModel(BaseModel):
 
         return SearchCursor(results=converted_results, next_cursor=next_cursor)
 
-    async def save(self):
+    async def save(self) -> None:
         """保存/更新当前实例"""
         if self.__class__.Meta.auto_generate_id and self.id:
             self.id = self.__class__._get_id_default()
@@ -321,7 +350,7 @@ class BaseIndexModel(BaseModel):
         if not self.__class__.Meta.auto_generate_id and not self.id:
             raise RuntimeError("Must specify id")
 
-        self.updated_at = datetime.now()
+        self.updated_at = datetime.now(UTC)
 
         provider = self.get_provider()
         doc_data = self.model_dump(mode="json")
@@ -333,7 +362,7 @@ class BaseIndexModel(BaseModel):
             self.id = result[0].get("id", self.id)
 
     @classmethod
-    async def bulk_insert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5):
+    async def bulk_insert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5) -> None:
         """批量插入（自动并发）"""
         provider = cls.get_provider()
 
@@ -342,7 +371,7 @@ class BaseIndexModel(BaseModel):
         # Use semaphore to limit concurrent batch operations
         semaphore = asyncio.Semaphore(concurrent_batches)
 
-        async def insert_batch(batch: list[Self]):
+        async def insert_batch(batch: list[Self]) -> None:
             async with semaphore:
                 batch_docs = []
                 for doc in batch:
@@ -361,20 +390,20 @@ class BaseIndexModel(BaseModel):
         await asyncio.gather(*[insert_batch(batch) for batch in batches])  # type: ignore
 
     @classmethod
-    async def bulk_update(cls, documents: list[Self]):
+    async def bulk_update(cls, documents: list[Self]) -> None:
         """批量更新"""
-        assert all([isinstance(doc, cls) for doc in documents])
+        assert all(isinstance(doc, cls) for doc in documents)
 
         provider = cls.get_provider()
         ids = await provider.update(cls, documents=[d.model_dump(mode="json") for d in documents])
 
         # milvus 会更新id
-        for doc, id in zip(documents, ids):
+        for doc, id in zip(documents, ids, strict=False):
             if id:
                 doc.id = id
 
     @classmethod
-    async def bulk_upsert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5):
+    async def bulk_upsert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5) -> None:
         """批量插入或更新（upsert，自动并发）"""
         provider = cls.get_provider()
 
@@ -383,7 +412,7 @@ class BaseIndexModel(BaseModel):
         # Use semaphore to limit concurrent batch operations
         semaphore = asyncio.Semaphore(concurrent_batches)
 
-        async def upsert_batch(batch: list[Self]):
+        async def upsert_batch(batch: list[Self]) -> None:
             async with semaphore:
                 batch_docs = []
                 for doc in batch:
@@ -406,13 +435,13 @@ class BaseIndexModel(BaseModel):
         await asyncio.gather(*[upsert_batch(batch) for batch in batches])
 
     @classmethod
-    async def bulk_delete(cls, ids: list[str]):
+    async def bulk_delete(cls, ids: list[str]) -> None:
         """批量删除"""
         provider = cls.get_provider()
         await provider.delete(cls, ids=ids)
 
     @classmethod
-    async def delete_by_query(cls, filter_clause: FilterClause):
+    async def delete_by_query(cls, filter_clause: FilterClause) -> None:
         """根据条件删除"""
         provider = cls.get_provider()
         await provider.delete_by_query(cls, filter_clause=filter_clause)

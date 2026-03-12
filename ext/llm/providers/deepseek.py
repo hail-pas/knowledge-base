@@ -4,23 +4,24 @@ DeepSeek LLM Provider
 使用 httpx 直接调用 API（完全 OpenAI 兼容）
 """
 
+import json
 from typing import Any
 from collections.abc import AsyncIterator
-import json
+
 import httpx
 from loguru import logger
 
 from ext.llm.base import BaseLLMModel
+from util.general import truncate_content
 from ext.llm.types import (
-    DeepSeekExtraConfig,
+    ToolCall,
     LLMRequest,
+    TokenUsage,
+    ChatMessage,
     LLMResponse,
     StreamChunk,
-    ChatMessage,
-    TokenUsage,
-    ToolCall,
+    DeepSeekExtraConfig,
 )
-from util.general import truncate_content
 
 
 class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
@@ -149,7 +150,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
 
             except httpx.TimeoutException as e:
                 if attempt == self.max_retries:
-                    raise RuntimeError(f"DeepSeek 请求超时: {str(e)}")
+                    raise RuntimeError(f"DeepSeek 请求超时: {str(e)}") from e
                 delay = self.get_retry_delay(attempt)
                 logger.warning(f"DeepSeek 请求超时: {str(e)}，{delay}秒后重试")
                 import asyncio
@@ -158,7 +159,7 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
 
             except httpx.ConnectError as e:
                 if attempt == self.max_retries:
-                    raise RuntimeError(f"DeepSeek 连接错误: {str(e)}")
+                    raise RuntimeError(f"DeepSeek 连接错误: {str(e)}") from e
                 delay = self.get_retry_delay(attempt)
                 logger.warning(f"DeepSeek 连接错误: {str(e)}，{delay}秒后重试")
                 import asyncio
@@ -316,12 +317,12 @@ class DeepSeekLLMModel(BaseLLMModel[DeepSeekExtraConfig]):
                 logger.debug(f"DeepSeek stream completed - total chunks: {chunk_count}")
 
         except httpx.TimeoutException as e:
-            raise RuntimeError(f"DeepSeek 流式请求超时: {str(e)}")
+            raise RuntimeError(f"DeepSeek 流式请求超时: {str(e)}") from e
         except httpx.ConnectError as e:
-            raise RuntimeError(f"DeepSeek 流式请求连接错误: {str(e)}")
+            raise RuntimeError(f"DeepSeek 流式请求连接错误: {str(e)}") from e
         except Exception as e:
             logger.error(f"DeepSeek 流式请求错误: {e}")
-            raise RuntimeError(f"DeepSeek 流式请求错误: {str(e)}")
+            raise RuntimeError(f"DeepSeek 流式请求错误: {str(e)}") from e
 
     def _parse_stream_chunk(self, chunk_data: dict) -> StreamChunk:
         """

@@ -5,22 +5,23 @@ LLM 模型泛型基类
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic, Dict, Any, Optional, Type
+from typing import Any, Dict, Type, Generic, TypeVar, Optional
 from collections.abc import AsyncIterator
+
 import httpx
 from loguru import logger
-from util.general import truncate_content
 
+from util.general import truncate_content
 from ext.llm.types import (
-    BaseExtraConfig,
+    ToolCall,
     LLMRequest,
+    TokenUsage,
+    ChatMessage,
     LLMResponse,
     StreamChunk,
+    BaseExtraConfig,
     CompletionRequest,
     CompletionResponse,
-    ChatMessage,
-    TokenUsage,
-    ToolCall,
 )
 
 ExtraConfigT = TypeVar("ExtraConfigT", bound=BaseExtraConfig)
@@ -59,7 +60,7 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
         max_retries: int,
         timeout: int,
         extra_config: dict[str, Any],
-    ):
+    ) -> None:
         """
         初始化 LLM 模型
 
@@ -208,7 +209,9 @@ class BaseLLMModel(Generic[ExtraConfigT], ABC):
             NotImplementedError: 如果模型不支持补全模式
         """
         logger.debug(
-            f"Completion request - prompt: {truncate_content(request.prompt)}, model: {request.model or self.model_name}, max_tokens: {request.max_tokens or self.max_tokens}",
+            f"Completion request - prompt: {truncate_content(request.prompt)}, "
+            f"model: {request.model or self.model_name}, "
+            f"max_tokens: {request.max_tokens or self.max_tokens}",
         )
 
         if not self.supports_completion:

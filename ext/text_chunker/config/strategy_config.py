@@ -3,8 +3,10 @@
 
 定义各种切块策略的配置参数
 """
+
 from typing import Literal
-from pydantic import BaseModel, Field
+
+from pydantic import Field, BaseModel
 
 
 class LengthChunkConfig(BaseModel):
@@ -42,7 +44,8 @@ class DelimiterChunkConfig(BaseModel):
     """
 
     delimiters: list[str] = Field(
-        default=["\\n\\n", "\\n"], description="分隔符列表（支持前缀标记区分正则表达式，如 'regex:\\d+\\.\\s'）"
+        default=["\\n\\n", "\\n"],
+        description="分隔符列表（支持前缀标记区分正则表达式，如 'regex:\\d+\\.\\s'）",
     )
     regex_prefix: str = Field(default="regex:", description="正则表达式前缀标记")
     keep_delimiter: bool = Field(default=False, description="是否在切块中保留分隔符（支持正则分隔符）")
@@ -57,7 +60,10 @@ class JsonChunkConfig(BaseModel):
     用于处理结构化的JSON数据
     """
 
-    mode: Literal["simple", "json"] = Field(default="simple", description="切块模式: 'simple' (键值对) 或 'json' (保持JSON格式)")
+    mode: Literal["simple", "json"] = Field(
+        default="simple",
+        description="切块模式: 'simple' (键值对) 或 'json' (保持JSON格式)",
+    )
     keys: list[str] = Field(default_factory=list, description="需要提取的key列表（空表示全部）")
     key_separator: str = Field(default=",", description="键之间分隔符")
     value_separator: str = Field(default=":", description="键值分隔符")

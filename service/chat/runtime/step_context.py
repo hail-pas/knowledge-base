@@ -9,12 +9,17 @@ Step Context - 步骤上下文管理器
 """
 
 import asyncio
-from typing import Optional, Dict, Any, List
-from uuid import uuid4
-from datetime import datetime
 import traceback
+from uuid import uuid4
+from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
 
-from service.chat.enums import StepTypeEnum, ArtifactTypeEnum, StepStatusEnum, ErrorCodeEnum
+from service.chat.enums import (
+    StepTypeEnum,
+    ErrorCodeEnum,
+    StepStatusEnum,
+    ArtifactTypeEnum,
+)
 
 
 class StepContext:
@@ -47,9 +52,9 @@ class StepContext:
         trace_manager,
         step_type: StepTypeEnum,
         step_name: str,
-        input: Dict[str, Any],
-        parent_step_id: Optional[str] = None,
-    ):
+        input: dict[str, Any],
+        parent_step_id: str | None = None,
+    ) -> None:
         """
         初始化 StepContext
 
@@ -69,19 +74,19 @@ class StepContext:
         self.status = StepStatusEnum.pending
 
         # 产物ID列表
-        self.artifact_ids: List[str] = []
+        self.artifact_ids: list[str] = []
 
         # 输出（由用户设置）
-        self.output: Optional[Dict[str, Any]] = None
+        self.output: dict[str, Any] | None = None
 
         # 时间戳
-        self.start_time: Optional[datetime] = None
-        self.end_time: Optional[datetime] = None
-        self.latency_ms: Optional[int] = None
+        self.start_time: datetime | None = None
+        self.end_time: datetime | None = None
+        self.latency_ms: int | None = None
 
     async def __aenter__(self):
         """进入步骤：发送 on_step_start 事件"""
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(UTC)
         self.status = StepStatusEnum.running
 
         # 更新 Trace 统计
@@ -100,14 +105,14 @@ class StepContext:
                     "step_name": self.step_name,
                     "input": self.input,
                 },
-            }
+            },
         )
 
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """退出步骤：发送 on_step_complete/on_step_failed 事件"""
-        self.end_time = datetime.utcnow()
+        self.end_time = datetime.now(UTC)
         self.latency_ms = int((self.end_time - self.start_time).total_seconds() * 1000)
 
         if exc_type:
@@ -132,7 +137,7 @@ class StepContext:
                         "error_message": error_message,
                         "stack_trace": stack_trace,
                     },
-                }
+                },
             )
 
             # 添加到 trace.steps
@@ -151,7 +156,7 @@ class StepContext:
                     "latency_ms": self.latency_ms,
                     "error_code": error_code.value,
                     "error_message": error_message,
-                }
+                },
             )
         else:
             # 步骤成功
@@ -175,7 +180,7 @@ class StepContext:
                         "latency_ms": self.latency_ms,
                         "artifact_ids": self.artifact_ids,
                     },
-                }
+                },
             )
 
             # 添加到 trace.steps
@@ -192,7 +197,7 @@ class StepContext:
                     "start_time": self.start_time.isoformat(),
                     "end_time": self.end_time.isoformat(),
                     "latency_ms": self.latency_ms,
-                }
+                },
             )
 
         # 标记需要持久化
@@ -201,7 +206,7 @@ class StepContext:
     def create_artifact(
         self,
         artifact_type: ArtifactTypeEnum,
-        artifact_data: Dict[str, Any],
+        artifact_data: dict[str, Any],
     ) -> str:
         """
         创建产物
@@ -221,7 +226,7 @@ class StepContext:
                 {
                     "event_id": f"evt_{uuid4()}",
                     "event_type": "on_artifact_created",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "trace_id": self.trace_manager.trace_id,
                     "step_id": self.step_id,
                     "data": {
@@ -229,8 +234,8 @@ class StepContext:
                         "artifact_type": artifact_type.value,
                         "artifact_data": artifact_data,
                     },
-                }
-            )
+                },
+            ),
         )
 
         # 添加到 trace.artifacts
@@ -239,9 +244,9 @@ class StepContext:
                 "artifact_id": artifact_id,
                 "step_id": self.step_id,
                 "artifact_type": artifact_type.value,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
                 "data": artifact_data,
-            }
+            },
         )
 
         # 记录 artifact_id
@@ -249,7 +254,7 @@ class StepContext:
 
         return artifact_id
 
-    def set_output(self, output: Dict[str, Any]):
+    def set_output(self, output: dict[str, Any]) -> None:
         """
         设置步骤输出
 
@@ -258,7 +263,7 @@ class StepContext:
         """
         self.output = output
 
-    async def stream_update(self, update_type: str, update_data: Dict[str, Any]):
+    async def stream_update(self, update_type: str, update_data: dict[str, Any]) -> None:
         """
         流式更新步骤（用于 LLM 流式输出）
 
@@ -272,7 +277,7 @@ class StepContext:
             {
                 "event_id": f"evt_{uuid4()}",
                 "event_type": "on_step_update",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "trace_id": self.trace_manager.trace_id,
                 "step_id": self.step_id,
                 "parent_step_id": self.parent_step_id,
@@ -280,10 +285,10 @@ class StepContext:
                     "update_type": update_type,
                     "update_data": update_data,
                 },
-            }
+            },
         )
 
-    async def update_progress(self, progress_percentage: float, current_status: Optional[str] = None):
+    async def update_progress(self, progress_percentage: float, current_status: str | None = None) -> None:
         """
         更新步骤进度
 
@@ -295,7 +300,7 @@ class StepContext:
             {
                 "event_id": f"evt_{uuid4()}",
                 "event_type": "on_step_progress",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "trace_id": self.trace_manager.trace_id,
                 "step_id": self.step_id,
                 "parent_step_id": self.parent_step_id,
@@ -303,5 +308,5 @@ class StepContext:
                     "progress_percentage": progress_percentage,
                     "current_status": current_status,
                 },
-            }
+            },
         )

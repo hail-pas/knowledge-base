@@ -1,29 +1,35 @@
-from _pytest.python_api import raises
-from pydantic import BaseModel, Field, field_validator, model_validator
-from tortoise.contrib.pydantic import pydantic_model_creator
 from typing import Optional
 
-from enhance.epydantic import as_query, optional
-from core.types import ApiException
-from ext.ext_tortoise.models.knowledge_base import Collection
+from pydantic import Field, BaseModel, field_validator, model_validator
+from _pytest.python_api import raises
+from tortoise.contrib.pydantic import pydantic_model_creator
 
+from core.types import ApiException
+from enhance.epydantic import as_query, optional
 from service.collection.helper import WorkflowTemplateValidator
 from service.embedding_model.schema import EmbeddingModelConfigList
+from ext.ext_tortoise.models.knowledge_base import Collection
 
 
 class ExternalConfigSchema(BaseModel):
     """External KB config - placeholder for future fields"""
+
     endpoint: str
     authorization: str
     collection_id: str
 
 
 class CollectionCreate(
-    pydantic_model_creator(Collection, name="CollectionCreateBase", exclude_readonly=True, exclude=("user_id", "tenant_id", "role_id", ))
+    pydantic_model_creator(
+        Collection,
+        name="CollectionCreateBase",
+        exclude_readonly=True,
+        exclude=("user_id", "tenant_id", "role_id"),
+    ),
 ):
     workflow_template: dict = Field(default_factory=dict, description="工作流DAG配置，非外部知识库时必需")
     external_config: ExternalConfigSchema | None = Field(None, description="外部知识库配置")
-    embedding_model_config_id: Optional[int] = Field(None, description="关联嵌入模型ID")
+    embedding_model_config_id: int | None = Field(None, description="关联嵌入模型ID")
 
     @field_validator("external_config", mode="before")
     @classmethod
@@ -31,7 +37,7 @@ class CollectionCreate(
         try:
             ExternalConfigSchema(**v)
         except Exception as e:
-            raise ApiException(f"external_config 格式错误: {str(e)}")
+            raise ApiException(f"external_config 格式错误: {str(e)}") from e
         return v
 
     @model_validator(mode="after")
@@ -48,7 +54,7 @@ class CollectionCreate(
             try:
                 WorkflowTemplateValidator.validate(self.workflow_template)
             except ValueError as e:
-                raise ApiException(str(e))
+                raise ApiException(str(e)) from e
         return self
 
 
@@ -70,7 +76,7 @@ class CollectionUpdate(BaseModel):
             try:
                 WorkflowTemplateValidator.validate(v)
             except ValueError as e:
-                raise ApiException(str(e))
+                raise ApiException(str(e)) from e
         return v
 
     @field_validator("external_config")
@@ -80,7 +86,7 @@ class CollectionUpdate(BaseModel):
             try:
                 ExternalConfigSchema(**v)
             except Exception as e:
-                raise ApiException(f"external_config 格式错误: {str(e)}")
+                raise ApiException(f"external_config 格式错误: {str(e)}") from e
         return v
 
 

@@ -160,7 +160,7 @@ class TimeField(fields.TimeField):
     def to_python_value(
         self,
         value: Any,
-    ) -> datetime.time | None:  # ruff: noqa: ANN401
+    ) -> datetime.time | None:
         if isinstance(value, datetime.timedelta):
             value = self.timedelta_to_time(value)
         if value is not None:
@@ -184,10 +184,11 @@ class TimeField(fields.TimeField):
             setattr(instance, self.model_field_name, now)
             return now
         if value is not None and get_use_tz() and timezone.is_naive(value):
-            warnings.warn(  # ruff: noqa: B028
+            warnings.warn(  # noqa: B028
                 f"TimeField {self.model_field_name} received a naive time ({value})"
                 " while time zone support is active.",
                 RuntimeWarning,
+                stacklevel=2,
             )
             value = value.replace(tzinfo=get_default_timezone())
         self.validate(value)

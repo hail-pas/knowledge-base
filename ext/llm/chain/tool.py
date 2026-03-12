@@ -4,14 +4,15 @@ Tool 实现和装饰器
 提供将 Python 函数转换为 Tool 的能力
 """
 
-import inspect
 import json
-from typing import Any, Dict, List, Optional, Union, get_origin, get_args
+import inspect
+from typing import Any, Dict, List, Union, Optional, get_args, get_origin
 from collections.abc import Callable
+
 from loguru import logger
 
-from ext.llm.types import ToolDefinition, FunctionDefinition
 from util.general import truncate_content
+from ext.llm.types import ToolDefinition, FunctionDefinition
 
 
 class Tool:
@@ -26,7 +27,7 @@ class Tool:
         name: str,
         description: str,
         parameters: dict[str, Any],
-    ):
+    ) -> None:
         """初始化 Tool
 
         Args:
@@ -84,7 +85,7 @@ class Tool:
             return result
         except Exception as e:
             logger.error(f"Tool '{self.name}' execution failed: {e}")
-            raise RuntimeError(f"Tool '{self.name}' execution failed: {e}")
+            raise RuntimeError(f"Tool '{self.name}' execution failed: {e}") from e
 
     def __repr__(self) -> str:
         return f"Tool(name='{self.name}', description='{self.description}')"
@@ -161,9 +162,8 @@ def extract_parameters_from_signature(func: Callable) -> dict[str, Any]:
         }
 
         # 添加描述（从类型提示或默认值推断）
-        if param.annotation != inspect.Parameter.empty:
-            if hasattr(param.annotation, "__doc__"):
-                prop_def["description"] = param.annotation.__doc__
+        if param.annotation != inspect.Parameter.empty and hasattr(param.annotation, "__doc__"):
+            prop_def["description"] = param.annotation.__doc__
 
         properties[param_name] = prop_def
 
@@ -236,10 +236,7 @@ def validate_json_schema(parameters: dict[str, Any]) -> bool:
     if parameters["type"] != "object":
         return False
 
-    if not isinstance(parameters["properties"], dict):
-        return False
-
-    return True
+    return isinstance(parameters["properties"], dict)
 
 
 __all__ = [

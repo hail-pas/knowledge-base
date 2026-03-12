@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import aiofiles
 import trafilatura
 
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult, PageResult
+from ext.document_parser.core.parse_result import PageResult, ParseResult, OutputFormat
 
 
 class TrafilaturaEngine(BaseEngine):
@@ -11,8 +12,8 @@ class TrafilaturaEngine(BaseEngine):
     supported_formats = [".html", ".htm"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        with open(file_path, encoding="utf-8") as f:
-            html_content = f.read()
+        async with aiofiles.open(file_path, encoding="utf-8") as f:
+            html_content = await f.read()
 
         text = trafilatura.extract(
             html_content,
@@ -47,8 +48,8 @@ class MarkdownEngine(BaseEngine):
     supported_formats = [".md", ".markdown"]
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        with open(file_path, encoding="utf-8") as f:
-            content = f.read()
+        async with aiofiles.open(file_path, encoding="utf-8") as f:
+            content = await f.read()
 
         pages_result = [
             PageResult(
@@ -60,7 +61,7 @@ class MarkdownEngine(BaseEngine):
             ),
         ]
 
-        result = ParseResult(
+        return ParseResult(
             content=content,
             format=OutputFormat.MARKDOWN,
             pages=pages_result,
@@ -69,5 +70,3 @@ class MarkdownEngine(BaseEngine):
             confidence=1.0,
             engine_used="markdown",
         )
-
-        return result

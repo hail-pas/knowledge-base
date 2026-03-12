@@ -14,6 +14,7 @@ from tortoise.contrib.pydantic.base import PydanticModel
 from core.types import ApiException
 from core.schema import CRUDPager, paginate
 from core.response import Resp, PageData
+from enhance.epydantic import create_sub_fields_model
 
 unique_error_msg_key_regex = re.compile(r"'(.*?)'")
 
@@ -91,32 +92,32 @@ async def kwargs_clean(
     simple_data = {}
     m2m_fields_data: dict = defaultdict(list)
 
-    for key in data:
+    for key, value in data.items():
         if key not in fields_map:
             continue
         if key in fk_fields:
-            if data[key]:
+            if value:
                 field = fields_map[key.split("_id")[0]]
                 obj = await field.related_model.get_or_none(  # type: ignore
-                    **{field.to_field: data[key]},  # type: ignore
+                    **{field.to_field: value},  # type: ignore
                 )
                 if not obj:
                     raise ApiException(
-                        f"ID为{data[key]}的{field.description}不存在",
+                        f"ID为{value}的{field.description}不存在",
                     )
-            simple_data[key] = data[key]
+            simple_data[key] = value
             continue
 
         if key in m2m_fields:
-            if data[key] is None:
+            if value is None:
                 m2m_fields_data[key] = None  # type: ignore
                 continue
             m2m_fields_data[key] = []
             field = fields_map[key]
             model = field.related_model  # type: ignore
-            for related_id in data[key]:
+            for related_id in value:
                 if isinstance(related_id, Model):
-                    m2m_fields_data[key].append(obj) # type: ignore
+                    m2m_fields_data[key].append(related_id)  # type: ignore[arg-type]
                     continue
                 obj = await model.get_or_none(
                     **{model._meta.pk_attr: related_id},
@@ -128,7 +129,7 @@ async def kwargs_clean(
                 m2m_fields_data[key].append(obj)
             continue
 
-        simple_data[key] = data[key]
+        simple_data[key] = value
 
     return simple_data, m2m_fields_data
 
@@ -155,7 +156,7 @@ async def create_obj(
             if (
                 msg_keys
                 and hasattr(db_model.Meta, "unique_error_messages")
-                and db_model.Meta.unique_error_messages.get(msg_keys[-1])  # type: ignore
+                and msg_keys[-1] in db_model.Meta.unique_error_messages  # type: ignore
             ):
                 msg = db_model.Meta.unique_error_messages.get(msg_keys[-1])  # type: ignore
             else:

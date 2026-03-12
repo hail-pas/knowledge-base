@@ -1,7 +1,9 @@
-import httpx
 from typing import override
-from config.default import RegisterExtensionConfig, InstanceExtensionConfig
+
+import httpx
 from loguru import logger
+
+from config.default import InstanceExtensionConfig, RegisterExtensionConfig
 
 
 class HttpxConfig(RegisterExtensionConfig, InstanceExtensionConfig):

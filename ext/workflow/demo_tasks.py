@@ -5,10 +5,11 @@ Simple task implementations that log their execution.
 Used for testing the workflow system.
 """
 
-import asyncio
 import os
+import asyncio
 from typing import Any
 
+import aiofiles
 from loguru import logger
 
 from ext.workflow import ActivityTaskTemplate, activity_task
@@ -26,8 +27,8 @@ class FetchFileTask(ActivityTaskTemplate):
             logger.error(f"[FetchFileTask] File not found: {file_path}")
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        async with aiofiles.open(file_path, encoding="utf-8") as f:
+            content = await f.read()
 
         logger.success(f"[FetchFileTask] Successfully read {len(content)} characters")
 

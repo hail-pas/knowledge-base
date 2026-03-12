@@ -16,19 +16,18 @@ workflow_uid = await schedule_workflow(
 
 from typing import Literal
 
-# Core scheduling functions
-from ext.workflow.scheduler import (
-    WorkflowScheduler,
-)
+# Manager
+from ext.workflow.manager import WorkflowManager
 
 # Task template
 from ext.workflow.template import ActivityTaskTemplate, activity_task
 
-# Manager
-from ext.workflow.manager import WorkflowManager
-
-
-from ext.workflow.scheduler import schedule_activity_handoff_celery_entry, schedule_workflow_celery_entry
+# Core scheduling functions
+from ext.workflow.scheduler import (
+    WorkflowScheduler,
+    schedule_workflow_celery_entry,
+    schedule_activity_handoff_celery_entry,
+)
 
 
 async def schedule_workflow(
@@ -93,7 +92,10 @@ async def schedule_activity_handoff(
     Returns:
         Activity UID
     """
-    result_uid = await WorkflowScheduler.schedule_activity_handoff(activity_uid=activity_uid, execute_mode=execute_mode)
+    result_uid = await WorkflowScheduler.schedule_activity_handoff(
+        activity_uid=activity_uid,
+        execute_mode=execute_mode,
+    )
     return str(result_uid)
 
 

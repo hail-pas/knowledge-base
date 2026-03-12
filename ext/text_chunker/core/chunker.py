@@ -4,15 +4,18 @@
 提供统一的文本切块接口
 """
 
-from loguru import logger
 from typing import Any
 
-from ext.document_parser.core.parse_result import OutputFormat, ParseResult
+from loguru import logger
+
+from ext.text_chunker.core.chunk_result import ChunkResult
+from ext.document_parser.core.parse_result import ParseResult, OutputFormat
+from ext.text_chunker.strategies.json_based import JsonChunkStrategy
 from ext.text_chunker.config.strategy_config import (
-    DelimiterChunkConfig,
-    HeadingChunkConfig,
     JsonChunkConfig,
     LengthChunkConfig,
+    HeadingChunkConfig,
+    DelimiterChunkConfig,
 )
 from ext.text_chunker.config.strategy_presets import (
     STRATEGY_PRESETS,
@@ -20,11 +23,9 @@ from ext.text_chunker.config.strategy_presets import (
     list_presets,
     validate_strategy_for_format,
 )
-from ext.text_chunker.core.chunk_result import ChunkResult
-from ext.text_chunker.strategies.delimiter_based import DelimiterChunkStrategy
-from ext.text_chunker.strategies.heading_based import HeadingChunkStrategy
-from ext.text_chunker.strategies.json_based import JsonChunkStrategy
 from ext.text_chunker.strategies.length_based import LengthChunkStrategy
+from ext.text_chunker.strategies.heading_based import HeadingChunkStrategy
+from ext.text_chunker.strategies.delimiter_based import DelimiterChunkStrategy
 
 
 class TextChunker:
@@ -38,7 +39,7 @@ class TextChunker:
     - json: JSON数据切块
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化切块器"""
         self._strategy_map = {
             "length": (LengthChunkStrategy, LengthChunkConfig),
@@ -107,7 +108,7 @@ class TextChunker:
         # 检查策略是否支持
         if actual_strategy not in self._strategy_map:
             raise ValueError(
-                f"Unsupported strategy: {actual_strategy}. Available strategies: {list(self._strategy_map.keys())}"
+                f"Unsupported strategy: {actual_strategy}. Available strategies: {list(self._strategy_map.keys())}",
             )
 
         strategy_class, config_class = self._strategy_map[actual_strategy]
@@ -119,7 +120,7 @@ class TextChunker:
             try:
                 config_obj = config_class(**config)
             except Exception as e:
-                raise ValueError(f"Invalid config for strategy '{actual_strategy}': {e}")
+                raise ValueError(f"Invalid config for strategy '{actual_strategy}': {e}") from e
 
         # 创建策略实例并执行切块
         logger.info(f"Starting chunking with strategy: {actual_strategy}, config: {config_obj.model_dump()}")

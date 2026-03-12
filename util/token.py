@@ -51,7 +51,7 @@ class TokenCounter:
             token数量
         """
         if tiktoken is None:
-            logger.warning(f"tiktoken not installed, fallback to char count. Install with: pip install tiktoken")
+            logger.warning("tiktoken not installed, fallback to char count. Install with: pip install tiktoken")
             return len(text)
         try:
             enc = tiktoken.get_encoding(encoding)
@@ -72,7 +72,7 @@ class TokenCounter:
             词汇数量
         """
         if jieba is None:
-            logger.warning(f"jieba not installed, fallback to char count. Install with: pip install jieba")
+            logger.warning("jieba not installed, fallback to char count. Install with: pip install jieba")
             return len(text)
         try:
             return len(list(jieba.cut(text)))
@@ -98,9 +98,8 @@ class TokenCounter:
         """
         if mode == "chars":
             return TokenCounter.count_by_chars(text)
-        elif mode == "tokens":
+        if mode == "tokens":
             return TokenCounter.count_by_tokens(text, encoding)
-        elif mode == "jieba":
+        if mode == "jieba":
             return TokenCounter.count_by_jieba(text)
-        else:
-            raise ValueError(f"Unsupported count mode: {mode}")
+        raise ValueError(f"Unsupported count mode: {mode}")

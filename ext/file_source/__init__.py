@@ -4,14 +4,14 @@ File Source 模块
 提供统一的文件存储服务抽象，支持多种文件源类型
 """
 
-from ext.file_source.base import BaseFileSourceProvider, FileMetadata
+from ext.file_source.base import FileMetadata, BaseFileSourceProvider
 from ext.file_source.types import (
+    S3ExtraConfig,
+    MinIOExtraConfig,
+    AliyunOSSExtraConfig,
+    S3CompatibleExtraConfig,
     BaseFileSourceExtraConfig,
     LocalFileSourceExtraConfig,
-    S3CompatibleExtraConfig,
-    MinIOExtraConfig,
-    S3ExtraConfig,
-    AliyunOSSExtraConfig,
 )
 from ext.file_source.factory import FileSourceFactory
 
