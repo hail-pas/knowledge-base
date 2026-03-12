@@ -4,6 +4,7 @@ Aliyun OSS Provider
 支持 CryptoBucket 和普通 Bucket，支持 RSA 密钥对认证
 """
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import oss2
@@ -158,7 +159,7 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
         result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
         return result.read()  # type: ignore[no-any-return]
 
-    async def get_file_stream(self, uri: str, chunk_size: int = 8192):  # type: ignore[misc]
+    async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
         loop = asyncio.get_event_loop()

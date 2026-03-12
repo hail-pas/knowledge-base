@@ -134,7 +134,7 @@ class BaseFileSourceProvider(ABC, Generic[ExtraConfigT]):
         """获取文件内容"""
 
     @abstractmethod
-    async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
+    def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流（用于大文件）"""
 
     @abstractmethod

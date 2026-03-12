@@ -4,6 +4,7 @@ Local File System Provider
 
 import os
 import hashlib
+from collections.abc import AsyncIterator
 from pathlib import Path
 from datetime import datetime
 import aiofiles
@@ -93,7 +94,7 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
         async with aiofiles.open(uri, "rb") as f:
             return await f.read()
 
-    async def get_file_stream(self, uri: str, chunk_size: int = 8192):  # type: ignore[misc]
+    async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         async with aiofiles.open(uri, "rb") as f:
             while True:

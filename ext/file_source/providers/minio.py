@@ -2,6 +2,7 @@
 MinIO Provider
 """
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 from minio import Minio
@@ -99,7 +100,7 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
         response = await loop.run_in_executor(None, lambda: self.client.get_object(self.storage_location or "", key))  # type: ignore[arg-type]
         return response.read()
 
-    async def get_file_stream(self, uri: str, chunk_size: int = 8192):  # type: ignore[misc]
+    async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
         loop = asyncio.get_event_loop()

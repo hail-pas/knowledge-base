@@ -2,6 +2,7 @@
 AWS S3 Provider (async with aiobotocore)
 """
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 from aiobotocore.config import AioConfig
@@ -129,7 +130,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
         response = await client.get_object(Bucket=self.storage_location, Key=key)
         return await response["Body"].read()  # type: ignore[no-any-return]
 
-    async def get_file_stream(self, uri: str, chunk_size: int = 8192):  # type: ignore[misc]
+    async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
         client = await self.client
