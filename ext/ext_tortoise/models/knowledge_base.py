@@ -439,19 +439,30 @@ class LLMModelConfig(BaseModel):
     api_key = fields.CharField(max_length=500, null=True, description="API密钥（加密）")
     base_url = fields.CharField(max_length=500, null=True, description="API基础URL")
 
-    # 模型能力标识
-    max_tokens = fields.IntField(default=4096, description="最大token数（输入+输出）")
-    supports_chat = fields.BooleanField(default=True, description="支持对话模式")
-    supports_completion = fields.BooleanField(default=False, description="支持补全模式")
-    supports_streaming = fields.BooleanField(default=True, description="支持流式输出")
-    supports_function_calling = fields.BooleanField(default=False, description="支持函数调用")
-    supports_vision = fields.BooleanField(default=False, description="支持视觉/图像")
+    # ModelSettings 对齐字段
+    max_tokens = fields.IntField(default=4096, description="默认最大输出 token 数")
+    temperature = fields.FloatField(default=0.7, description="默认 temperature")
+    top_p = fields.FloatField(default=1.0, description="默认 top_p")
+    presence_penalty = fields.FloatField(null=True, description="默认 presence_penalty")
+    frequency_penalty = fields.FloatField(null=True, description="默认 frequency_penalty")
+    seed = fields.IntField(null=True, description="默认 seed")
+    timeout = fields.IntField(default=60, description="默认请求超时时间(秒)")
+    parallel_tool_calls = fields.BooleanField(null=True, description="默认 parallel_tool_calls")
 
-    # 默认参数配置
-    default_temperature = fields.FloatField(default=0.7, description="默认温度参数")
-    default_top_p = fields.FloatField(default=1.0, description="默认top_p")
-    max_retries = fields.IntField(default=3, description="最大重试次数")
-    timeout = fields.IntField(default=60, description="请求超时时间(秒)")
+    # ModelProfile 对齐字段
+    supports_tools = fields.BooleanField(default=False, description="是否支持 tools")
+    supports_image_output = fields.BooleanField(default=False, description="是否支持图片输出")
+    supports_json_schema_output = fields.BooleanField(default=False, description="是否支持 JSON Schema 输出")
+    supports_json_object_output = fields.BooleanField(default=False, description="是否支持 JSON Object 输出")
+    default_structured_output_mode = fields.CharField(
+        max_length=16,
+        default="tool",
+        description="默认结构化输出模式(tool/native/prompted)",
+    )
+    native_output_requires_schema_in_instructions = fields.BooleanField(
+        default=False,
+        description="native 输出模式是否要求把 schema 写入 instructions",
+    )
 
     # Provider特定配置
     extra_config = fields.JSONField(default=dict, description="provider特定扩展配置")

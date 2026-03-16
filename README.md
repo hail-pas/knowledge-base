@@ -5,14 +5,14 @@
 - ` /user `: 用户中心与认证
 - ` /knowledge `: 知识库、文档、RAG 相关能力
 
-项目基于 Python `3.13`、FastAPI、Tortoise ORM、Redis，以及一组本地 workspace 扩展模块（文档解析、文件源、向量索引、LLM、工作流等）。
+项目基于 Python `3.13`、FastAPI、Tortoise ORM、Redis，以及一组本地 workspace 扩展模块（文档解析、文件源、向量索引、工作流等），并通过 `pydantic-ai` 驱动大模型调用。
 
 ## 目录结构
 
 ```text
 api/        HTTP API 入口与路由
 service/    业务编排与领域服务
-ext/        可复用扩展模块（embedding / llm / workflow / indexing / file_source ...）
+ext/        可复用扩展模块（embedding / workflow / indexing / file_source ...）
 core/       应用基建、响应模型、中间件、上下文
 config/     配置定义
 deploy/     初始化脚本、权限脚本、迁移辅助

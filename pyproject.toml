@@ -23,7 +23,6 @@ dependencies = [
     "python-jose[cryptography]==3.5.0",
     "cachetools==7.0.4",
     "captcha==0.7.1",
-
     # ext workspace members
     "document-parser[all]",
     "embedding",
@@ -33,9 +32,11 @@ dependencies = [
     "ext-tortoise",
     "file-source[all]",
     "indexing[all]",
-    "llm[all]",
     "text-chunker",
     "workflow",
+    
+    # llm
+    "pydantic-ai-slim[openai,anthropic]==1.68.0",
 ]
 
 
@@ -49,7 +50,6 @@ members = [
     "ext/ext_tortoise",
     "ext/file_source",
     "ext/indexing",
-    "ext/llm",
     "ext/text_chunker",
     "ext/workflow",
 ]
@@ -63,7 +63,6 @@ ext-redis = { workspace = true }
 ext-tortoise = { workspace = true }
 file-source = { workspace = true }
 indexing = { workspace = true }
-llm = { workspace = true }
 text-chunker = { workspace = true }
 workflow = { workspace = true }
 
@@ -71,6 +70,11 @@ workflow = { workspace = true }
 [project.optional-dependencies]
 ipython = [
     "ipython==8.15.0",
+]
+langchain = [
+    "langchain-core>=1.2.19",
+    "langchain-openai>=1.1.11",
+    "langchain-anthropic>=1.3.5",
 ]
 
 [dependency-groups]
@@ -225,8 +229,6 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "ext/ext_tortoise/migrate/**/*.py" = ["E501"]
 "ext/ext_celery/main.py" = ["PLW0603"]
 "ext/indexing/factory.py" = ["E402"]
-"ext/llm/factory.py" = ["E402"]
-
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 

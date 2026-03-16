@@ -54,7 +54,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             raise ValueError(f"Invalid metric_type: {self.extra_config.metric_type}. Must be one of: COSINE, L2, IP")
 
     async def connect(self) -> None:
-        """建立连接（Milvus SDK 是同步的，需要用 executor）"""
+        """建立连接"""
         scheme = "https" if self.config.verify_ssl else "http"
         uri = (
             f"{scheme}://{self.config.host}:{self.config.port}"

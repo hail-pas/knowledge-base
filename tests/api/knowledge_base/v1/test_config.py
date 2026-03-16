@@ -93,6 +93,8 @@ def test_create_llm_model_openai(client):
             "api_key": "sk-test-key",
             "base_url": "https://api.openai.com/v1",
             "max_tokens": 4096,
+            "temperature": 0.2,
+            "top_p": 0.9,
             "extra_config": {
                 "organization": "test-org",
             },
