@@ -1,19 +1,22 @@
 import asyncio
 import inspect
-from importlib import import_module
 from typing import Any, cast
+from importlib import import_module
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from ext.ext_tortoise.enums import LLMModelTypeEnum
-from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
-from service.llm_model_langchain.model import CapabilityAwareChatModel, LangChainModelCapabilities
 from service.llm_model.types import (
     OpenAIExtraConfig,
     DeepSeekExtraConfig,
     AnthropicExtraConfig,
     AzureOpenAIExtraConfig,
 )
+from service.llm_model_langchain.model import (
+    CapabilityAwareChatModel,
+    LangChainModelCapabilities,
+)
+from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 
 
 class LangChainLLMModelFactory:
@@ -106,9 +109,7 @@ class LangChainLLMModelFactory:
             supports_json_schema_output=config.supports_json_schema_output,
             supports_json_object_output=config.supports_json_object_output,
             default_structured_output_mode=config.default_structured_output_mode,
-            native_output_requires_schema_in_instructions=(
-                config.native_output_requires_schema_in_instructions
-            ),
+            native_output_requires_schema_in_instructions=(config.native_output_requires_schema_in_instructions),
         )
 
     @classmethod
@@ -204,8 +205,7 @@ class LangChainLLMModelFactory:
     def _instantiate_model(cls, model_cls: type[BaseChatModel], kwargs: dict[str, Any]) -> BaseChatModel:
         signature = inspect.signature(model_cls)
         has_var_kwargs = any(
-            parameter.kind == inspect.Parameter.VAR_KEYWORD
-            for parameter in signature.parameters.values()
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
         )
 
         filtered_kwargs = {

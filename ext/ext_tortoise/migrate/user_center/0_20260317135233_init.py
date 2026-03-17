@@ -73,19 +73,19 @@ CREATE TABLE IF NOT EXISTS `aerich` (
     `app` VARCHAR(100) NOT NULL,
     `content` JSON NOT NULL
 ) CHARACTER SET utf8mb4;
-CREATE TABLE IF NOT EXISTS `resource_role` (
-    `resource_id` BIGINT NOT NULL,
-    `role_id` BIGINT NOT NULL,
-    FOREIGN KEY (`resource_id`) REFERENCES `resource` (`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`role_id`) REFERENCES `role` (`id`) ON DELETE CASCADE,
-    UNIQUE KEY `uidx_resource_ro_resourc_a19b78` (`resource_id`, `role_id`)
-) CHARACTER SET utf8mb4;
 CREATE TABLE IF NOT EXISTS `resource_permission` (
     `resource_id` BIGINT NOT NULL,
     `permission_id` VARCHAR(256) NOT NULL,
     FOREIGN KEY (`resource_id`) REFERENCES `resource` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`permission_id`) REFERENCES `permission` (`code`) ON DELETE CASCADE,
     UNIQUE KEY `uidx_resource_pe_resourc_4b71b7` (`resource_id`, `permission_id`)
+) CHARACTER SET utf8mb4;
+CREATE TABLE IF NOT EXISTS `resource_role` (
+    `resource_id` BIGINT NOT NULL,
+    `role_id` BIGINT NOT NULL,
+    FOREIGN KEY (`resource_id`) REFERENCES `resource` (`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`role_id`) REFERENCES `role` (`id`) ON DELETE CASCADE,
+    UNIQUE KEY `uidx_resource_ro_resourc_a19b78` (`resource_id`, `role_id`)
 ) CHARACTER SET utf8mb4;"""
 
 

@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field, BaseModel, ConfigDict
 
 
 class BaseExtraConfig(BaseModel):

@@ -1,10 +1,13 @@
 from typing import Any
 
-from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from pydantic import Field, BaseModel, ConfigDict
 from langchain_core.outputs import ChatResult
-from pydantic import BaseModel, ConfigDict, Field
+from langchain_core.messages import BaseMessage
+from langchain_core.callbacks import (
+    CallbackManagerForLLMRun,
+    AsyncCallbackManagerForLLMRun,
+)
+from langchain_core.language_models.chat_models import BaseChatModel
 
 
 class LangChainModelCapabilities(BaseModel):

@@ -2,16 +2,15 @@ import asyncio
 from typing import Any
 
 from pydantic_ai.models import Model
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.profiles import ModelProfile
-from pydantic_ai.providers.anthropic import AnthropicProvider
-from pydantic_ai.providers.azure import AzureProvider
-from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.azure import AzureProvider
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.anthropic import AnthropicProvider
 
 from ext.ext_tortoise.enums import LLMModelTypeEnum
-from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 from service.llm_model.types import (
     BaseExtraConfig,
     OpenAIExtraConfig,
@@ -19,6 +18,7 @@ from service.llm_model.types import (
     AnthropicExtraConfig,
     AzureOpenAIExtraConfig,
 )
+from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 
 
 class LLMModelFactory:
@@ -101,9 +101,7 @@ class LLMModelFactory:
             supports_json_schema_output=config.supports_json_schema_output,
             supports_json_object_output=config.supports_json_object_output,
             default_structured_output_mode=config.default_structured_output_mode,  # type: ignore[arg-type]
-            native_output_requires_schema_in_instructions=(
-                config.native_output_requires_schema_in_instructions
-            ),
+            native_output_requires_schema_in_instructions=(config.native_output_requires_schema_in_instructions),
         )
 
     @classmethod

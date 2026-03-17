@@ -158,3 +158,58 @@ class IndexingStatusEnum(StrEnum):
     inactive = ("inactive", "未活跃")
     error = ("error", "错误")
     deleting = ("deleting", "删除中")
+
+
+# =============================================================================
+# Chat 模块相关枚举
+# =============================================================================
+
+
+class ChatConversationStatusEnum(StrEnum):
+    active = ("active", "活跃")
+    archived = ("archived", "已归档")
+
+
+class ChatTurnStatusEnum(StrEnum):
+    pending = ("pending", "待处理")
+    accepted = ("accepted", "已受理")
+    running = ("running", "运行中")
+    streaming = ("streaming", "流式输出中")
+    completed = ("completed", "已完成")
+    failed = ("failed", "失败")
+    canceled = ("canceled", "已取消")
+    rolled_back = ("rolled_back", "已回退")
+
+
+class ChatTurnTriggerEnum(StrEnum):
+    user = ("user", "用户触发")
+    system = ("system", "系统触发")
+    retry = ("retry", "重试")
+    resume = ("resume", "恢复")
+    rollback = ("rollback", "回退")
+
+
+class ChatStepStatusEnum(StrEnum):
+    pending = ("pending", "待处理")
+    running = ("running", "运行中")
+    streaming = ("streaming", "流式输出中")
+    completed = ("completed", "已完成")
+    failed = ("failed", "失败")
+    canceled = ("canceled", "已取消")
+
+
+class ChatStepKindEnum(StrEnum):
+    system = ("system", "系统步骤")
+    retrieval = ("retrieval", "检索步骤")
+    llm = ("llm", "模型步骤")
+    tool = ("tool", "工具步骤")
+    guardrail = ("guardrail", "护栏步骤")
+    response = ("response", "响应步骤")
+
+
+class ChatDataKindEnum(StrEnum):
+    input = ("input", "输入")
+    output = ("output", "输出")
+    intermediate = ("intermediate", "中间数据")
+    reference = ("reference", "引用数据")
+    control = ("control", "控制数据")

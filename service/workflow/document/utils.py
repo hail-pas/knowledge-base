@@ -99,8 +99,6 @@ async def upload_parsed_content(file_source: FileSource, document_id: int, conte
     provider = await FileSourceFactory.create(file_source)
     ext = get_parsed_uri_extension(content_format)
 
-    print(">>>>>>>>>>>>>>", ext)
-
     uri = f"{document_id}/parsed{ext}"
 
     content_bytes = content.encode("utf-8")

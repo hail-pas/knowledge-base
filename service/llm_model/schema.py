@@ -4,14 +4,14 @@ from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
+from enhance.epydantic import as_query, optional
+from ext.ext_tortoise.enums import LLMModelTypeEnum
 from service.llm_model.types import (
     OpenAIExtraConfig,
     DeepSeekExtraConfig,
     AnthropicExtraConfig,
     AzureOpenAIExtraConfig,
 )
-from enhance.epydantic import as_query, optional
-from ext.ext_tortoise.enums import LLMModelTypeEnum
 from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 
 
