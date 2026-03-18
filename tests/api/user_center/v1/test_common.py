@@ -1,9 +1,14 @@
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
 
 
-def test_captcha_image(client: TestClient):
+def test_captcha_image(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     """测试图片验证码接口"""
+    monkeypatch.setattr(
+        "api.user_center.v1.common.generate_captcha_code",
+        AsyncMock(return_value="1234"),
+    )
     response = client.get(
         "/v1/common/captcha/image",
         params={"scene": "login"},

@@ -2,11 +2,13 @@ from typing import Any
 
 from pydantic import Field, BaseModel, ConfigDict
 from langchain_core.outputs import ChatResult
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.callbacks import (
     CallbackManagerForLLMRun,
     AsyncCallbackManagerForLLMRun,
 )
+from langchain_core.runnables import Runnable
+from langchain_core.language_models.base import LanguageModelInput
 from langchain_core.language_models.chat_models import BaseChatModel
 
 
@@ -54,8 +56,20 @@ class CapabilityAwareChatModel(BaseChatModel):
     ) -> ChatResult:
         return await self.wrapped._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
-    def bind_tools(self, tools: Any, *, tool_choice: str | None = None, **kwargs: Any) -> Any:
+    def bind_tools(
+        self,
+        tools: Any,
+        *,
+        tool_choice: str | None = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, AIMessage]:
         return self.wrapped.bind_tools(tools, tool_choice=tool_choice, **kwargs)
 
-    def with_structured_output(self, schema: dict[str, Any] | type, *, include_raw: bool = False, **kwargs: Any) -> Any:
+    def with_structured_output(
+        self,
+        schema: dict[str, Any] | type,
+        *,
+        include_raw: bool = False,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, dict[str, Any] | BaseModel]:
         return self.wrapped.with_structured_output(schema, include_raw=include_raw, **kwargs)

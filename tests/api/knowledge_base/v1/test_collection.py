@@ -4,9 +4,11 @@ import pytest
 from unittest.mock import AsyncMock
 
 # 存储创建的资源 ID，用于后续测试
-collection_id = None
-external_collection_id = None
-embedding_model_id = None
+STATE: dict[str, int | None] = {
+    "collection_id": None,
+    "external_collection_id": None,
+    "embedding_model_id": None,
+}
 
 
 # =============================================================================
@@ -16,7 +18,6 @@ embedding_model_id = None
 
 def test_create_embedding_model_for_collection(client):
     """测试创建 Embedding 模型配置（为 Collection 测试准备）"""
-    global embedding_model_id
     response = client.post(
         "/v1/config/embedding-model",
         json={
@@ -34,7 +35,7 @@ def test_create_embedding_model_for_collection(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
-    embedding_model_id = data.get("data", {}).get("id")
+    STATE["embedding_model_id"] = data.get("data", {}).get("id")
 
 
 # =============================================================================
@@ -70,7 +71,6 @@ async def bind_mock_providers():
 
 def test_create_collection_basic(client):
     """测试创建基础 Collection"""
-    global collection_id
     response = client.post(
         "/v1/collection",
         json={
@@ -79,7 +79,7 @@ def test_create_collection_basic(client):
             "is_public": True,
             "is_temp": False,
             "is_external": False,
-            "embedding_model_config_id": embedding_model_id,
+            "embedding_model_config_id": STATE["embedding_model_id"],
             "workflow_template": {
                 "parse_document": {
                     "input": {"document_id": 0},
@@ -101,7 +101,7 @@ def test_create_collection_basic(client):
     assert data["data"]["name"] == "test-collection"
     assert data["data"]["description"] == "测试知识库集合"
     assert data["data"]["is_public"] is True
-    collection_id = data.get("data", {}).get("id")
+    STATE["collection_id"] = data.get("data", {}).get("id")
 
 
 def test_create_collection_with_workflow_subset(client):
@@ -113,7 +113,7 @@ def test_create_collection_with_workflow_subset(client):
             "description": "测试使用部分workflow活动的集合",
             "is_public": False,
             "is_external": False,
-            "embedding_model_config_id": embedding_model_id,
+            "embedding_model_config_id": STATE["embedding_model_id"],
             "workflow_template": {
                 "parse_document": {
                     "input": {"document_id": 0},
@@ -131,7 +131,6 @@ def test_create_collection_with_workflow_subset(client):
 
 def test_create_external_collection(client):
     """测试创建外部 Collection"""
-    global external_collection_id
     response = client.post(
         "/v1/collection",
         json={
@@ -152,7 +151,7 @@ def test_create_external_collection(client):
     data = response.json()
     assert data["code"] == 0
     assert data["data"]["is_external"] is True
-    external_collection_id = data.get("data", {}).get("id")
+    STATE["external_collection_id"] = data.get("data", {}).get("id")
 
 
 def test_list_collections(client):
@@ -189,7 +188,7 @@ def test_list_collections_with_filters(client):
 
 def test_get_collection_detail(client):
     """测试获取 Collection 详情"""
-    global collection_id
+    collection_id = STATE["collection_id"]
     if not collection_id:
         pytest.skip("未创建 Collection")
 
@@ -204,7 +203,7 @@ def test_get_collection_detail(client):
 
 def test_update_collection_basic(client):
     """测试更新 Collection 基本信息"""
-    global collection_id
+    collection_id = STATE["collection_id"]
     if not collection_id:
         pytest.skip("未创建 Collection")
 
@@ -231,7 +230,7 @@ def test_update_collection_basic(client):
 
 def test_update_collection_workflow(client):
     """测试更新 Collection 的 workflow_template"""
-    global collection_id
+    collection_id = STATE["collection_id"]
     if not collection_id:
         pytest.skip("未创建 Collection")
 
@@ -264,7 +263,7 @@ def test_update_collection_workflow(client):
 
 def test_update_external_collection_config(client):
     """测试更新外部 Collection 的 external_config"""
-    global external_collection_id
+    external_collection_id = STATE["external_collection_id"]
     if not external_collection_id:
         pytest.skip("未创建外部 Collection")
 
@@ -287,7 +286,7 @@ def test_update_external_collection_config(client):
 
 def test_update_collection_is_temp(client):
     """测试更新 Collection 的临时标志"""
-    global collection_id
+    collection_id = STATE["collection_id"]
     if not collection_id:
         pytest.skip("未创建 Collection")
 
@@ -318,7 +317,7 @@ def test_delete_collection_with_no_documents(client, bind_mock_providers):
             "description": "待删除的测试集合",
             "is_public": False,
             "is_external": False,
-            "embedding_model_config_id": embedding_model_id,
+            "embedding_model_config_id": STATE["embedding_model_id"],
             "workflow_template": {
                 "parse_document": {
                     "input": {"document_id": 0},
@@ -423,7 +422,7 @@ def test_create_collection_minimal(client):
         json={
             "name": "minimal-collection",
             "is_external": False,
-            "embedding_model_config_id": embedding_model_id,
+            "embedding_model_config_id": STATE["embedding_model_id"],
             "workflow_template": {
                 "parse_document": {
                     "input": {"document_id": 0},
@@ -448,7 +447,7 @@ def test_create_public_collection_with_empty_user_id(client):
             "description": "公共知识库，无特定用户",
             "is_public": True,
             "is_external": False,
-            "embedding_model_config_id": embedding_model_id,
+            "embedding_model_config_id": STATE["embedding_model_id"],
             "workflow_template": {
                 "parse_document": {
                     "input": {"document_id": 0},

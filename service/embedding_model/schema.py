@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
@@ -17,13 +19,18 @@ class EmbeddingModelConfigCreate(
             OpenAIExtraConfig(**extra_config)
 
     def validate_required_fields_by_type(self) -> None:
-        type_ = self.type
+        config = cast(Any, self)
+        type_ = cast(EmbeddingModelTypeEnum, config.type)
 
-        if type_ == EmbeddingModelTypeEnum.openai and not self.api_key:
+        if type_ == EmbeddingModelTypeEnum.openai and not config.api_key:
             raise ApiException("OpenAI Embedding 需要 api_key")
 
     def validate_extra_config(self) -> None:
-        self.validate_extra_config_by_type(self.type, self.extra_config)
+        config = cast(Any, self)
+        self.validate_extra_config_by_type(
+            cast(EmbeddingModelTypeEnum, config.type),
+            cast(dict[str, Any], config.extra_config),
+        )
 
 
 class EmbeddingModelConfigList(

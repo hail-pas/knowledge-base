@@ -16,12 +16,10 @@ class PaddleOCREngine(BaseEngine):
     supported_formats = [".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"]
 
     def __init__(self) -> None:
-        self.ocr = None
+        self.ocr: PaddleOCR | None = None
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
-        if self.ocr is None:
-            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
-            self.ocr = PaddleOCR(use_angle_cls=True, lang="ch")
+        self._ensure_ocr()
 
         ext = Path(file_path).suffix.lower()
 
@@ -30,6 +28,7 @@ class PaddleOCREngine(BaseEngine):
         return await self._parse_image(file_path)
 
     async def _parse_pdf(self, file_path: str) -> ParseResult:
+        ocr = self._ensure_ocr()
         images = convert_from_path(file_path, dpi=100)
         all_text = []
         pages_result = []
@@ -37,7 +36,7 @@ class PaddleOCREngine(BaseEngine):
 
         for page_num, image in enumerate(images):
             image_array = np.array(image)
-            result = self.ocr.ocr(image_array)
+            result = ocr.ocr(image_array)
             text_lines, page_confidence = self._extract_lines_from_result(result)
 
             page_text = "\n".join(text_lines)
@@ -66,7 +65,8 @@ class PaddleOCREngine(BaseEngine):
         )
 
     async def _parse_image(self, file_path: str) -> ParseResult:
-        result = self.ocr.ocr(file_path)
+        ocr = self._ensure_ocr()
+        result = ocr.ocr(file_path)
         text_lines, confidence_scores = self._extract_lines_from_result(result)
 
         avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.75
@@ -90,6 +90,12 @@ class PaddleOCREngine(BaseEngine):
             confidence=avg_confidence,
             engine_used="paddleocr",
         )
+
+    def _ensure_ocr(self) -> PaddleOCR:
+        if self.ocr is None:
+            os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+            self.ocr = PaddleOCR(use_angle_cls=True, lang="ch")
+        return self.ocr
 
     def _extract_lines_from_result(self, result: object) -> tuple[list[str], list[float]]:
         text_lines: list[str] = []

@@ -1,7 +1,7 @@
 import uuid
 import traceback
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, cast
 from datetime import UTC, datetime
 
 from loguru import logger
@@ -263,10 +263,9 @@ def activity_task(
         task_name = name if name else f"{prefix}.{task_class.__name__}"
 
         existing_task = celery_app.tasks.get(task_name)
+        existing_module = getattr(existing_task, "__module__", "unknown") if existing_task else "unknown"
+        existing_name = getattr(existing_task, "__name__", "unknown") if existing_task else "unknown"
         if existing_task and not allow_override:
-            existing_module = getattr(existing_task, "__module__", "unknown")
-            existing_name = getattr(existing_task, "__name__", "unknown")
-
             error_msg = (
                 f"Task name '{task_name}' already registered!\n"
                 f"  Existing: {existing_name} from {existing_module}\n"
@@ -309,13 +308,14 @@ def activity_task(
             instance = task_class(activity_uid, execute_mode=execute_mode)
             return await instance._execute_lifecycle()
 
-        _celery_task_wrapper.async_call = _async_wrapper
+        task_wrapper = cast(Any, _celery_task_wrapper)
+        task_wrapper.async_call = _async_wrapper
 
         logger.info(
             f"Registered activity task: {task_name} (class={task_class.__name__}, module={task_class.__module__})",
         )
 
-        return _celery_task_wrapper
+        return task_wrapper
 
     if decorator_arg is None:
         return lambda task_class: _create_task(task_class)

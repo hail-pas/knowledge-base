@@ -3,10 +3,12 @@
 import pytest
 
 # 存储创建的资源 ID，用于后续测试
-file_source_id = None
-llm_model_id = None
-indexing_backend_id = None
-embedding_model_id = None
+STATE: dict[str, int | None] = {
+    "file_source_id": None,
+    "llm_model_id": None,
+    "indexing_backend_id": None,
+    "embedding_model_id": None,
+}
 
 
 # =============================================================================
@@ -16,7 +18,6 @@ embedding_model_id = None
 
 def test_create_file_source_local(client):
     """测试创建本地文件源"""
-    global file_source_id
     response = client.post(
         "/v1/config/file-source",
         json={
@@ -30,7 +31,7 @@ def test_create_file_source_local(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
-    file_source_id = data.get("data", {}).get("id")
+    STATE["file_source_id"] = data.get("data", {}).get("id")
 
 
 def test_create_file_source_s3(client):
@@ -67,7 +68,7 @@ def test_list_file_sources(client):
 
 def test_get_file_source_detail(client):
     """测试获取文件源详情"""
-    global file_source_id
+    file_source_id = STATE["file_source_id"]
     if not file_source_id:
         pytest.skip("未创建文件源")
     response = client.get(f"/v1/config/file-source/{file_source_id}")
@@ -83,7 +84,6 @@ def test_get_file_source_detail(client):
 
 def test_create_llm_model_openai(client):
     """测试创建 OpenAI LLM 模型配置"""
-    global llm_model_id
     response = client.post(
         "/v1/config/llm-model",
         json={
@@ -103,7 +103,7 @@ def test_create_llm_model_openai(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
-    llm_model_id = data.get("data", {}).get("id")
+    STATE["llm_model_id"] = data.get("data", {}).get("id")
 
 
 def test_create_llm_model_deepseek(client):
@@ -136,7 +136,7 @@ def test_list_llm_models(client):
 
 def test_get_llm_model_detail(client):
     """测试获取 LLM 模型配置详情"""
-    global llm_model_id
+    llm_model_id = STATE["llm_model_id"]
     if not llm_model_id:
         pytest.skip("未创建 LLM 模型配置")
     response = client.get(f"/v1/config/llm-model/{llm_model_id}")
@@ -152,7 +152,6 @@ def test_get_llm_model_detail(client):
 
 def test_create_indexing_backend_elasticsearch(client):
     """测试创建 Elasticsearch 索引后端配置"""
-    global indexing_backend_id
     response = client.post(
         "/v1/config/indexing-backend",
         json={
@@ -171,7 +170,7 @@ def test_create_indexing_backend_elasticsearch(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
-    indexing_backend_id = data.get("data", {}).get("id")
+    STATE["indexing_backend_id"] = data.get("data", {}).get("id")
 
 
 def test_create_indexing_backend_milvus(client):
@@ -208,7 +207,7 @@ def test_list_indexing_backends(client):
 
 def test_get_indexing_backend_detail(client):
     """测试获取索引后端配置详情"""
-    global indexing_backend_id
+    indexing_backend_id = STATE["indexing_backend_id"]
     if not indexing_backend_id:
         pytest.skip("未创建索引后端配置")
     response = client.get(f"/v1/config/indexing-backend/{indexing_backend_id}")
@@ -224,7 +223,6 @@ def test_get_indexing_backend_detail(client):
 
 def test_create_embedding_model_openai(client):
     """测试创建 OpenAI Embedding 模型配置"""
-    global embedding_model_id
     response = client.post(
         "/v1/config/embedding-model",
         json={
@@ -243,7 +241,7 @@ def test_create_embedding_model_openai(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
-    embedding_model_id = data.get("data", {}).get("id")
+    STATE["embedding_model_id"] = data.get("data", {}).get("id")
 
 
 def test_list_embedding_models(client):
@@ -258,7 +256,7 @@ def test_list_embedding_models(client):
 
 def test_get_embedding_model_detail(client):
     """测试获取 Embedding 模型配置详情"""
-    global embedding_model_id
+    embedding_model_id = STATE["embedding_model_id"]
     if not embedding_model_id:
         pytest.skip("未创建 Embedding 模型配置")
     response = client.get(f"/v1/config/embedding-model/{embedding_model_id}")

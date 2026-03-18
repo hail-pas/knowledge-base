@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
@@ -19,17 +21,22 @@ class IndexingBackendConfigCreate(
             MilvusConfig(**extra_config)
 
     def validate_required_fields_by_type(self) -> None:
-        type_ = self.type
+        config = cast(Any, self)
+        type_ = cast(IndexingBackendTypeEnum, config.type)
 
         if type_ == IndexingBackendTypeEnum.elasticsearch:
-            if not self.host or not self.port:
+            if not config.host or not config.port:
                 raise ApiException("Elasticsearch 需要 host 和 port")
 
-        elif type_ == IndexingBackendTypeEnum.milvus and (not self.host or not self.port):
+        elif type_ == IndexingBackendTypeEnum.milvus and (not config.host or not config.port):
             raise ApiException("Milvus 需要 host 和 port")
 
     def validate_extra_config(self) -> None:
-        self.validate_extra_config_by_type(self.type, self.extra_config)
+        config = cast(Any, self)
+        self.validate_extra_config_by_type(
+            cast(IndexingBackendTypeEnum, config.type),
+            cast(dict[str, Any], config.extra_config),
+        )
 
 
 class IndexingBackendConfigList(

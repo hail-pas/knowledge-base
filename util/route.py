@@ -45,7 +45,8 @@ def gte_all_uris(
                     )
                     paths.append(full_path)
             elif isinstance(route, WebSocketRoute):
-                if f"{method}:{route_info['path']}" in paths:
+                full_path = f"ws:{route_info['path']}"
+                if full_path in paths:
                     continue
                 uri_list.append(
                     {

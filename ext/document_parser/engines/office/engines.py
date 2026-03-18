@@ -164,8 +164,9 @@ class PPTXEngine(BaseEngine):
             slide_text = []
 
             for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    slide_text.append(shape.text.strip())
+                text = getattr(shape, "text", "")
+                if isinstance(text, str) and text.strip():
+                    slide_text.append(text.strip())
 
             page_content = "\n\n".join(slide_text)
             all_text.append(page_content)

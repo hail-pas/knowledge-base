@@ -69,7 +69,8 @@ async def test_live_langchain_model_can_chat():
 
         response = await model.ainvoke(
             [HumanMessage(content="What is 1 + 1? Reply with only the digit.")],
-            config={"temperature": 0.0, "max_tokens": 16},
+            temperature=0.0,
+            max_tokens=16,
         )
 
         output = response.text().strip()

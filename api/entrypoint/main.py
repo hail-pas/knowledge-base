@@ -4,7 +4,7 @@ import signal
 import logging
 import argparse
 import importlib
-from typing import Any
+from typing import Any, Protocol, cast
 
 from core.api import ApiApplication
 
@@ -19,6 +19,10 @@ from loguru import logger  # type:ignore
 from config.main import local_configs  # noqa
 
 """FastAPI"""
+
+
+class AppStartupHook(Protocol):
+    async def before_server_start(self) -> None: ...
 
 
 def handle_sigterm(signum, frame) -> None:
@@ -118,7 +122,8 @@ if __name__ == "__main__":
     # --bind 0.0.0.0:80
     # import sys
     if hasattr(app, "before_server_start"):
-        asyncio.get_event_loop().run_until_complete(app.before_server_start())
+        startup_hook = cast(AppStartupHook, app)
+        asyncio.get_event_loop().run_until_complete(startup_hook.before_server_start())
 
     options = {
         "bind": f"{local_configs.server.address.host}:{local_configs.server.address.port}",

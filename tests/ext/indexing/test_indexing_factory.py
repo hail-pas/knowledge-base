@@ -3,6 +3,8 @@
 测试动态创建 IndexModel 类的功能
 """
 
+from typing import cast
+
 import pytest
 from unittest.mock import Mock, MagicMock, AsyncMock
 from pydantic import Field
@@ -78,7 +80,7 @@ class ChunkIndex(BaseIndexModel):
     content: str
     document_id: int
 
-    class Meta:
+    class Meta(BaseIndexModel.Meta):
         index_name = "chunks"
         dense_vector_field = "dense_vector"
         dense_vector_dimension = None
@@ -308,7 +310,7 @@ class TestIndexModelFactory:
         base_model.Meta.provider = mock_provider
 
         with pytest.raises(TypeError, match="must be EmbeddingModelConfig"):
-            await IndexModelFactory.create_for_embedding(base_model, "not-a-config")
+            await IndexModelFactory.create_for_embedding(base_model, cast(EmbeddingModelConfig, "not-a-config"))
 
     async def test_dynamic_model_can_be_instantiated(self, mock_provider, embedding_configs):
         """测试动态模型可以正常实例化"""
@@ -317,7 +319,7 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = cast(type[ChunkIndex], await IndexModelFactory.create_for_embedding(base_model, emb_config))
 
         instance = dynamic_model(
             content="test content",

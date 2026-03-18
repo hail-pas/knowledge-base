@@ -42,16 +42,16 @@ class RequestIdPlugin(Plugin):
 
     async def enrich_response(
         self,
-        response: Response | Message,
+        arg: Response | Message,
     ) -> None:
         value = str(context.get(self.key))
         # for ContextMiddleware
-        if isinstance(response, Response):
-            response.headers[ResponseHeaderKeyEnum.request_id.value] = value
+        if isinstance(arg, Response):
+            arg.headers[ResponseHeaderKeyEnum.request_id.value] = value
         # for ContextPureMiddleware
         else:
-            if response["type"] == "http.response.start":
-                headers = MutableHeaders(scope=response)
+            if arg["type"] == "http.response.start":
+                headers = MutableHeaders(scope=arg)
                 headers.append(ResponseHeaderKeyEnum.request_id.value, value)
 
 
@@ -84,19 +84,19 @@ class RequestProcessInfoPlugin(Plugin):
 
     async def enrich_response(
         self,
-        response: Response | Message,
+        arg: Response | Message,
     ) -> None:
         request_start_timestamp = context.get(RequestStartTimestampPlugin.key)
         if not request_start_timestamp:
             raise RuntimeError("Cannot evaluate process time")
         process_time = (time.time() - float(request_start_timestamp)) * 1000  # ms
-        if isinstance(response, Response):
-            response.headers[ResponseHeaderKeyEnum.process_time.value] = str(
+        if isinstance(arg, Response):
+            arg.headers[ResponseHeaderKeyEnum.process_time.value] = str(
                 process_time,
             )
         else:
-            if response["type"] == "http.response.start":
-                headers = MutableHeaders(scope=response)
+            if arg["type"] == "http.response.start":
+                headers = MutableHeaders(scope=arg)
                 headers.append(
                     ResponseHeaderKeyEnum.process_time.value,
                     str(process_time),

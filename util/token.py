@@ -7,13 +7,17 @@ Token计数工具类
 3. 按中文词汇计数（使用jieba）
 """
 
+from typing import Any, cast
+
 from loguru import logger
 
 try:
-    import jieba
+    import jieba  # pyright: ignore[reportMissingImports]
 except ImportError:
     jieba = None
     logger.warning("jieba not installed, Chinese word segmentation disabled")
+
+jieba = jieba if jieba is not None else cast(Any, None)
 
 try:
     import tiktoken

@@ -208,3 +208,5 @@ local
 
 tests/temp
 tests/data
+.codex
+.playwright-cli

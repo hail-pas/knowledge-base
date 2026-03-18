@@ -4,8 +4,8 @@ from inspect import isclass, isfunction
 from contextlib import asynccontextmanager
 from collections.abc import Callable, AsyncGenerator
 
-import anyio
 from fastapi import FastAPI, APIRouter
+from anyio.to_thread import current_default_thread_limiter
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -88,7 +88,7 @@ class ApiApplication(FastAPI):
 
 
 async def set_threadpool_tokens(number_of_tokens: int = 100) -> None:
-    limiter = anyio.to_thread.current_default_thread_limiter()
+    limiter = current_default_thread_limiter()
     limiter.total_tokens = number_of_tokens
 
 

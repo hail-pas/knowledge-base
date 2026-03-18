@@ -127,6 +127,7 @@ async def test_csv_engine_parses_csv_fixture():
     assert result.engine_used == "csv"
     assert result.page_count == 1
     assert result.metadata == {"row_count": 2, "column_count": 3}
+    assert result.structured_data is not None
     assert result.structured_data["table"]["rows"][0]["name"] == "alice"
 
 
@@ -139,6 +140,7 @@ async def test_json_engine_parses_json_fixture():
     assert result.engine_used == "json"
     assert result.format == OutputFormat.JSON
     assert result.page_count == 1
+    assert result.structured_data is not None
     assert result.structured_data["items"] == [1, 2, 3]
 
 

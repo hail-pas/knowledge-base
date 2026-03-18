@@ -87,16 +87,16 @@ class TimestampField(fields.DatetimeField):
 
     SQL_TYPE = "BIGINT"
 
-    class _db_mysql:
+    class _db_mysql(fields.DatetimeField._db_mysql):
         SQL_TYPE = "BIGINT"
 
-    class _db_postgres:
+    class _db_postgres(fields.DatetimeField._db_postgres):
         SQL_TYPE = "BIGINT"
 
-    class _db_mssql:
+    class _db_mssql(fields.DatetimeField._db_mssql):
         SQL_TYPE = "BIGINT"
 
-    class _db_oracle:
+    class _db_oracle(fields.DatetimeField._db_oracle):
         SQL_TYPE = "INT"
 
     def __init__(
@@ -173,7 +173,7 @@ class TimeField(fields.TimeField):
 
     def to_db_value(
         self,
-        value: datetime.time | None,  # type: ignore
+        value: datetime.time | datetime.timedelta | None,
         instance: "type[Model] | Model",
     ) -> datetime.time | datetime.timedelta | None:
         # Only do this if it is a Model instance, not class. Test for guaranteed instance var
@@ -183,6 +183,8 @@ class TimeField(fields.TimeField):
             now = timezone.now().time()
             setattr(instance, self.model_field_name, now)
             return now
+        if isinstance(value, datetime.timedelta):
+            value = self.timedelta_to_time(value)
         if value is not None and get_use_tz() and timezone.is_naive(value):
             warnings.warn(  # noqa: B028
                 f"TimeField {self.model_field_name} received a naive time ({value})"

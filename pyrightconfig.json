@@ -1,0 +1,14 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "standard",
+  "include": ["api", "service", "tests", "ext", "core", "util"],
+  "exclude": [".venv", "**/__pycache__", ".codex", ".playwright-cli"],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["."],
+    },
+  ],
+}

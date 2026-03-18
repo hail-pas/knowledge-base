@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Demo</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --bg-soft: #ebe4d6;
+      --panel: rgba(255, 251, 245, 0.94);
+      --panel-strong: #fffdf9;
+      --line: rgba(60, 53, 39, 0.12);
+      --line-strong: rgba(60, 53, 39, 0.2);
+      --ink: #221f1a;
+      --muted: #6c665d;
+      --accent: #0f766e;
+      --accent-soft: rgba(15, 118, 110, 0.1);
+      --accent-strong: #115e59;
+      --danger: #b42318;
+      --danger-soft: rgba(180, 35, 24, 0.1);
+      --warn: #b45309;
+      --warn-soft: rgba(180, 83, 9, 0.12);
+      --shadow: 0 18px 50px rgba(34, 31, 26, 0.12);
+      --radius-xl: 26px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+      --sans: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+      --serif: "Iowan Old Style", "Baskerville", serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 24%),
+        radial-gradient(circle at bottom right, rgba(17, 94, 89, 0.1), transparent 20%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(34, 31, 26, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 31, 26, 0.03) 1px, transparent 1px);
+      background-size: 26px 26px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent 90%);
+    }
+
+    .app {
+      position: relative;
+      min-height: 100vh;
+      padding: 22px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .hero {
+      padding: 22px 24px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    .hero-copy {
+      display: grid;
+      gap: 10px;
+      max-width: 720px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(32px, 5vw, 44px);
+      letter-spacing: -0.05em;
+      line-height: 0.92;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .hero-meta {
+      min-width: min(100%, 360px);
+      display: grid;
+      gap: 10px;
+    }
+
+    .chip-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .chip strong {
+      font-family: var(--mono);
+      color: var(--ink);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr) 360px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      overflow: hidden;
+    }
+
+    .panel-body {
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+    }
+
+    h2 {
+      margin: 4px 0 0;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
+    .muted {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    input,
+    textarea,
+    button {
+      width: 100%;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--ink);
+      font: inherit;
+      padding: 12px 14px;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+    }
+
+    input:focus,
+    textarea:focus {
+      outline: none;
+      border-color: rgba(15, 118, 110, 0.35);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+    }
+
+    textarea {
+      min-height: 118px;
+      resize: vertical;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 700;
+      border: none;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      color: #fff;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button.secondary {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      border: 1px solid rgba(15, 118, 110, 0.18);
+    }
+
+    button.ghost {
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      transform: none;
+      cursor: not-allowed;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .note {
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(15, 118, 110, 0.16);
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--accent-strong);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .note.warn {
+      background: var(--warn-soft);
+      border-color: rgba(180, 83, 9, 0.18);
+      color: var(--warn);
+    }
+
+    .note.error {
+      background: var(--danger-soft);
+      border-color: rgba(180, 35, 24, 0.18);
+      color: var(--danger);
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      max-height: calc(100vh - 360px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .conversation-item,
+    .profile-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--panel-strong);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .conversation-item.active {
+      border-color: rgba(15, 118, 110, 0.28);
+      box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.2);
+      background: rgba(240, 253, 250, 0.72);
+    }
+
+    .conversation-item button {
+      width: auto;
+      justify-self: start;
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    .conversation-title,
+    .profile-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    .conversation-preview,
+    .profile-meta,
+    .tiny {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .profile-item {
+      cursor: default;
+    }
+
+    .profile-select {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .profile-select input {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      accent-color: var(--accent);
+    }
+
+    .profile-config {
+      margin: 0;
+      padding: 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: rgba(249, 247, 242, 0.9);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .chat-panel {
+      min-height: calc(100vh - 174px);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .chat-header {
+      padding: 18px 18px 0;
+      display: grid;
+      gap: 14px;
+    }
+
+    .chat-status {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .chat-title {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .chat-subtitle {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .messages {
+      min-height: 420px;
+      padding: 0 18px 18px;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+      overflow: auto;
+    }
+
+    .empty-state {
+      margin: 22px 0 0;
+      padding: 26px;
+      border: 1px dashed rgba(60, 53, 39, 0.18);
+      border-radius: var(--radius-xl);
+      background: rgba(255, 255, 255, 0.54);
+      color: var(--muted);
+      line-height: 1.8;
+      font-size: 14px;
+    }
+
+    .turn-card {
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+    }
+
+    .turn-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .turn-head .tiny {
+      font-family: var(--mono);
+    }
+
+    .bubble {
+      border-radius: 18px;
+      padding: 14px 16px;
+      line-height: 1.75;
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .bubble.user {
+      justify-self: end;
+      max-width: 82%;
+      background: rgba(15, 118, 110, 0.12);
+      border: 1px solid rgba(15, 118, 110, 0.18);
+    }
+
+    .bubble.assistant {
+      max-width: 100%;
+      background: rgba(248, 245, 239, 0.9);
+      border: 1px solid var(--line);
+    }
+
+    .bubble.pending {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .trace {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(250, 247, 241, 0.9);
+      overflow: hidden;
+    }
+
+    .trace summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 12px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ink);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .trace summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .trace-list {
+      border-top: 1px solid var(--line);
+      display: grid;
+    }
+
+    .trace-item {
+      padding: 12px 14px;
+      border-top: 1px solid rgba(60, 53, 39, 0.08);
+      display: grid;
+      gap: 6px;
+    }
+
+    .trace-item:first-child {
+      border-top: none;
+    }
+
+    .trace-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .trace-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .trace-json {
+      margin: 0;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      background: #f5f1ea;
+      border: 1px solid rgba(60, 53, 39, 0.08);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: auto;
+    }
+
+    .composer {
+      padding: 0 18px 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .composer textarea {
+      min-height: 132px;
+    }
+
+    .composer-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .selection-summary {
+      display: grid;
+      gap: 8px;
+    }
+
+    .selection-stats {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .stat {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .stat strong {
+      color: var(--ink);
+      font-family: var(--mono);
+      margin-left: 6px;
+    }
+
+    @media (max-width: 1180px) {
+      .layout {
+        grid-template-columns: 280px minmax(0, 1fr);
+      }
+
+      .right {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        padding: 14px;
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .chat-panel {
+        min-height: auto;
+      }
+
+      .list {
+        max-height: 320px;
+      }
+
+      .bubble.user {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="hero">
+      <div class="hero-copy">
+        <h1>Chat Demo</h1>
+        <p>Demo Build 2026-03-18 13:12</p>
+        <p>这个 demo 只保留真实聊天需要的链路：切历史会话、开一个本地草稿、配置 capability、发消息、看 turn 全过程。不会再先调用“创建会话”接口，只有真正发出第一个 turn 才会落库。</p>
+      </div>
+      <div class="hero-meta">
+        <div class="chip-row">
+          <div class="chip" id="socketChip">Socket <strong>Disconnected</strong></div>
+          <div class="chip" id="conversationChip">Conversation <strong>Draft</strong></div>
+          <div class="chip" id="turnChip">Turns <strong>0</strong></div>
+        </div>
+        <div class="note" id="notice">填写 token 后，先连接并加载历史；如果直接发第一条消息，也会自动建会话。</div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <aside class="panel">
+        <div class="panel-body">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Workspace</p>
+              <h2>历史会话</h2>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="tokenInput">Bearer Token</label>
+            <input id="tokenInput" placeholder="输入 JWT token" autocomplete="off" />
+          </div>
+
+          <div class="button-row">
+            <button id="connectBtn">连接并加载</button>
+            <button id="newConversationBtn" class="secondary">新建会话</button>
+          </div>
+
+          <p class="muted">“新建会话”只会打开一个空白草稿，不会调用创建接口。历史区展示的是已经发出过 turn 的真实会话。</p>
+
+          <div class="list" id="conversationList"></div>
+        </div>
+      </aside>
+
+      <main class="panel chat-panel">
+        <div class="chat-header">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Conversation</p>
+              <h2 class="chat-title" id="chatTitle">未创建的空白聊天</h2>
+            </div>
+          </div>
+          <div class="chat-status">
+            <p class="chat-subtitle" id="chatSubtitle">当前是本地草稿。发送第一条消息后会自动创建会话，并开始积累历史。</p>
+          </div>
+        </div>
+
+        <div class="messages" id="messages"></div>
+
+        <div class="composer">
+          <div class="field">
+            <label for="messageInput">聊天输入框</label>
+            <textarea id="messageInput" placeholder="输入问题，然后发送。支持首次发送自动创建会话。"></textarea>
+          </div>
+          <div class="composer-foot">
+            <p class="tiny">消息发送时，如果右侧 capability 配置有改动，会先保存到当前会话；草稿会话则会把当前配置作为默认配置一并创建。</p>
+            <button id="sendBtn">发送消息</button>
+          </div>
+        </div>
+      </main>
+
+      <aside class="panel right">
+        <div class="panel-body">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Capability</p>
+              <h2>配置与扩展</h2>
+            </div>
+            <button id="saveSelectionBtn" class="ghost">保存配置</button>
+          </div>
+
+          <div class="selection-summary">
+            <p class="muted">勾选 profile，底部 JSON 用来补充 `capability_binding_ids`、内联 `capabilities` 和 `metadata` 等扩展参数。</p>
+            <div class="selection-stats">
+              <div class="stat">Profiles<strong id="profileCount">0</strong></div>
+              <div class="stat">Inline Caps<strong id="inlineCount">0</strong></div>
+              <div class="stat">Bindings<strong id="bindingCount">0</strong></div>
+            </div>
+          </div>
+
+          <div class="list" id="profileList"></div>
+
+          <div class="field">
+            <label for="selectionExtras">扩展 ResourceSelection JSON</label>
+            <textarea id="selectionExtras"></textarea>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </div>
+
+  <script>
+    const chatRoot = new URL(".", window.location.href);
+    const capabilityRoot = new URL("capability/", chatRoot);
+    const SELECTION_EXTRAS_TEMPLATE = {
+      capability_binding_ids: [],
+      capabilities: [
+        {
+          capability_id: "builtin:function_call",
+          kind: "function_call",
+          name: "内置函数工具",
+          priority: 40,
+          config: {
+            tools: [
+              {
+                tool_name: "current_datetime",
+                title: "当前时间",
+                result_mode: "auto",
+              },
+              {
+                tool_name: "calculate_expression",
+                title: "表达式计算",
+                result_mode: "auto",
+              },
+            ],
+            fail_on_no_match: false,
+            stop_after_terminal: true,
+          },
+        },
+      ],
+      metadata: {},
+    };
+
+    const state = {
+      ws: null,
+      socketPromise: null,
+      socketToken: "",
+      conversations: [],
+      profiles: [],
+      currentConversation: null,
+      turns: [],
+      selectedProfileIds: new Set(),
+      selectionExtrasText: JSON.stringify(SELECTION_EXTRAS_TEMPLATE, null, 2),
+    };
+
+    const els = {
+      tokenInput: document.getElementById("tokenInput"),
+      connectBtn: document.getElementById("connectBtn"),
+      newConversationBtn: document.getElementById("newConversationBtn"),
+      conversationList: document.getElementById("conversationList"),
+      profileList: document.getElementById("profileList"),
+      selectionExtras: document.getElementById("selectionExtras"),
+      saveSelectionBtn: document.getElementById("saveSelectionBtn"),
+      messageInput: document.getElementById("messageInput"),
+      sendBtn: document.getElementById("sendBtn"),
+      messages: document.getElementById("messages"),
+      socketChip: document.getElementById("socketChip"),
+      conversationChip: document.getElementById("conversationChip"),
+      turnChip: document.getElementById("turnChip"),
+      notice: document.getElementById("notice"),
+      chatTitle: document.getElementById("chatTitle"),
+      chatSubtitle: document.getElementById("chatSubtitle"),
+      profileCount: document.getElementById("profileCount"),
+      inlineCount: document.getElementById("inlineCount"),
+      bindingCount: document.getElementById("bindingCount"),
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function prettyJSON(value) {
+      return JSON.stringify(value, null, 2);
+    }
+
+    function shortText(value, maxLength = 88) {
+      const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+      if (!normalized) return "暂无内容";
+      if (normalized.length <= maxLength) return normalized;
+      return `${normalized.slice(0, maxLength).trimEnd()}...`;
+    }
+
+    function formatTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      return new Intl.DateTimeFormat("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date);
+    }
+
+    function setNotice(message, tone = "info") {
+      els.notice.textContent = message;
+      els.notice.className = `note${tone === "info" ? "" : ` ${tone}`}`;
+    }
+
+    function updateChip(element, label, value) {
+      element.innerHTML = `${label} <strong>${escapeHtml(value)}</strong>`;
+    }
+
+    function authToken() {
+      return els.tokenInput.value.trim();
+    }
+
+    function authHeaderValue() {
+      const token = authToken();
+      return token ? `Bearer ${token}` : "";
+    }
+
+    function buildApiUrl(base, path = "", params = null) {
+      const url = new URL(path, base);
+      Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          url.searchParams.set(key, String(value));
+        }
+      });
+      return url.toString();
+    }
+
+    async function apiFetch(path, options = {}) {
+      const headers = new Headers(options.headers || {});
+      const authHeader = authHeaderValue();
+      if (authHeader) {
+        headers.set("Authorization", authHeader);
+      }
+      if (options.body && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
+      const response = await fetch(path, {
+        ...options,
+        headers,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || `${response.status} ${response.statusText}`);
+      }
+      if (!payload || payload.code !== 0) {
+        throw new Error(payload?.message || "请求失败");
+      }
+      return payload.data;
+    }
+
+    function createRequestId() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+      return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    }
+
+    function readSelectionPayload() {
+      let extras;
+      try {
+        extras = JSON.parse(els.selectionExtras.value.trim() || "{}");
+      } catch (error) {
+        throw new Error(`扩展 ResourceSelection 不是合法 JSON: ${error.message}`);
+      }
+      if (!extras || typeof extras !== "object" || Array.isArray(extras)) {
+        throw new Error("扩展 ResourceSelection 必须是 JSON object");
+      }
+      const bindingIds = Array.isArray(extras.capability_binding_ids)
+        ? extras.capability_binding_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)
+        : [];
+      const capabilities = Array.isArray(extras.capabilities) ? extras.capabilities : [];
+      const metadata = extras.metadata && typeof extras.metadata === "object" && !Array.isArray(extras.metadata)
+        ? extras.metadata
+        : {};
+      return {
+        use_system_defaults: extras.use_system_defaults ?? true,
+        use_conversation_defaults: extras.use_conversation_defaults ?? true,
+        capability_profile_ids: Array.from(state.selectedProfileIds).sort((a, b) => a - b),
+        capability_binding_ids: bindingIds,
+        capabilities,
+        metadata,
+      };
+    }
+
+    function applySelection(selection = {}) {
+      state.selectedProfileIds = new Set((selection.capability_profile_ids || []).map((item) => Number(item)));
+      els.selectionExtras.value = prettyJSON({
+        capability_binding_ids: selection.capability_binding_ids || [],
+        capabilities: selection.capabilities || [],
+        metadata: selection.metadata || {},
+        use_system_defaults: selection.use_system_defaults ?? true,
+        use_conversation_defaults: selection.use_conversation_defaults ?? true,
+      });
+      renderProfiles();
+      renderSelectionStats();
+    }
+
+    function resetDraftConversation() {
+      state.currentConversation = null;
+      state.turns = [];
+      applySelection({
+        capability_profile_ids: [],
+        capability_binding_ids: [],
+        capabilities: [],
+        metadata: {},
+      });
+      renderConversationList();
+      renderChat();
+      setNotice("已切到空白草稿。发送第一条消息时才会真正创建会话。", "info");
+    }
+
+    function normalizeTurnRecord(item) {
+      return {
+        requestId: item.requestId || null,
+        turn: item.turn || {
+          id: null,
+          conversation_id: state.currentConversation?.id ?? null,
+          seq: null,
+          status: "pending",
+        },
+        input: item.input || null,
+        output: item.output || null,
+        streamingText: item.streamingText || "",
+        events: Array.isArray(item.events) ? item.events : [],
+      };
+    }
+
+    function findTurnRecord(turnId) {
+      return state.turns.find((item) => item.turn.id === turnId) || null;
+    }
+
+    function fallbackTurnRecord(message) {
+      let record = findTurnRecord(message.turn_id);
+      if (record) return record;
+      record = state.turns.find((item) => !item.turn.id) || null;
+      if (record) {
+        record.turn.id = message.turn_id;
+        return record;
+      }
+      record = normalizeTurnRecord({
+        turn: {
+          id: message.turn_id,
+          conversation_id: message.conversation_id,
+          seq: null,
+          status: "pending",
+        },
+        events: [],
+      });
+      state.turns.push(record);
+      return record;
+    }
+
+    function describeEvent(item) {
+      const payload = item.payload || {};
+      if (item.event === "turn.accepted" || item.event === "turn.started" || item.event === "turn.completed" || item.event === "turn.failed" || item.event === "turn.canceled") {
+        return `turn status: ${payload.turn?.status || "-"}`;
+      }
+      if (item.event === "step.created" || item.event === "step.started" || item.event === "step.completed" || item.event === "step.failed") {
+        return `${payload.step?.name || "step"} · ${payload.step?.status || "-"}`;
+      }
+      if (item.event === "data.created" || item.event === "data.completed") {
+        return `${payload.data?.kind || "data"} · ${payload.data?.payload_type || "-"}`;
+      }
+      if (item.event === "message.delta") {
+        return shortText(payload.text || "", 72);
+      }
+      if (item.event === "message.completed") {
+        return shortText(bundleText(payload), 72);
+      }
+      if (item.event === "error" || item.event === "warning") {
+        return payload.message || "-";
+      }
+      if (item.event === "ack") {
+        return `${payload.command || "command"} accepted`;
+      }
+      return shortText(prettyJSON(payload), 72);
+    }
+
+    function bundleText(bundle) {
+      if (!bundle || !Array.isArray(bundle.blocks)) return "";
+      return bundle.blocks
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("\n")
+        .trim();
+    }
+
+    function traceSummary(item) {
+      return `
+        <div class="trace-item">
+          <div class="trace-meta">
+            <span>${escapeHtml(item.event)}</span>
+            <span>seq=${escapeHtml(item.seq ?? "-")} · ${escapeHtml(formatTime(item.ts))}</span>
+          </div>
+          <p class="trace-title">${escapeHtml(describeEvent(item))}</p>
+          <pre class="trace-json">${escapeHtml(prettyJSON(item.payload || {}))}</pre>
+        </div>
+      `;
+    }
+
+    function renderConversationList() {
+      if (!state.conversations.length) {
+        els.conversationList.innerHTML = `<div class="empty-state">没有历史会话。发送第一条消息后，这里会自动出现。</div>`;
+        return;
+      }
+      els.conversationList.innerHTML = state.conversations.map((item) => {
+        const isActive = state.currentConversation && item.conversation.id === state.currentConversation.id;
+        return `
+          <article class="conversation-item${isActive ? " active" : ""}" data-id="${item.conversation.id}">
+            <div>
+              <p class="conversation-title">${escapeHtml(item.conversation.title)}</p>
+              <p class="conversation-preview">${escapeHtml(shortText(item.latest_user_text || item.latest_assistant_text || "暂无消息", 72))}</p>
+            </div>
+            <p class="tiny">ID ${escapeHtml(item.conversation.id)} · 更新于 ${escapeHtml(formatTime(item.conversation.updated_at))}</p>
+            <button class="ghost" data-action="open" data-id="${item.conversation.id}">恢复聊天</button>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderProfiles() {
+      if (!state.profiles.length) {
+        els.profileList.innerHTML = `<div class="empty-state">先填写 token 并连接，才能加载 capability profiles。</div>`;
+        return;
+      }
+      els.profileList.innerHTML = state.profiles.map((profile) => {
+        const checked = state.selectedProfileIds.has(profile.id) ? "checked" : "";
+        return `
+          <article class="profile-item">
+            <label class="profile-select">
+              <input type="checkbox" data-profile-id="${profile.id}" ${checked} />
+              <div>
+                <p class="profile-title">${escapeHtml(profile.name)}</p>
+                <p class="profile-meta">${escapeHtml(profile.kind)} · ${escapeHtml(profile.owner_account_id == null ? "global" : `owned:${profile.owner_account_id}`)}</p>
+              </div>
+            </label>
+            <pre class="profile-config">${escapeHtml(prettyJSON(profile.config || {}))}</pre>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderSelectionStats() {
+      let selection;
+      try {
+        selection = readSelectionPayload();
+      } catch {
+        selection = {
+          capability_profile_ids: Array.from(state.selectedProfileIds),
+          capability_binding_ids: [],
+          capabilities: [],
+        };
+      }
+      els.profileCount.textContent = String(selection.capability_profile_ids.length);
+      els.inlineCount.textContent = String((selection.capabilities || []).length);
+      els.bindingCount.textContent = String((selection.capability_binding_ids || []).length);
+    }
+
+    function renderChat() {
+      updateChip(els.conversationChip, "Conversation", state.currentConversation ? state.currentConversation.id : "Draft");
+      updateChip(els.turnChip, "Turns", state.turns.length);
+      els.chatTitle.textContent = state.currentConversation ? state.currentConversation.title : "未创建的空白聊天";
+      els.chatSubtitle.textContent = state.currentConversation
+        ? `会话 ${state.currentConversation.id} 已恢复。继续发消息会沿用这个会话，并展示每个 turn 的完整过程。`
+        : "当前是本地草稿。发送第一条消息后会自动创建会话，并开始积累历史。";
+
+      if (!state.turns.length) {
+        els.messages.innerHTML = `
+          <div class="empty-state">
+            这里会展示常规聊天消息和 turn 过程。
+            <br />
+            每个 turn 都会包含用户输入、最终响应，以及 ` +
+            "step/data/message/turn" +
+            ` 等完整中间事件。
+          </div>
+        `;
+        return;
+      }
+
+      els.messages.innerHTML = state.turns.map((item) => {
+        const turn = item.turn || {};
+        const inputText = bundleText(item.input);
+        const outputText = item.output ? bundleText(item.output) : item.streamingText;
+        const pending = !outputText;
+        return `
+          <article class="turn-card">
+            <div class="turn-head">
+              <p class="tiny">turn=${escapeHtml(turn.id ?? "pending")} · seq=${escapeHtml(turn.seq ?? "-")} · status=${escapeHtml(turn.status || "pending")}</p>
+              <p class="tiny">${escapeHtml(formatTime(turn.updated_at || turn.created_at || null))}</p>
+            </div>
+            <div class="bubble user">${escapeHtml(inputText || "空输入")}</div>
+            <div class="bubble assistant${pending ? " pending" : ""}">${escapeHtml(outputText || "等待响应中...")}</div>
+            <details class="trace" ${item.events.length && turn.status !== "completed" ? "open" : ""}>
+              <summary>
+                <span>Turn 过程</span>
+                <span>${escapeHtml(String(item.events.length))} events</span>
+              </summary>
+              <div class="trace-list">
+                ${item.events.length ? item.events.map(traceSummary).join("") : `<div class="trace-item"><p class="trace-title">还没有中间事件</p></div>`}
+              </div>
+            </details>
+          </article>
+        `;
+      }).join("");
+
+      els.messages.scrollTop = els.messages.scrollHeight;
+    }
+
+    async function loadProfiles() {
+      if (!authHeaderValue()) {
+        renderProfiles();
+        return;
+      }
+      state.profiles = await apiFetch(buildApiUrl(capabilityRoot, "profile"));
+      renderProfiles();
+      renderSelectionStats();
+    }
+
+    async function loadConversations() {
+      if (!authHeaderValue()) {
+        renderConversationList();
+        return;
+      }
+      state.conversations = await apiFetch(buildApiUrl(chatRoot, "conversation", { limit: 50 }));
+      renderConversationList();
+    }
+
+    async function hydrateConversationSummary(conversationId) {
+      if (!conversationId || !authHeaderValue()) return;
+      const summary = await apiFetch(buildApiUrl(chatRoot, `conversation/${conversationId}`));
+      state.currentConversation = summary;
+      renderConversationList();
+      renderChat();
+    }
+
+    async function openConversation(conversationId) {
+      const timeline = await apiFetch(buildApiUrl(chatRoot, `conversation/${conversationId}/timeline`));
+      state.currentConversation = timeline.conversation;
+      state.turns = (timeline.turns || []).map((item) => normalizeTurnRecord(item));
+      applySelection(timeline.conversation.default_resource_selection || {});
+      renderConversationList();
+      renderChat();
+      setNotice(`已恢复会话 ${conversationId}`, "info");
+    }
+
+    function socketStatusLabel() {
+      if (!state.ws) return "Disconnected";
+      if (state.ws.readyState === WebSocket.OPEN) return "Connected";
+      if (state.ws.readyState === WebSocket.CONNECTING) return "Connecting";
+      return "Disconnected";
+    }
+
+    function refreshSocketChip() {
+      updateChip(els.socketChip, "Socket", socketStatusLabel());
+    }
+
+    async function ensureSocket() {
+      const token = authToken();
+      if (!token) {
+        throw new Error("请先填写 token");
+      }
+      if (state.ws && state.ws.readyState === WebSocket.OPEN && state.socketToken === token) {
+        return state.ws;
+      }
+      if (state.ws && state.ws.readyState === WebSocket.OPEN && state.socketToken !== token) {
+        const staleSocket = state.ws;
+        state.ws = null;
+        state.socketPromise = null;
+        state.socketToken = "";
+        staleSocket.close(1000, "token_changed");
+      }
+      if (state.socketPromise) {
+        return state.socketPromise;
+      }
+      const url = new URL("ws", chatRoot);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      url.searchParams.set("token", token);
+
+      state.socketPromise = new Promise((resolve, reject) => {
+        const ws = new WebSocket(url.toString());
+        state.ws = ws;
+        refreshSocketChip();
+
+        ws.addEventListener("open", () => {
+          state.socketToken = token;
+          refreshSocketChip();
+          setNotice("WebSocket 已连接，可以直接发送消息。", "info");
+          resolve(ws);
+        }, { once: true });
+
+        ws.addEventListener("message", async (event) => {
+          const message = JSON.parse(event.data);
+          await handleSocketMessage(message);
+        });
+
+        ws.addEventListener("close", () => {
+          if (state.ws === ws) {
+            state.ws = null;
+            state.socketPromise = null;
+            state.socketToken = "";
+          }
+          refreshSocketChip();
+        });
+
+        ws.addEventListener("error", () => {
+          setNotice("WebSocket 连接失败", "error");
+          reject(new Error("WebSocket 连接失败"));
+        }, { once: true });
+      });
+
+      return state.socketPromise;
+    }
+
+    async function handleSocketMessage(message) {
+      if (message.event === "error") {
+        setNotice(message.payload?.message || "收到错误事件", "error");
+        return;
+      }
+
+      if (message.conversation_id && (!state.currentConversation || state.currentConversation.id !== message.conversation_id)) {
+        await hydrateConversationSummary(message.conversation_id);
+      }
+
+      if (message.event === "ack" && message.payload?.command === "turn.start") {
+        const record = fallbackTurnRecord(message);
+        record.requestId = message.payload.request_id || record.requestId;
+        renderChat();
+        return;
+      }
+
+      if (!message.turn_id) {
+        return;
+      }
+
+      const record = fallbackTurnRecord(message);
+      record.events.push(message);
+
+      if (message.payload?.turn) {
+        record.turn = {
+          ...record.turn,
+          ...message.payload.turn,
+        };
+      }
+      if (message.event === "message.delta") {
+        record.streamingText = `${record.streamingText || ""}${message.payload?.text || ""}`;
+      }
+      if (message.event === "message.completed") {
+        record.output = message.payload;
+        record.streamingText = bundleText(message.payload);
+      }
+      if (message.event === "turn.completed" || message.event === "turn.failed" || message.event === "turn.canceled") {
+        await loadConversations();
+        if (message.conversation_id) {
+          await hydrateConversationSummary(message.conversation_id);
+        }
+      }
+      renderChat();
+    }
+
+    async function saveSelection({ quiet = false } = {}) {
+      const payload = readSelectionPayload();
+      if (!state.currentConversation) {
+        if (!quiet) {
+          setNotice("当前还是空白草稿。发送第一条消息时会把这份配置作为会话默认配置一起创建。", "warn");
+        }
+        return payload;
+      }
+      const summary = await apiFetch(buildApiUrl(chatRoot, `conversation/${state.currentConversation.id}/resource-selection`), {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      state.currentConversation = summary;
+      applySelection(summary.default_resource_selection || payload);
+      await loadConversations();
+      renderChat();
+      if (!quiet) {
+        setNotice(`会话 ${state.currentConversation.id} 的 capability 配置已保存`, "info");
+      }
+      return payload;
+    }
+
+    async function sendMessage() {
+      const text = els.messageInput.value.trim();
+      if (!text) {
+        setNotice("请输入聊天内容", "warn");
+        return;
+      }
+
+      const selectionPayload = state.currentConversation
+        ? await saveSelection({ quiet: true })
+        : readSelectionPayload();
+
+      const requestId = createRequestId();
+      const draftTurn = normalizeTurnRecord({
+        requestId,
+        turn: {
+          id: null,
+          conversation_id: state.currentConversation?.id ?? null,
+          seq: null,
+          status: "pending",
+        },
+        input: {
+          role: "user",
+          blocks: [{ type: "text", text }],
+        },
+        output: null,
+        events: [],
+      });
+      state.turns.push(draftTurn);
+      renderChat();
+
+      const ws = await ensureSocket();
+      ws.send(JSON.stringify({
+        command: "turn.start",
+        payload: {
+          conversation_id: state.currentConversation ? state.currentConversation.id : null,
+          request_id: requestId,
+          input: {
+            role: "user",
+            blocks: [{ type: "text", text }],
+          },
+          resource_selection: state.currentConversation
+            ? { use_conversation_defaults: true }
+            : selectionPayload,
+        },
+      }));
+
+      els.messageInput.value = "";
+      setNotice("消息已发送，等待 turn 事件流。", "info");
+    }
+
+    async function connectAndLoad() {
+      if (!authToken()) {
+        throw new Error("请先填写 token");
+      }
+      localStorage.setItem("kb_chat_demo_token", authToken());
+      setNotice("正在使用 token 校验 HTTP 接口...", "info");
+      await Promise.all([loadProfiles(), loadConversations()]);
+      setNotice("token 校验通过，正在建立 WebSocket...", "info");
+      await ensureSocket();
+      renderChat();
+    }
+
+    function bindEvents() {
+      els.connectBtn.addEventListener("click", async () => {
+        try {
+          await connectAndLoad();
+        } catch (error) {
+          setNotice(error.message || "连接失败", "error");
+        }
+      });
+
+      els.newConversationBtn.addEventListener("click", () => {
+        resetDraftConversation();
+      });
+
+      els.saveSelectionBtn.addEventListener("click", async () => {
+        try {
+          await saveSelection();
+        } catch (error) {
+          setNotice(error.message || "保存 capability 配置失败", "error");
+        }
+      });
+
+      els.sendBtn.addEventListener("click", async () => {
+        try {
+          await sendMessage();
+        } catch (error) {
+          setNotice(error.message || "发送失败", "error");
+          renderChat();
+        }
+      });
+
+      els.messageInput.addEventListener("keydown", async (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          event.preventDefault();
+          try {
+            await sendMessage();
+          } catch (error) {
+            setNotice(error.message || "发送失败", "error");
+            renderChat();
+          }
+        }
+      });
+
+      els.profileList.addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+          return;
+        }
+        const profileId = Number(target.dataset.profileId);
+        if (!Number.isInteger(profileId)) {
+          return;
+        }
+        if (target.checked) {
+          state.selectedProfileIds.add(profileId);
+        } else {
+          state.selectedProfileIds.delete(profileId);
+        }
+        renderSelectionStats();
+      });
+
+      els.selectionExtras.addEventListener("input", () => {
+        renderSelectionStats();
+      });
+
+      els.conversationList.addEventListener("click", async (event) => {
+        const target = event.target;
+        const trigger = target.closest("[data-id]");
+        if (!trigger) {
+          return;
+        }
+        const conversationId = Number(trigger.dataset.id);
+        if (!Number.isInteger(conversationId)) {
+          return;
+        }
+        try {
+          await openConversation(conversationId);
+        } catch (error) {
+          setNotice(error.message || "恢复历史失败", "error");
+        }
+      });
+    }
+
+    async function bootstrap() {
+      els.selectionExtras.value = prettyJSON(SELECTION_EXTRAS_TEMPLATE);
+      const cachedToken = localStorage.getItem("kb_chat_demo_token");
+      if (cachedToken) {
+        els.tokenInput.value = cachedToken;
+      }
+      bindEvents();
+      renderConversationList();
+      renderProfiles();
+      renderSelectionStats();
+      renderChat();
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>

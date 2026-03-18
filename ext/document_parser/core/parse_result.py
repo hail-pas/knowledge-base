@@ -30,7 +30,7 @@ class ParseResult(BaseModel):
     content: str
     format: OutputFormat = Field(default=OutputFormat.TEXT)
     structured_data: Any | None = Field(default=None)
-    pages: list[PageResult] | None = Field(default=None)
+    pages: list[PageResult] = Field(default_factory=list)
     page_count: int = Field(default=0)
     metadata: dict[str, Any] = Field(default_factory=dict)
     parse_metadata: dict[str, Any] = Field(default_factory=dict)

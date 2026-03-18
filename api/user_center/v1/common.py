@@ -1,9 +1,9 @@
 import uuid
 import random
 
-from PIL import Image
 from fastapi import Body, Query, APIRouter
 from pydantic import Field, BaseModel
+from PIL.Image import Image as PILImage
 from captcha.image import ImageCaptcha, random_color  # type: ignore
 from fastapi.responses import StreamingResponse
 
@@ -16,6 +16,8 @@ from ext.ext_redis.helper import generate_captcha_code
 from ext.ext_tortoise.models.user_center import Account
 
 router = APIRouter()
+
+type ColorTuple = tuple[int, int, int] | tuple[int, int, int, int]
 
 
 class CaptchaCodeResponse(BaseModel):
@@ -37,9 +39,9 @@ async def captcha_image(
         def generate_image(
             self,
             chars: str,
-            bg_color: tuple[int, int, int] | None = None,
-            fg_color: tuple[int, int, int, int] | None = None,
-        ) -> Image:  # type: ignore
+            bg_color: ColorTuple | None = None,
+            fg_color: ColorTuple | None = None,
+        ) -> PILImage:
             """Generate the image of the given characters.
 
             :param chars: text to be generated.
@@ -50,7 +52,7 @@ async def captcha_image(
             self.create_noise_dots(im, color, 1, 20)
             self.create_noise_curve(im, color)
             # im = im.filter(ImageFilter.SMOOTH)
-            return im  # type: ignore
+            return im
 
     image = CustomImageCaptcha(height=80, width=180, font_sizes=(60,))
     unique_key = keys.UserCenterKey.CodeUniqueKey.format(  # type: ignore

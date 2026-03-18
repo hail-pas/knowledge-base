@@ -1,13 +1,16 @@
 import sys
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models.base import LanguageModelInput
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import Runnable
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from pydantic import BaseModel
 
 from ext.ext_tortoise.enums import LLMModelTypeEnum
 from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
@@ -62,11 +65,23 @@ class FakeChatModel(BaseChatModel):
     ) -> ChatResult:
         return self._build_result()
 
-    def bind_tools(self, tools: Any, *, tool_choice: str | None = None, **kwargs: Any) -> str:
-        return "bound-tools"
+    def bind_tools(
+        self,
+        tools: Any,
+        *,
+        tool_choice: str | None = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, AIMessage]:
+        return cast(Runnable[LanguageModelInput, AIMessage], "bound-tools")
 
-    def with_structured_output(self, schema: dict[str, Any] | type, *, include_raw: bool = False, **kwargs: Any) -> str:
-        return "structured-output"
+    def with_structured_output(
+        self,
+        schema: dict[str, Any] | type,
+        *,
+        include_raw: bool = False,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, dict[str, Any] | BaseModel]:
+        return cast(Runnable[LanguageModelInput, dict[str, Any] | BaseModel], "structured-output")
 
 
 def _install_fake_module(name: str, **attrs) -> None:

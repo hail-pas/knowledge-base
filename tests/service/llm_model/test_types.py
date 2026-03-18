@@ -6,7 +6,7 @@ from service.llm_model.types import AzureOpenAIExtraConfig, BaseExtraConfig, Ope
 
 def test_base_extra_config_rejects_unknown_fields():
     with pytest.raises(ValidationError):
-        BaseExtraConfig(unknown_field="x")
+        BaseExtraConfig.model_validate({"unknown_field": "x"})
 
 
 def test_azure_extra_config_accepts_provider_specific_fields():

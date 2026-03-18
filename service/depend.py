@@ -3,7 +3,7 @@ from uuid import UUID
 from typing import Annotated
 
 from loguru import logger
-from fastapi import Header, Depends, Request
+from fastapi import Header, Depends, Request, WebSocket
 from cachetools import TTLCache
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.security.utils import get_authorization_scheme_param
@@ -47,6 +47,34 @@ class TheBearer(HTTPBearer):
 auth_schema = TheBearer()
 
 _account_cache = TTLCache(maxsize=256, ttl=60)
+
+
+def _apply_authenticated_scope(scope: dict, account: Account, scene: str) -> None:
+    scope["user"] = account
+    scope["scene"] = scene
+    scope["is_staff"] = account.is_staff
+    scope["is_super_admin"] = account.is_super_admin
+
+
+def _build_credentials_from_authorization(authorization: str | None) -> HTTPAuthorizationCredentials:
+    if not authorization:
+        raise ApiException(
+            code=ResponseCodeEnum.unauthorized,
+            message="授权头部缺失",
+        )
+
+    scheme, credentials = get_authorization_scheme_param(authorization)
+    if not (scheme and credentials):
+        raise ApiException(
+            code=ResponseCodeEnum.unauthorized,
+            message="授权头无效",
+        )
+    if scheme != "Bearer":
+        raise ApiException(
+            code=ResponseCodeEnum.unauthorized,
+            message="授权头类型错误",
+        )
+    return HTTPAuthorizationCredentials(scheme=scheme, credentials=credentials)
 
 
 async def _get_account_by_id(account_id: int) -> Account:
@@ -101,10 +129,7 @@ async def _validate_jwt_token(request: Request, token: HTTPAuthorizationCredenti
         )
 
     # set scope
-    request.scope["user"] = account
-    request.scope["scene"] = scene
-    request.scope["is_staff"] = account.is_staff
-    request.scope["is_super_admin"] = account.is_super_admin
+    _apply_authenticated_scope(request.scope, account, scene)
     return account
 
 
@@ -161,6 +186,17 @@ class ApiPermissionCheck:
 
 
 api_permission_check = ApiPermissionCheck()
+
+
+async def authenticate_websocket(websocket: WebSocket) -> Account:
+    authorization = websocket.headers.get("Authorization")
+    if not authorization:
+        token = websocket.query_params.get("token", "").strip()
+        if token:
+            authorization = token if token.startswith("Bearer ") else f"Bearer {token}"
+
+    credentials = _build_credentials_from_authorization(authorization)
+    return await _validate_jwt_token(websocket, credentials)  # type: ignore[arg-type]
 
 
 class SuperAdminRequired:

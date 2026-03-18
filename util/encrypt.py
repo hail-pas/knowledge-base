@@ -29,11 +29,11 @@ class AESUtil:
         else:
             self.cipher = AES.new(self.key, self.mode)  # type: ignore
 
-    def encrypt(self, data) -> bytes:
+    def encrypt(self, data: str) -> bytes | str:
         pad_data = pad(data.encode(), AES.block_size, style=self.style)
         return self.cipher.encrypt(pad_data)
 
-    def decrypt(self, cipher_text: str) -> str:
+    def decrypt(self, cipher_text: str | bytes) -> str:
         decrypted_data = self.cipher.decrypt(cipher_text)
         un_padded_data = unpad(decrypted_data, AES.block_size, style=self.style)
         return un_padded_data.decode()
@@ -49,10 +49,13 @@ class AESUtilHex(AESUtil):
     """
 
     def encrypt(self, data: str) -> str:
-        return super().encrypt(data).hex()
+        encrypted = super().encrypt(data)
+        if isinstance(encrypted, str):
+            return encrypted
+        return encrypted.hex()
 
     def decrypt_data(self, data: str) -> str:
-        return super().decrypt(bytes.fromhex(data))  # type: ignore
+        return super().decrypt(bytes.fromhex(data))
 
 
 class RSAUtil:

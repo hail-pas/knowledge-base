@@ -530,6 +530,7 @@ def test_get_document_detail_nonexistent(client):
 async def test_delete_document_success_status(client, embedding_model_setup, bind_mock_providers):
     """测试删除状态为 success 的文档"""
     from ext.ext_tortoise.models.knowledge_base import Document
+    from ext.ext_tortoise.enums import DocumentStatusEnum
 
     collection_id = embedding_model_setup["collection_id"]
     file_source_id = embedding_model_setup["file_source_id"]
@@ -566,7 +567,7 @@ async def test_delete_document_success_status(client, embedding_model_setup, bin
 
         # 更新文档状态为 success
         doc = await Document.get(id=temp_doc_id)
-        doc.status = "success"
+        doc.status = DocumentStatusEnum.success
         await doc.save()
 
         # 删除文档
@@ -618,7 +619,7 @@ async def test_delete_document_failure_status(client, embedding_model_setup, bin
 
         # 更新文档状态为 failure
         doc = await Document.get(id=temp_doc_id)
-        doc.status = "failure"
+        doc.status = DocumentStatusEnum.failure
         await doc.save()
 
         # 删除文档

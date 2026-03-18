@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from pathlib import Path
 
 import fitz
@@ -22,11 +23,12 @@ class PyMUPDFEngine(BaseEngine):
         pages_result = []
         all_text = []
 
-        for page_num, page in enumerate(doc):
-            text = page.get_text("text")
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            text = cast(str, page.get_text("text"))
             all_text.append(text)
 
-            tables = page.find_tables()
+            tables = cast(Any, page).find_tables()
             table_formats = []
 
             for table in tables:
@@ -64,15 +66,16 @@ class PyMUPDFEngine(BaseEngine):
                 ),
             )
 
+        metadata = doc.metadata or {}
         result = ParseResult(
             content="\n\n".join(all_text),
             format=OutputFormat.TEXT,
             pages=pages_result,
             page_count=len(doc),
             metadata={
-                "title": doc.metadata.get("title", ""),
-                "author": doc.metadata.get("author", ""),
-                "subject": doc.metadata.get("subject", ""),
+                "title": metadata.get("title", ""),
+                "author": metadata.get("author", ""),
+                "subject": metadata.get("subject", ""),
             },
             parse_metadata={
                 "engine": "pymupdf",
