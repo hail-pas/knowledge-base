@@ -1,1452 +1,1383 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chat Demo</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chat Runtime Demo</title>
   <style>
     :root {
-      --bg: #f3efe7;
-      --bg-soft: #ebe4d6;
-      --panel: rgba(255, 251, 245, 0.94);
-      --panel-strong: #fffdf9;
-      --line: rgba(60, 53, 39, 0.12);
-      --line-strong: rgba(60, 53, 39, 0.2);
-      --ink: #221f1a;
-      --muted: #6c665d;
+      --bg: #f3efe4;
+      --panel: rgba(255, 250, 240, 0.88);
+      --panel-strong: #fffaf0;
+      --ink: #1f1c18;
+      --muted: #655b52;
+      --line: rgba(31, 28, 24, 0.12);
       --accent: #0f766e;
-      --accent-soft: rgba(15, 118, 110, 0.1);
       --accent-strong: #115e59;
+      --accent-soft: rgba(15, 118, 110, 0.12);
       --danger: #b42318;
-      --danger-soft: rgba(180, 35, 24, 0.1);
-      --warn: #b45309;
-      --warn-soft: rgba(180, 83, 9, 0.12);
-      --shadow: 0 18px 50px rgba(34, 31, 26, 0.12);
-      --radius-xl: 26px;
-      --radius-lg: 18px;
-      --radius-md: 14px;
-      --radius-sm: 10px;
-      --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
-      --sans: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
-      --serif: "Iowan Old Style", "Baskerville", serif;
+      --warning: #b54708;
+      --shadow: 0 20px 50px rgba(46, 36, 22, 0.12);
+      --radius: 18px;
+      --mono: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+      --sans: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
     }
 
     * {
       box-sizing: border-box;
     }
 
-    body {
+    html, body {
       margin: 0;
-      min-height: 100vh;
-      font-family: var(--sans);
+      min-height: 100%;
       color: var(--ink);
+      font-family: var(--sans);
       background:
-        radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 24%),
-        radial-gradient(circle at bottom right, rgba(17, 94, 89, 0.1), transparent 20%),
-        linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.14), transparent 28%),
+        radial-gradient(circle at top right, rgba(180, 71, 8, 0.12), transparent 22%),
+        linear-gradient(180deg, #f8f3e9 0%, var(--bg) 56%, #ede5d7 100%);
     }
 
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(rgba(34, 31, 26, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(34, 31, 26, 0.03) 1px, transparent 1px);
-      background-size: 26px 26px;
-      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent 90%);
+    body {
+      padding: 24px;
     }
 
-    .app {
-      position: relative;
-      min-height: 100vh;
-      padding: 22px;
+    .shell {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr) 440px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .column {
       display: grid;
       gap: 18px;
+      min-width: 0;
     }
 
-    .hero,
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: var(--radius-xl);
+      border-radius: var(--radius);
       box-shadow: var(--shadow);
-      backdrop-filter: blur(14px);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.12)),
+        linear-gradient(90deg, rgba(15, 118, 110, 0.08), rgba(181, 71, 8, 0.05));
+    }
+
+    .panel-header h2,
+    .panel-header h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0.02em;
+    }
+
+    .panel-body {
+      padding: 16px 18px 18px;
     }
 
     .hero {
-      padding: 22px 24px;
-      display: flex;
-      justify-content: space-between;
-      gap: 18px;
-      flex-wrap: wrap;
-      align-items: flex-start;
-    }
-
-    .hero-copy {
-      display: grid;
-      gap: 10px;
-      max-width: 720px;
+      padding: 22px 22px 20px;
+      background:
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.15), transparent 32%),
+        linear-gradient(160deg, rgba(255, 250, 240, 0.96), rgba(245, 237, 223, 0.96));
     }
 
     .hero h1 {
-      margin: 0;
-      font-family: var(--serif);
-      font-size: clamp(32px, 5vw, 44px);
-      letter-spacing: -0.05em;
-      line-height: 0.92;
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.1;
+      font-weight: 750;
     }
 
     .hero p {
       margin: 0;
       color: var(--muted);
+      line-height: 1.5;
       font-size: 14px;
-      line-height: 1.6;
     }
 
-    .hero-meta {
-      min-width: min(100%, 360px);
+    .grid {
       display: grid;
-      gap: 10px;
-    }
-
-    .chip-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 34px;
-      padding: 6px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.72);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-    }
-
-    .chip strong {
-      font-family: var(--mono);
-      color: var(--ink);
-      text-transform: none;
-      letter-spacing: 0;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 300px minmax(0, 1fr) 360px;
-      gap: 18px;
-      align-items: start;
-    }
-
-    .panel {
-      overflow: hidden;
-    }
-
-    .panel-body {
-      padding: 18px;
-      display: grid;
-      gap: 16px;
-    }
-
-    .panel-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
       gap: 12px;
     }
 
-    .eyebrow {
-      margin: 0;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      color: var(--muted);
-    }
-
-    h2 {
-      margin: 4px 0 0;
-      font-size: 20px;
-      line-height: 1.1;
-    }
-
-    .muted {
-      margin: 0;
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.6;
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .field {
       display: grid;
-      gap: 8px;
+      gap: 6px;
     }
 
-    label {
+    .field label {
       font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
       color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
 
     input,
+    select,
     textarea,
     button {
-      width: 100%;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.82);
-      color: var(--ink);
       font: inherit;
-      padding: 12px 14px;
-      transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
     }
 
-    input:focus,
-    textarea:focus {
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid rgba(31, 28, 24, 0.14);
+      background: rgba(255, 255, 255, 0.84);
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 12px 14px;
       outline: none;
-      border-color: rgba(15, 118, 110, 0.35);
-      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
     }
 
     textarea {
-      min-height: 118px;
+      min-height: 112px;
       resize: vertical;
       font-family: var(--mono);
-      font-size: 13px;
-      line-height: 1.55;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(15, 118, 110, 0.45);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+      background: #fff;
     }
 
     button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
       cursor: pointer;
-      font-weight: 700;
-      border: none;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-      color: #fff;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      transition: transform 140ms ease, opacity 140ms ease, background 140ms ease;
     }
 
     button:hover {
       transform: translateY(-1px);
     }
 
-    button.secondary {
-      background: var(--accent-soft);
-      color: var(--accent-strong);
-      border: 1px solid rgba(15, 118, 110, 0.18);
-    }
-
-    button.ghost {
-      background: rgba(255, 255, 255, 0.7);
-      color: var(--ink);
-      border: 1px solid var(--line);
-    }
-
     button:disabled {
       opacity: 0.5;
-      transform: none;
       cursor: not-allowed;
+      transform: none;
     }
 
-    .button-row {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+    .primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: #fff;
     }
 
-    .note {
-      padding: 12px 14px;
-      border-radius: var(--radius-md);
-      border: 1px solid rgba(15, 118, 110, 0.16);
-      background: rgba(15, 118, 110, 0.08);
-      color: var(--accent-strong);
-      font-size: 13px;
-      line-height: 1.55;
+    .secondary {
+      background: rgba(31, 28, 24, 0.08);
+      color: var(--ink);
     }
 
-    .note.warn {
-      background: var(--warn-soft);
-      border-color: rgba(180, 83, 9, 0.18);
-      color: var(--warn);
-    }
-
-    .note.error {
-      background: var(--danger-soft);
-      border-color: rgba(180, 35, 24, 0.18);
+    .danger {
+      background: rgba(180, 35, 24, 0.12);
       color: var(--danger);
     }
 
-    .list {
-      display: grid;
+    .ghost {
+      background: transparent;
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
       gap: 10px;
-      max-height: calc(100vh - 360px);
+    }
+
+    .meta-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .pill strong {
+      color: var(--ink);
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #9ca3af;
+      box-shadow: 0 0 0 5px rgba(156, 163, 175, 0.12);
+    }
+
+    .status-dot.connected {
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.15);
+    }
+
+    .status-dot.error {
+      background: var(--danger);
+      box-shadow: 0 0 0 5px rgba(180, 35, 24, 0.15);
+    }
+
+    .scroll {
+      max-height: 320px;
       overflow: auto;
       padding-right: 4px;
     }
 
-    .conversation-item,
-    .profile-item {
-      border: 1px solid var(--line);
-      border-radius: var(--radius-lg);
-      background: var(--panel-strong);
-      padding: 14px;
+    .conversation-list,
+    .capability-list,
+    .event-list {
       display: grid;
       gap: 10px;
-      cursor: pointer;
     }
 
-    .conversation-item.active {
-      border-color: rgba(15, 118, 110, 0.28);
-      box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.2);
-      background: rgba(240, 253, 250, 0.72);
+    .card {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.76);
+      border-radius: 14px;
     }
 
-    .conversation-item button {
-      width: auto;
-      justify-self: start;
-      padding: 8px 12px;
-      font-size: 12px;
+    .card.active {
+      border-color: rgba(15, 118, 110, 0.42);
+      background: linear-gradient(135deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.92));
     }
 
-    .conversation-title,
-    .profile-title {
-      margin: 0;
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.4;
+    .card h4 {
+      margin: 0 0 6px;
+      font-size: 14px;
     }
 
-    .conversation-preview,
-    .profile-meta,
-    .tiny {
+    .card p,
+    .card pre {
       margin: 0;
       color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .profile-item {
-      cursor: default;
-    }
-
-    .profile-select {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-    }
-
-    .profile-select input {
-      width: 18px;
-      height: 18px;
-      margin-top: 2px;
-      accent-color: var(--accent);
-    }
-
-    .profile-config {
-      margin: 0;
-      padding: 12px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--line);
-      background: rgba(249, 247, 242, 0.9);
-      font-family: var(--mono);
       font-size: 12px;
       line-height: 1.5;
       white-space: pre-wrap;
       word-break: break-word;
     }
 
-    .chat-panel {
-      min-height: calc(100vh - 174px);
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-    }
-
-    .chat-header {
-      padding: 18px 18px 0;
+    .chat-board {
       display: grid;
       gap: 14px;
+      min-height: 180px;
     }
 
-    .chat-status {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .chat-title {
-      margin: 0;
-      font-size: 22px;
-      line-height: 1.2;
-    }
-
-    .chat-subtitle {
-      margin: 0;
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-
-    .messages {
-      min-height: 420px;
-      padding: 0 18px 18px;
-      display: grid;
-      gap: 18px;
-      align-content: start;
-      overflow: auto;
-    }
-
-    .empty-state {
-      margin: 22px 0 0;
-      padding: 26px;
-      border: 1px dashed rgba(60, 53, 39, 0.18);
-      border-radius: var(--radius-xl);
-      background: rgba(255, 255, 255, 0.54);
-      color: var(--muted);
-      line-height: 1.8;
-      font-size: 14px;
-    }
-
-    .turn-card {
-      display: grid;
-      gap: 12px;
-      padding: 18px;
-      border-radius: var(--radius-xl);
+    .message {
+      max-width: 92%;
+      padding: 14px 16px;
+      border-radius: 18px;
       border: 1px solid var(--line);
-      background: var(--panel-strong);
+      background: rgba(255, 255, 255, 0.85);
+      box-shadow: 0 10px 24px rgba(46, 36, 22, 0.08);
     }
 
-    .turn-head {
+    .message.user {
+      margin-left: auto;
+      background: linear-gradient(135deg, rgba(15, 118, 110, 0.14), rgba(255, 255, 255, 0.94));
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant {
+      border-bottom-left-radius: 4px;
+    }
+
+    .message .role {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 7px;
+      font-weight: 700;
+    }
+
+    .message .text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.55;
+    }
+
+    .streaming {
+      opacity: 0.82;
+      position: relative;
+    }
+
+    .streaming::after {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-left: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1s infinite ease;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.8); opacity: 0.4; }
+      50% { transform: scale(1.1); opacity: 1; }
+      100% { transform: scale(0.8); opacity: 0.4; }
+    }
+
+    .event-item {
+      border: 1px solid var(--line);
+      border-left: 4px solid rgba(31, 28, 24, 0.12);
+      background: rgba(255, 255, 255, 0.78);
+      border-radius: 14px;
+      padding: 12px 12px 10px;
+      font-size: 12px;
+    }
+
+    .event-item.turn { border-left-color: rgba(15, 118, 110, 0.8); }
+    .event-item.step { border-left-color: rgba(180, 71, 8, 0.8); }
+    .event-item.data { border-left-color: rgba(37, 99, 235, 0.8); }
+    .event-item.message { border-left-color: rgba(168, 85, 247, 0.8); }
+    .event-item.error { border-left-color: rgba(180, 35, 24, 0.85); }
+    .event-item.warning { border-left-color: rgba(181, 71, 8, 0.85); }
+
+    .event-head {
       display: flex;
       justify-content: space-between;
+      align-items: start;
       gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
+      margin-bottom: 8px;
     }
 
-    .turn-head .tiny {
-      font-family: var(--mono);
+    .event-title {
+      display: grid;
+      gap: 2px;
     }
 
-    .bubble {
-      border-radius: 18px;
-      padding: 14px 16px;
-      line-height: 1.75;
-      font-size: 14px;
-      white-space: pre-wrap;
+    .event-title strong {
+      font-size: 12px;
+      color: var(--ink);
       word-break: break-word;
     }
 
-    .bubble.user {
-      justify-self: end;
-      max-width: 82%;
-      background: rgba(15, 118, 110, 0.12);
-      border: 1px solid rgba(15, 118, 110, 0.18);
-    }
-
-    .bubble.assistant {
-      max-width: 100%;
-      background: rgba(248, 245, 239, 0.9);
-      border: 1px solid var(--line);
-    }
-
-    .bubble.pending {
+    .event-title span,
+    .event-meta {
       color: var(--muted);
-      font-style: italic;
+      font-size: 11px;
     }
 
-    .trace {
-      border: 1px solid var(--line);
-      border-radius: var(--radius-lg);
-      background: rgba(250, 247, 241, 0.9);
-      overflow: hidden;
-    }
-
-    .trace summary {
-      cursor: pointer;
-      list-style: none;
-      padding: 12px 14px;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--ink);
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .trace summary::-webkit-details-marker {
-      display: none;
-    }
-
-    .trace-list {
-      border-top: 1px solid var(--line);
-      display: grid;
-    }
-
-    .trace-item {
-      padding: 12px 14px;
-      border-top: 1px solid rgba(60, 53, 39, 0.08);
-      display: grid;
-      gap: 6px;
-    }
-
-    .trace-item:first-child {
-      border-top: none;
-    }
-
-    .trace-meta {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-      color: var(--muted);
-      font-size: 12px;
+    .event-json,
+    .json-preview {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(31, 28, 24, 0.05);
+      border: 1px solid rgba(31, 28, 24, 0.06);
       font-family: var(--mono);
-    }
-
-    .trace-title {
-      margin: 0;
-      font-size: 13px;
-      font-weight: 700;
-      line-height: 1.45;
-    }
-
-    .trace-json {
-      margin: 0;
-      padding: 12px;
-      border-radius: var(--radius-sm);
-      background: #f5f1ea;
-      border: 1px solid rgba(60, 53, 39, 0.08);
-      font-family: var(--mono);
-      font-size: 12px;
+      font-size: 11px;
       line-height: 1.55;
       white-space: pre-wrap;
       word-break: break-word;
+      max-height: 240px;
       overflow: auto;
     }
 
-    .composer {
-      padding: 0 18px 18px;
-      display: grid;
-      gap: 12px;
-    }
-
-    .composer textarea {
-      min-height: 132px;
-    }
-
-    .composer-foot {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .selection-summary {
-      display: grid;
-      gap: 8px;
-    }
-
-    .selection-stats {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .stat {
-      padding: 7px 10px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.76);
-      border: 1px solid var(--line);
-      font-size: 12px;
+    .muted {
       color: var(--muted);
+      font-size: 12px;
     }
 
-    .stat strong {
-      color: var(--ink);
-      font-family: var(--mono);
-      margin-left: 6px;
+    .spacer {
+      height: 6px;
     }
 
-    @media (max-width: 1180px) {
-      .layout {
-        grid-template-columns: 280px minmax(0, 1fr);
+    .empty {
+      padding: 16px;
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      color: var(--muted);
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.56);
+    }
+
+    .footer-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1320px) {
+      .shell {
+        grid-template-columns: 320px minmax(0, 1fr);
       }
 
-      .right {
+      .events-column {
         grid-column: 1 / -1;
       }
     }
 
-    @media (max-width: 860px) {
-      .app {
+    @media (max-width: 920px) {
+      body {
         padding: 14px;
       }
 
-      .layout {
+      .shell {
         grid-template-columns: 1fr;
       }
 
-      .chat-panel {
-        min-height: auto;
+      .grid.two {
+        grid-template-columns: 1fr;
       }
 
-      .list {
-        max-height: 320px;
-      }
-
-      .bubble.user {
+      .message {
         max-width: 100%;
       }
     }
   </style>
 </head>
 <body>
-  <div class="app">
-    <section class="hero">
-      <div class="hero-copy">
-        <h1>Chat Demo</h1>
-        <p>Demo Build 2026-03-18 13:12</p>
-        <p>这个 demo 只保留真实聊天需要的链路：切历史会话、开一个本地草稿、配置 capability、发消息、看 turn 全过程。不会再先调用“创建会话”接口，只有真正发出第一个 turn 才会落库。</p>
-      </div>
-      <div class="hero-meta">
-        <div class="chip-row">
-          <div class="chip" id="socketChip">Socket <strong>Disconnected</strong></div>
-          <div class="chip" id="conversationChip">Conversation <strong>Draft</strong></div>
-          <div class="chip" id="turnChip">Turns <strong>0</strong></div>
-        </div>
-        <div class="note" id="notice">填写 token 后，先连接并加载历史；如果直接发第一条消息，也会自动建会话。</div>
-      </div>
-    </section>
+  <div class="shell">
+    <div class="column">
+      <section class="panel hero">
+        <h1>Chat Runtime Demo</h1>
+        <p>覆盖 token 鉴权、capability package 管理、会话切换、WebSocket turn 交互、全量 event/step/data 观察和 turn 回放。</p>
+      </section>
 
-    <section class="layout">
-      <aside class="panel">
-        <div class="panel-body">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Workspace</p>
-              <h2>历史会话</h2>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>认证与连接</h2>
+          <div class="pill">
+            <span class="status-dot" id="ws-status-dot"></span>
+            <strong id="ws-status-text">未连接</strong>
+          </div>
+        </div>
+        <div class="panel-body grid">
+          <div class="field">
+            <label for="token-input">Token</label>
+            <input id="token-input" placeholder="输入 Bearer token 或 websocket token">
+          </div>
+          <div class="grid two">
+            <div class="field">
+              <label for="http-base-input">HTTP Base</label>
+              <input id="http-base-input">
+            </div>
+            <div class="field">
+              <label for="ws-url-input">WebSocket URL</label>
+              <input id="ws-url-input">
             </div>
           </div>
-
-          <div class="field">
-            <label for="tokenInput">Bearer Token</label>
-            <input id="tokenInput" placeholder="输入 JWT token" autocomplete="off" />
-          </div>
-
           <div class="button-row">
-            <button id="connectBtn">连接并加载</button>
-            <button id="newConversationBtn" class="secondary">新建会话</button>
+            <button class="primary" id="connect-btn">连接 WebSocket</button>
+            <button class="secondary" id="disconnect-btn">断开</button>
+            <button class="ghost" id="ping-btn">Ping</button>
           </div>
-
-          <p class="muted">“新建会话”只会打开一个空白草稿，不会调用创建接口。历史区展示的是已经发出过 turn 的真实会话。</p>
-
-          <div class="list" id="conversationList"></div>
+          <div class="meta-bar">
+            <div class="pill"><span>Session</span><strong id="session-id-label">-</strong></div>
+            <div class="pill"><span>Conversation</span><strong id="conversation-id-label">-</strong></div>
+            <div class="pill"><span>Turn</span><strong id="turn-id-label">-</strong></div>
+          </div>
         </div>
-      </aside>
+      </section>
 
-      <main class="panel chat-panel">
-        <div class="chat-header">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Conversation</p>
-              <h2 class="chat-title" id="chatTitle">未创建的空白聊天</h2>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Capability Packages</h2>
+          <button class="secondary" id="refresh-capabilities-btn">刷新</button>
+        </div>
+        <div class="panel-body grid">
+          <div class="field">
+            <label for="capability-scope-select">可见范围</label>
+            <select id="capability-scope-select">
+              <option value="all">all</option>
+              <option value="global_only">global_only</option>
+              <option value="owned_only">owned_only</option>
+            </select>
+          </div>
+          <div class="scroll capability-list" id="capability-list"></div>
+          <div class="field">
+            <label for="capability-manifest-input">Capability Manifest JSON</label>
+            <textarea id="capability-manifest-input"></textarea>
+          </div>
+          <div class="button-row">
+            <button class="primary" id="create-capability-btn">创建</button>
+            <button class="secondary" id="update-capability-btn">更新选中</button>
+            <button class="danger" id="delete-capability-btn">删除选中</button>
+          </div>
+          <div class="footer-note">最小使用方式：编辑 manifest 并创建。发送 turn 时可在 resource selection 里通过 `capabilities` 显式选择。</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="column">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>会话与 Turn</h2>
+          <button class="secondary" id="refresh-conversations-btn">刷新会话</button>
+        </div>
+        <div class="panel-body grid">
+          <div class="scroll conversation-list" id="conversation-list"></div>
+          <div class="grid two">
+            <div class="field">
+              <label for="conversation-id-input">Conversation ID</label>
+              <input id="conversation-id-input" placeholder="空则新建会话">
+            </div>
+            <div class="field">
+              <label for="conversation-title-input">Conversation Title</label>
+              <input id="conversation-title-input" placeholder="新会话标题，可选">
             </div>
           </div>
-          <div class="chat-status">
-            <p class="chat-subtitle" id="chatSubtitle">当前是本地草稿。发送第一条消息后会自动创建会话，并开始积累历史。</p>
-          </div>
-        </div>
-
-        <div class="messages" id="messages"></div>
-
-        <div class="composer">
           <div class="field">
-            <label for="messageInput">聊天输入框</label>
-            <textarea id="messageInput" placeholder="输入问题，然后发送。支持首次发送自动创建会话。"></textarea>
+            <label for="message-input">用户输入</label>
+            <textarea id="message-input" placeholder="输入本轮消息"></textarea>
           </div>
-          <div class="composer-foot">
-            <p class="tiny">消息发送时，如果右侧 capability 配置有改动，会先保存到当前会话；草稿会话则会把当前配置作为默认配置一并创建。</p>
-            <button id="sendBtn">发送消息</button>
+          <div class="field">
+            <label for="resource-selection-input">Resource Selection JSON</label>
+            <textarea id="resource-selection-input"></textarea>
+          </div>
+          <div class="card">
+            <h4>Capability Router</h4>
+            <p>可覆盖本轮 capability 选择方式。`heuristic` 只走启发式，`llm/hybrid` 可结合 planner model。</p>
+            <div class="spacer"></div>
+            <div class="grid two">
+              <div class="field">
+                <label for="cap-router-mode-select">Selection Mode</label>
+                <select id="cap-router-mode-select">
+                  <option value="">跟随后端默认</option>
+                  <option value="heuristic">heuristic</option>
+                  <option value="hybrid">hybrid</option>
+                  <option value="llm">llm</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cap-router-planner-model-id-input">Planner Model Config ID</label>
+                <input id="cap-router-planner-model-id-input" type="number" min="1" placeholder="可选">
+              </div>
+            </div>
+            <div class="button-row">
+              <button class="ghost" id="sync-router-selection-btn">同步 Router 配置</button>
+            </div>
+          </div>
+          <div class="card">
+            <h4>RAG 扩展</h4>
+            <p>勾选后将内置 `knowledge_base_retrieval` extension 写入本轮 resource selection，并覆盖检索参数。</p>
+            <div class="spacer"></div>
+            <div class="grid">
+              <div class="grid two">
+                <label style="display:flex; align-items:center; gap:10px; font-size:13px; color:var(--ink);">
+                  <input id="rag-enabled-input" type="checkbox" style="width:auto;">
+                  启用知识库检索
+                </label>
+                <label style="display:flex; align-items:center; gap:10px; font-size:13px; color:var(--ink);">
+                  <input id="rag-required-input" type="checkbox" style="width:auto;">
+                  勾选后本轮必须执行
+                </label>
+              </div>
+              <div class="grid two">
+                <div class="field">
+                  <label for="rag-collection-ids-input">Collection IDs</label>
+                  <input id="rag-collection-ids-input" placeholder="如 1,2,3">
+                </div>
+                <div class="field">
+                  <label for="rag-top-k-input">Top K</label>
+                  <input id="rag-top-k-input" type="number" min="1" max="20" value="5">
+                </div>
+              </div>
+              <div class="button-row">
+                <button class="ghost" id="sync-rag-selection-btn">同步到 Resource Selection</button>
+              </div>
+            </div>
+          </div>
+          <div class="button-row">
+            <button class="primary" id="send-turn-btn">发送 Turn</button>
+            <button class="secondary" id="save-selection-btn">保存为会话默认选择</button>
+            <button class="danger" id="cancel-turn-btn">取消当前 Turn</button>
+            <button class="ghost" id="replay-turn-btn">回放当前 Turn</button>
           </div>
         </div>
-      </main>
+      </section>
 
-      <aside class="panel right">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>聊天输出</h2>
+          <div class="meta-bar">
+            <div class="pill"><span>事件数</span><strong id="event-count-label">0</strong></div>
+            <div class="pill"><span>消息数</span><strong id="message-count-label">0</strong></div>
+          </div>
+        </div>
         <div class="panel-body">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Capability</p>
-              <h2>配置与扩展</h2>
-            </div>
-            <button id="saveSelectionBtn" class="ghost">保存配置</button>
-          </div>
+          <div class="chat-board" id="chat-board"></div>
+        </div>
+      </section>
 
-          <div class="selection-summary">
-            <p class="muted">勾选 profile，底部 JSON 用来补充 `capability_binding_ids`、内联 `capabilities` 和 `metadata` 等扩展参数。</p>
-            <div class="selection-stats">
-              <div class="stat">Profiles<strong id="profileCount">0</strong></div>
-              <div class="stat">Inline Caps<strong id="inlineCount">0</strong></div>
-              <div class="stat">Bindings<strong id="bindingCount">0</strong></div>
-            </div>
-          </div>
-
-          <div class="list" id="profileList"></div>
-
+      <section class="panel">
+        <div class="panel-header">
+          <h2>请求与结果</h2>
+        </div>
+        <div class="panel-body grid">
           <div class="field">
-            <label for="selectionExtras">扩展 ResourceSelection JSON</label>
-            <textarea id="selectionExtras"></textarea>
+            <label>最近请求</label>
+            <pre class="json-preview" id="request-preview">{}</pre>
+          </div>
+          <div class="field">
+            <label>最近响应 / 错误</label>
+            <pre class="json-preview" id="response-preview">{}</pre>
           </div>
         </div>
-      </aside>
-    </section>
+      </section>
+    </div>
+
+    <div class="column events-column">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>全量 Events</h2>
+          <div class="button-row">
+            <button class="secondary" id="clear-events-btn">清空</button>
+            <button class="ghost" id="export-events-btn">导出 JSON</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="scroll event-list" id="event-list"></div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <script>
     const chatRoot = new URL(".", window.location.href);
-    const capabilityRoot = new URL("capability/", chatRoot);
-    const SELECTION_EXTRAS_TEMPLATE = {
-      capability_binding_ids: [],
-      capabilities: [
-        {
-          capability_id: "builtin:function_call",
-          kind: "function_call",
-          name: "内置函数工具",
-          priority: 40,
-          config: {
-            tools: [
-              {
-                tool_name: "current_datetime",
-                title: "当前时间",
-                result_mode: "auto",
-              },
-              {
-                tool_name: "calculate_expression",
-                title: "表达式计算",
-                result_mode: "auto",
-              },
-            ],
-            fail_on_no_match: false,
-            stop_after_terminal: true,
-          },
+    const apiRoot = new URL("../", chatRoot);
+    const apiPrefix = apiRoot.pathname.replace(/\/$/, "");
+    const chatBase = apiPrefix + "/chat";
+    const capabilityBase = apiPrefix + "/chat/capability";
+
+    const defaults = {
+      capabilityManifest: {
+        kind: "extension",
+        capability_key: "demo_calculator",
+        name: "Demo Calculator",
+        description: "命中计算关键词时调用 function tool。",
+        tags: ["demo", "calculator"],
+        routing: {
+          keywords: ["算一下", "计算", "demo_calculator"],
+          min_score: 0.15,
+          max_selected: 3
         },
-      ],
-      metadata: {},
+        instructions: [],
+        actions: [
+          {
+            kind: "function_call",
+            priority: 20,
+            config: {
+              tools: [{ tool_name: "calculate_expression" }],
+              stop_after_terminal: true
+            }
+          }
+        ]
+      },
+      resourceSelection: {
+        use_system_defaults: true,
+        use_conversation_defaults: true,
+        capabilities: [],
+        actions: [],
+        metadata: {}
+      },
+      ragTopK: 5
     };
 
     const state = {
+      token: "",
       ws: null,
-      socketPromise: null,
-      socketToken: "",
+      sessionId: null,
+      conversationId: null,
+      turnId: null,
+      events: [],
+      messages: [],
+      capabilities: [],
       conversations: [],
-      profiles: [],
-      currentConversation: null,
-      turns: [],
-      selectedProfileIds: new Set(),
-      selectionExtrasText: JSON.stringify(SELECTION_EXTRAS_TEMPLATE, null, 2),
+      selectedCapabilityId: null,
+      selectedConversationId: null,
+      activeAssistantMessageId: null
     };
 
-    const els = {
-      tokenInput: document.getElementById("tokenInput"),
-      connectBtn: document.getElementById("connectBtn"),
-      newConversationBtn: document.getElementById("newConversationBtn"),
-      conversationList: document.getElementById("conversationList"),
-      profileList: document.getElementById("profileList"),
-      selectionExtras: document.getElementById("selectionExtras"),
-      saveSelectionBtn: document.getElementById("saveSelectionBtn"),
-      messageInput: document.getElementById("messageInput"),
-      sendBtn: document.getElementById("sendBtn"),
-      messages: document.getElementById("messages"),
-      socketChip: document.getElementById("socketChip"),
-      conversationChip: document.getElementById("conversationChip"),
-      turnChip: document.getElementById("turnChip"),
-      notice: document.getElementById("notice"),
-      chatTitle: document.getElementById("chatTitle"),
-      chatSubtitle: document.getElementById("chatSubtitle"),
-      profileCount: document.getElementById("profileCount"),
-      inlineCount: document.getElementById("inlineCount"),
-      bindingCount: document.getElementById("bindingCount"),
+    const el = {
+      tokenInput: document.getElementById("token-input"),
+      httpBaseInput: document.getElementById("http-base-input"),
+      wsUrlInput: document.getElementById("ws-url-input"),
+      wsStatusDot: document.getElementById("ws-status-dot"),
+      wsStatusText: document.getElementById("ws-status-text"),
+      sessionIdLabel: document.getElementById("session-id-label"),
+      conversationIdLabel: document.getElementById("conversation-id-label"),
+      turnIdLabel: document.getElementById("turn-id-label"),
+      capabilityScopeSelect: document.getElementById("capability-scope-select"),
+      capabilityList: document.getElementById("capability-list"),
+      capabilityManifestInput: document.getElementById("capability-manifest-input"),
+      conversationList: document.getElementById("conversation-list"),
+      conversationIdInput: document.getElementById("conversation-id-input"),
+      conversationTitleInput: document.getElementById("conversation-title-input"),
+      messageInput: document.getElementById("message-input"),
+      resourceSelectionInput: document.getElementById("resource-selection-input"),
+      capRouterModeSelect: document.getElementById("cap-router-mode-select"),
+      capRouterPlannerModelIdInput: document.getElementById("cap-router-planner-model-id-input"),
+      ragEnabledInput: document.getElementById("rag-enabled-input"),
+      ragRequiredInput: document.getElementById("rag-required-input"),
+      ragCollectionIdsInput: document.getElementById("rag-collection-ids-input"),
+      ragTopKInput: document.getElementById("rag-top-k-input"),
+      chatBoard: document.getElementById("chat-board"),
+      eventList: document.getElementById("event-list"),
+      eventCountLabel: document.getElementById("event-count-label"),
+      messageCountLabel: document.getElementById("message-count-label"),
+      requestPreview: document.getElementById("request-preview"),
+      responsePreview: document.getElementById("response-preview")
     };
 
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
-
-    function prettyJSON(value) {
+    function pretty(value) {
       return JSON.stringify(value, null, 2);
     }
 
-    function shortText(value, maxLength = 88) {
-      const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
-      if (!normalized) return "暂无内容";
-      if (normalized.length <= maxLength) return normalized;
-      return `${normalized.slice(0, maxLength).trimEnd()}...`;
+    function setPreview(target, value) {
+      target.textContent = typeof value === "string" ? value : pretty(value ?? {});
     }
 
-    function formatTime(value) {
-      if (!value) return "-";
-      const date = new Date(value);
-      return new Intl.DateTimeFormat("zh-CN", {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(date);
+    function updateStatus(kind, text) {
+      el.wsStatusDot.className = "status-dot" + (kind ? " " + kind : "");
+      el.wsStatusText.textContent = text;
+      el.sessionIdLabel.textContent = state.sessionId ?? "-";
+      el.conversationIdLabel.textContent = state.conversationId ?? "-";
+      el.turnIdLabel.textContent = state.turnId ?? "-";
+      el.eventCountLabel.textContent = String(state.events.length);
+      el.messageCountLabel.textContent = String(state.messages.length);
     }
 
-    function setNotice(message, tone = "info") {
-      els.notice.textContent = message;
-      els.notice.className = `note${tone === "info" ? "" : ` ${tone}`}`;
+    function authHeaders() {
+      return state.token ? { Authorization: `Bearer ${state.token}` } : {};
     }
 
-    function updateChip(element, label, value) {
-      element.innerHTML = `${label} <strong>${escapeHtml(value)}</strong>`;
+    function normalizeHttpBase() {
+      return el.httpBaseInput.value.trim().replace(/\/$/, "") || window.location.origin;
     }
 
-    function authToken() {
-      return els.tokenInput.value.trim();
+    function absoluteApiUrl(path) {
+      return `${normalizeHttpBase()}${path}`;
     }
 
-    function authHeaderValue() {
-      const token = authToken();
-      return token ? `Bearer ${token}` : "";
-    }
-
-    function buildApiUrl(base, path = "", params = null) {
-      const url = new URL(path, base);
-      Object.entries(params || {}).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          url.searchParams.set(key, String(value));
+    async function requestJson(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+          ...(options.headers || {})
         }
       });
-      return url.toString();
+      const data = await response.json().catch(() => ({}));
+      setPreview(el.responsePreview, data);
+      if (!response.ok || data.code !== 0) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+      return data.data;
     }
 
-    async function apiFetch(path, options = {}) {
-      const headers = new Headers(options.headers || {});
-      const authHeader = authHeaderValue();
-      if (authHeader) {
-        headers.set("Authorization", authHeader);
-      }
-      if (options.body && !headers.has("Content-Type")) {
-        headers.set("Content-Type", "application/json");
-      }
-      const response = await fetch(path, {
-        ...options,
-        headers,
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.message || `${response.status} ${response.statusText}`);
-      }
-      if (!payload || payload.code !== 0) {
-        throw new Error(payload?.message || "请求失败");
-      }
-      return payload.data;
+    function inferEventTone(eventName) {
+      if (eventName.startsWith("turn.")) return "turn";
+      if (eventName.startsWith("step.")) return "step";
+      if (eventName.startsWith("data.")) return "data";
+      if (eventName.startsWith("message.")) return "message";
+      if (eventName === "error") return "error";
+      if (eventName === "warning") return "warning";
+      return "";
     }
 
-    function createRequestId() {
-      if (window.crypto && typeof window.crypto.randomUUID === "function") {
-        return window.crypto.randomUUID();
-      }
-      return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    function ensureChatEmptyState() {
+      if (state.messages.length) return;
+      el.chatBoard.innerHTML = `<div class="empty">还没有消息。连接后发送 turn，或先加载历史会话。</div>`;
     }
 
-    function readSelectionPayload() {
-      let extras;
+    function renderMessages() {
+      if (!state.messages.length) {
+        ensureChatEmptyState();
+        return;
+      }
+
+      el.chatBoard.innerHTML = state.messages.map((message) => `
+        <article class="message ${message.role} ${message.streaming ? "streaming" : ""}">
+          <div class="role">${message.role}</div>
+          <div class="text">${escapeHtml(message.text || "")}</div>
+        </article>
+      `).join("");
+      el.chatBoard.scrollTop = el.chatBoard.scrollHeight;
+    }
+
+    function renderEvents() {
+      if (!state.events.length) {
+        el.eventList.innerHTML = `<div class="empty">事件流为空。发送 turn 后这里会展示 websocket 收到的全部 event。</div>`;
+        updateStatus(state.ws ? "connected" : "", state.ws ? "已连接" : "未连接");
+        return;
+      }
+
+      el.eventList.innerHTML = state.events.map((item) => `
+        <div class="event-item ${inferEventTone(item.event)}">
+          <div class="event-head">
+            <div class="event-title">
+              <strong>${escapeHtml(item.event)}</strong>
+              <span>seq=${item.seq ?? "-"} turn=${item.turn_id ?? "-"} step=${item.payload?.step?.id ?? item.step_id ?? "-"}</span>
+            </div>
+            <div class="event-meta">${escapeHtml(formatTimestamp(item.ts))}</div>
+          </div>
+          <div class="event-meta">conversation=${item.conversation_id ?? "-"} data=${item.payload?.data?.id ?? "-"}</div>
+          <pre class="event-json">${escapeHtml(pretty(item.payload ?? {}))}</pre>
+        </div>
+      `).join("");
+      updateStatus(state.ws ? "connected" : "", state.ws ? "已连接" : "未连接");
+    }
+
+    function renderCapabilities() {
+      if (!state.capabilities.length) {
+        el.capabilityList.innerHTML = `<div class="empty">当前没有 capability package。</div>`;
+        return;
+      }
+
+      el.capabilityList.innerHTML = state.capabilities.map((item) => `
+        <div class="card ${item.id === state.selectedCapabilityId ? "active" : ""}" data-capability-id="${item.id}">
+          <h4>${escapeHtml(item.name)} <span class="muted">#${item.id}</span></h4>
+          <p>kind=${escapeHtml(item.kind)} key=${escapeHtml(item.capability_key)}</p>
+          <p>enabled=${String(item.is_enabled)} version=${item.version}</p>
+          <div class="spacer"></div>
+          <div class="button-row">
+            <button class="secondary" data-action="select-capability" data-id="${item.id}">选择</button>
+            <button class="ghost" data-action="inject-capability" data-id="${item.id}" data-key="${escapeHtml(item.capability_key)}" data-kind="${escapeHtml(item.kind)}">加入 Resource Selection</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderConversations() {
+      if (!state.conversations.length) {
+        el.conversationList.innerHTML = `<div class="empty">当前没有会话。发送 turn 并将 conversation_id 留空即可自动创建。</div>`;
+        return;
+      }
+
+      el.conversationList.innerHTML = state.conversations.map((item) => `
+        <div class="card ${item.conversation.id === state.selectedConversationId ? "active" : ""}">
+          <h4>${escapeHtml(item.conversation.title)} <span class="muted">#${item.conversation.id}</span></h4>
+          <p>status=${escapeHtml(item.conversation.status)} active_turn=${item.conversation.active_turn_id ?? "-"}</p>
+          <p>user=${escapeHtml(item.latest_user_text || "")}</p>
+          <p>assistant=${escapeHtml(item.latest_assistant_text || "")}</p>
+          <div class="spacer"></div>
+          <div class="button-row">
+            <button class="secondary" data-action="select-conversation" data-id="${item.conversation.id}">选择</button>
+            <button class="ghost" data-action="load-timeline" data-id="${item.conversation.id}">加载 Timeline</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function escapeHtml(input) {
+      return String(input)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function formatTimestamp(value) {
+      if (!value) return "-";
       try {
-        extras = JSON.parse(els.selectionExtras.value.trim() || "{}");
-      } catch (error) {
-        throw new Error(`扩展 ResourceSelection 不是合法 JSON: ${error.message}`);
+        return new Date(value).toLocaleString();
+      } catch {
+        return String(value);
       }
-      if (!extras || typeof extras !== "object" || Array.isArray(extras)) {
-        throw new Error("扩展 ResourceSelection 必须是 JSON object");
-      }
-      const bindingIds = Array.isArray(extras.capability_binding_ids)
-        ? extras.capability_binding_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)
-        : [];
-      const capabilities = Array.isArray(extras.capabilities) ? extras.capabilities : [];
-      const metadata = extras.metadata && typeof extras.metadata === "object" && !Array.isArray(extras.metadata)
-        ? extras.metadata
-        : {};
-      return {
-        use_system_defaults: extras.use_system_defaults ?? true,
-        use_conversation_defaults: extras.use_conversation_defaults ?? true,
-        capability_profile_ids: Array.from(state.selectedProfileIds).sort((a, b) => a - b),
-        capability_binding_ids: bindingIds,
-        capabilities,
-        metadata,
-      };
     }
 
-    function applySelection(selection = {}) {
-      state.selectedProfileIds = new Set((selection.capability_profile_ids || []).map((item) => Number(item)));
-      els.selectionExtras.value = prettyJSON({
-        capability_binding_ids: selection.capability_binding_ids || [],
-        capabilities: selection.capabilities || [],
-        metadata: selection.metadata || {},
-        use_system_defaults: selection.use_system_defaults ?? true,
-        use_conversation_defaults: selection.use_conversation_defaults ?? true,
-      });
-      renderProfiles();
-      renderSelectionStats();
+    function appendEvent(event) {
+      state.events.push(event);
+      if (event.session_id && !state.sessionId) state.sessionId = event.session_id;
+      if (event.conversation_id) {
+        state.conversationId = event.conversation_id;
+        state.selectedConversationId = event.conversation_id;
+        el.conversationIdInput.value = String(event.conversation_id);
+      }
+      if (event.turn_id) state.turnId = event.turn_id;
+
+      if (event.event === "message.delta") {
+        appendAssistantDelta(event.payload?.text || "");
+      }
+      if (event.event === "message.completed") {
+        finalizeAssistantMessage(event.payload);
+      }
+      if (event.event === "turn.accepted") {
+        state.turnId = event.payload?.turn?.id || state.turnId;
+      }
+      if (event.event === "turn.completed" || event.event === "turn.failed" || event.event === "turn.canceled") {
+        state.activeAssistantMessageId = null;
+      }
+      if (event.event === "error") {
+        updateStatus("error", "连接/命令错误");
+      }
+      renderEvents();
     }
 
-    function resetDraftConversation() {
-      state.currentConversation = null;
-      state.turns = [];
-      applySelection({
-        capability_profile_ids: [],
-        capability_binding_ids: [],
-        capabilities: [],
-        metadata: {},
-      });
-      renderConversationList();
-      renderChat();
-      setNotice("已切到空白草稿。发送第一条消息时才会真正创建会话。", "info");
+    function appendUserMessage(text) {
+      state.messages.push({ role: "user", text, streaming: false });
+      renderMessages();
     }
 
-    function normalizeTurnRecord(item) {
-      return {
-        requestId: item.requestId || null,
-        turn: item.turn || {
-          id: null,
-          conversation_id: state.currentConversation?.id ?? null,
-          seq: null,
-          status: "pending",
-        },
-        input: item.input || null,
-        output: item.output || null,
-        streamingText: item.streamingText || "",
-        events: Array.isArray(item.events) ? item.events : [],
-      };
+    function appendAssistantDelta(delta) {
+      if (!state.activeAssistantMessageId) {
+        state.activeAssistantMessageId = `${Date.now()}-${Math.random()}`;
+        state.messages.push({
+          id: state.activeAssistantMessageId,
+          role: "assistant",
+          text: "",
+          streaming: true
+        });
+      }
+      const target = state.messages.find((item) => item.id === state.activeAssistantMessageId);
+      if (target) {
+        target.text += delta;
+      }
+      renderMessages();
     }
 
-    function findTurnRecord(turnId) {
-      return state.turns.find((item) => item.turn.id === turnId) || null;
+    function finalizeAssistantMessage(payload) {
+      const text = extractMessageText(payload);
+      let target = state.messages.find((item) => item.id === state.activeAssistantMessageId);
+      if (!target) {
+        target = { id: `${Date.now()}-${Math.random()}`, role: "assistant", text: "", streaming: false };
+        state.messages.push(target);
+      }
+      target.text = text || target.text;
+      target.streaming = false;
+      state.activeAssistantMessageId = null;
+      renderMessages();
     }
 
-    function fallbackTurnRecord(message) {
-      let record = findTurnRecord(message.turn_id);
-      if (record) return record;
-      record = state.turns.find((item) => !item.turn.id) || null;
-      if (record) {
-        record.turn.id = message.turn_id;
-        return record;
-      }
-      record = normalizeTurnRecord({
-        turn: {
-          id: message.turn_id,
-          conversation_id: message.conversation_id,
-          seq: null,
-          status: "pending",
-        },
-        events: [],
-      });
-      state.turns.push(record);
-      return record;
-    }
-
-    function describeEvent(item) {
-      const payload = item.payload || {};
-      if (item.event === "turn.accepted" || item.event === "turn.started" || item.event === "turn.completed" || item.event === "turn.failed" || item.event === "turn.canceled") {
-        return `turn status: ${payload.turn?.status || "-"}`;
-      }
-      if (item.event === "step.created" || item.event === "step.started" || item.event === "step.completed" || item.event === "step.failed") {
-        return `${payload.step?.name || "step"} · ${payload.step?.status || "-"}`;
-      }
-      if (item.event === "data.created" || item.event === "data.completed") {
-        return `${payload.data?.kind || "data"} · ${payload.data?.payload_type || "-"}`;
-      }
-      if (item.event === "message.delta") {
-        return shortText(payload.text || "", 72);
-      }
-      if (item.event === "message.completed") {
-        return shortText(bundleText(payload), 72);
-      }
-      if (item.event === "error" || item.event === "warning") {
-        return payload.message || "-";
-      }
-      if (item.event === "ack") {
-        return `${payload.command || "command"} accepted`;
-      }
-      return shortText(prettyJSON(payload), 72);
-    }
-
-    function bundleText(bundle) {
-      if (!bundle || !Array.isArray(bundle.blocks)) return "";
-      return bundle.blocks
+    function extractMessageText(payload) {
+      if (!payload || !Array.isArray(payload.blocks)) return "";
+      return payload.blocks
         .filter((block) => block.type === "text")
-        .map((block) => block.text)
+        .map((block) => block.text || "")
         .join("\n")
         .trim();
     }
 
-    function traceSummary(item) {
-      return `
-        <div class="trace-item">
-          <div class="trace-meta">
-            <span>${escapeHtml(item.event)}</span>
-            <span>seq=${escapeHtml(item.seq ?? "-")} · ${escapeHtml(formatTime(item.ts))}</span>
-          </div>
-          <p class="trace-title">${escapeHtml(describeEvent(item))}</p>
-          <pre class="trace-json">${escapeHtml(prettyJSON(item.payload || {}))}</pre>
-        </div>
-      `;
+    function setInitialValues() {
+      const httpBase = window.location.origin + apiRoot.pathname.replace(/\/$/, "");
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsBase = `${wsProtocol}//${window.location.host}${chatBase}/ws`;
+      el.httpBaseInput.value = httpBase;
+      el.wsUrlInput.value = wsBase;
+      el.capabilityManifestInput.value = pretty(defaults.capabilityManifest);
+      el.resourceSelectionInput.value = pretty(defaults.resourceSelection);
+      el.ragTopKInput.value = String(defaults.ragTopK);
+      ensureChatEmptyState();
+      renderEvents();
+      renderCapabilities();
+      renderConversations();
     }
 
-    function renderConversationList() {
-      if (!state.conversations.length) {
-        els.conversationList.innerHTML = `<div class="empty-state">没有历史会话。发送第一条消息后，这里会自动出现。</div>`;
-        return;
-      }
-      els.conversationList.innerHTML = state.conversations.map((item) => {
-        const isActive = state.currentConversation && item.conversation.id === state.currentConversation.id;
-        return `
-          <article class="conversation-item${isActive ? " active" : ""}" data-id="${item.conversation.id}">
-            <div>
-              <p class="conversation-title">${escapeHtml(item.conversation.title)}</p>
-              <p class="conversation-preview">${escapeHtml(shortText(item.latest_user_text || item.latest_assistant_text || "暂无消息", 72))}</p>
-            </div>
-            <p class="tiny">ID ${escapeHtml(item.conversation.id)} · 更新于 ${escapeHtml(formatTime(item.conversation.updated_at))}</p>
-            <button class="ghost" data-action="open" data-id="${item.conversation.id}">恢复聊天</button>
-          </article>
-        `;
-      }).join("");
-    }
-
-    function renderProfiles() {
-      if (!state.profiles.length) {
-        els.profileList.innerHTML = `<div class="empty-state">先填写 token 并连接，才能加载 capability profiles。</div>`;
-        return;
-      }
-      els.profileList.innerHTML = state.profiles.map((profile) => {
-        const checked = state.selectedProfileIds.has(profile.id) ? "checked" : "";
-        return `
-          <article class="profile-item">
-            <label class="profile-select">
-              <input type="checkbox" data-profile-id="${profile.id}" ${checked} />
-              <div>
-                <p class="profile-title">${escapeHtml(profile.name)}</p>
-                <p class="profile-meta">${escapeHtml(profile.kind)} · ${escapeHtml(profile.owner_account_id == null ? "global" : `owned:${profile.owner_account_id}`)}</p>
-              </div>
-            </label>
-            <pre class="profile-config">${escapeHtml(prettyJSON(profile.config || {}))}</pre>
-          </article>
-        `;
-      }).join("");
-    }
-
-    function renderSelectionStats() {
-      let selection;
+    function parseJsonInput(input, label) {
       try {
-        selection = readSelectionPayload();
-      } catch {
-        selection = {
-          capability_profile_ids: Array.from(state.selectedProfileIds),
-          capability_binding_ids: [],
-          capabilities: [],
-        };
+        return input.value.trim() ? JSON.parse(input.value) : {};
+      } catch (error) {
+        throw new Error(`${label} JSON 格式错误: ${error.message}`);
       }
-      els.profileCount.textContent = String(selection.capability_profile_ids.length);
-      els.inlineCount.textContent = String((selection.capabilities || []).length);
-      els.bindingCount.textContent = String((selection.capability_binding_ids || []).length);
     }
 
-    function renderChat() {
-      updateChip(els.conversationChip, "Conversation", state.currentConversation ? state.currentConversation.id : "Draft");
-      updateChip(els.turnChip, "Turns", state.turns.length);
-      els.chatTitle.textContent = state.currentConversation ? state.currentConversation.title : "未创建的空白聊天";
-      els.chatSubtitle.textContent = state.currentConversation
-        ? `会话 ${state.currentConversation.id} 已恢复。继续发消息会沿用这个会话，并展示每个 turn 的完整过程。`
-        : "当前是本地草稿。发送第一条消息后会自动创建会话，并开始积累历史。";
+    function parseIntegerList(value, label) {
+      const items = String(value || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (!items.length) {
+        throw new Error(`${label} 不能为空`);
+      }
+      const parsed = items.map((item) => Number(item));
+      if (parsed.some((item) => !Number.isInteger(item) || item <= 0)) {
+        throw new Error(`${label} 需要是正整数列表`);
+      }
+      return parsed;
+    }
 
-      if (!state.turns.length) {
-        els.messages.innerHTML = `
-          <div class="empty-state">
-            这里会展示常规聊天消息和 turn 过程。
-            <br />
-            每个 turn 都会包含用户输入、最终响应，以及 ` +
-            "step/data/message/turn" +
-            ` 等完整中间事件。
-          </div>
-        `;
-        return;
+    function syncRagSelectionIntoEditor() {
+      const selection = parseJsonInput(el.resourceSelectionInput, "Resource Selection");
+      if (!Array.isArray(selection.capabilities)) {
+        selection.capabilities = [];
       }
 
-      els.messages.innerHTML = state.turns.map((item) => {
-        const turn = item.turn || {};
-        const inputText = bundleText(item.input);
-        const outputText = item.output ? bundleText(item.output) : item.streamingText;
-        const pending = !outputText;
-        return `
-          <article class="turn-card">
-            <div class="turn-head">
-              <p class="tiny">turn=${escapeHtml(turn.id ?? "pending")} · seq=${escapeHtml(turn.seq ?? "-")} · status=${escapeHtml(turn.status || "pending")}</p>
-              <p class="tiny">${escapeHtml(formatTime(turn.updated_at || turn.created_at || null))}</p>
-            </div>
-            <div class="bubble user">${escapeHtml(inputText || "空输入")}</div>
-            <div class="bubble assistant${pending ? " pending" : ""}">${escapeHtml(outputText || "等待响应中...")}</div>
-            <details class="trace" ${item.events.length && turn.status !== "completed" ? "open" : ""}>
-              <summary>
-                <span>Turn 过程</span>
-                <span>${escapeHtml(String(item.events.length))} events</span>
-              </summary>
-              <div class="trace-list">
-                ${item.events.length ? item.events.map(traceSummary).join("") : `<div class="trace-item"><p class="trace-title">还没有中间事件</p></div>`}
-              </div>
-            </details>
-          </article>
-        `;
-      }).join("");
-
-      els.messages.scrollTop = els.messages.scrollHeight;
-    }
-
-    async function loadProfiles() {
-      if (!authHeaderValue()) {
-        renderProfiles();
-        return;
+      const capabilityKey = "knowledge_base_retrieval";
+      const retained = selection.capabilities.filter((item) => item.capability_key !== capabilityKey);
+      if (el.ragEnabledInput.checked) {
+        retained.push({
+          capability_key: capabilityKey,
+          kind: "extension",
+          required: el.ragRequiredInput.checked,
+          metadata: {
+            action_config_overrides: {
+              knowledge_retrieval: {
+                collection_ids: parseIntegerList(el.ragCollectionIdsInput.value, "Collection IDs"),
+                top_k: Number(el.ragTopKInput.value || defaults.ragTopK)
+              }
+            }
+          }
+        });
       }
-      state.profiles = await apiFetch(buildApiUrl(capabilityRoot, "profile"));
-      renderProfiles();
-      renderSelectionStats();
+      selection.capabilities = retained;
+      el.resourceSelectionInput.value = pretty(selection);
+      return selection;
     }
 
-    async function loadConversations() {
-      if (!authHeaderValue()) {
-        renderConversationList();
-        return;
+    function syncCapabilityRouterIntoEditor() {
+      const selection = parseJsonInput(el.resourceSelectionInput, "Resource Selection");
+      if (!selection.metadata || typeof selection.metadata !== "object" || Array.isArray(selection.metadata)) {
+        selection.metadata = {};
       }
-      state.conversations = await apiFetch(buildApiUrl(chatRoot, "conversation", { limit: 50 }));
-      renderConversationList();
+
+      const mode = el.capRouterModeSelect.value.trim();
+      const plannerModelConfigIdRaw = el.capRouterPlannerModelIdInput.value.trim();
+      if (!mode && !plannerModelConfigIdRaw) {
+        delete selection.metadata.capability_router;
+      } else {
+        const capabilityRouter = {};
+        if (mode) {
+          capabilityRouter.mode = mode;
+        }
+        if (plannerModelConfigIdRaw) {
+          const plannerModelConfigId = Number(plannerModelConfigIdRaw);
+          if (!Number.isInteger(plannerModelConfigId) || plannerModelConfigId <= 0) {
+            throw new Error("Planner Model Config ID 需要是正整数");
+          }
+          capabilityRouter.planner_model_config_id = plannerModelConfigId;
+        }
+        selection.metadata.capability_router = capabilityRouter;
+      }
+
+      el.resourceSelectionInput.value = pretty(selection);
+      return selection;
     }
 
-    async function hydrateConversationSummary(conversationId) {
-      if (!conversationId || !authHeaderValue()) return;
-      const summary = await apiFetch(buildApiUrl(chatRoot, `conversation/${conversationId}`));
-      state.currentConversation = summary;
-      renderConversationList();
-      renderChat();
+    async function refreshCapabilities() {
+      state.token = el.tokenInput.value.trim();
+      const scope = el.capabilityScopeSelect.value;
+      const url = `${absoluteApiUrl(capabilityBase)}?scope=${encodeURIComponent(scope)}`;
+      const data = await requestJson(url);
+      state.capabilities = Array.isArray(data) ? data : [];
+      renderCapabilities();
     }
 
-    async function openConversation(conversationId) {
-      const timeline = await apiFetch(buildApiUrl(chatRoot, `conversation/${conversationId}/timeline`));
-      state.currentConversation = timeline.conversation;
-      state.turns = (timeline.turns || []).map((item) => normalizeTurnRecord(item));
-      applySelection(timeline.conversation.default_resource_selection || {});
-      renderConversationList();
-      renderChat();
-      setNotice(`已恢复会话 ${conversationId}`, "info");
+    async function refreshConversations() {
+      state.token = el.tokenInput.value.trim();
+      const url = absoluteApiUrl(`${chatBase}/conversation`);
+      const data = await requestJson(url);
+      state.conversations = Array.isArray(data) ? data : [];
+      renderConversations();
     }
 
-    function socketStatusLabel() {
-      if (!state.ws) return "Disconnected";
-      if (state.ws.readyState === WebSocket.OPEN) return "Connected";
-      if (state.ws.readyState === WebSocket.CONNECTING) return "Connecting";
-      return "Disconnected";
+    async function loadConversationTimeline(conversationId) {
+      state.token = el.tokenInput.value.trim();
+      const url = absoluteApiUrl(`${chatBase}/conversation/${conversationId}/timeline`);
+      const data = await requestJson(url);
+      state.messages = [];
+      state.events = [];
+      state.conversationId = data.conversation.id;
+      state.selectedConversationId = data.conversation.id;
+      el.conversationIdInput.value = String(data.conversation.id);
+      el.conversationTitleInput.value = data.conversation.title || "";
+
+      for (const turn of data.turns || []) {
+        if (turn.input) {
+          state.messages.push({ role: "user", text: extractMessageText(turn.input), streaming: false });
+        }
+        if (turn.output) {
+          state.messages.push({ role: "assistant", text: extractMessageText(turn.output), streaming: false });
+        }
+        for (const event of turn.events || []) {
+          state.events.push(event);
+        }
+      }
+      renderMessages();
+      renderEvents();
     }
 
-    function refreshSocketChip() {
-      updateChip(els.socketChip, "Socket", socketStatusLabel());
-    }
-
-    async function ensureSocket() {
-      const token = authToken();
-      if (!token) {
+    function connectWebSocket() {
+      state.token = el.tokenInput.value.trim();
+      if (!state.token) {
         throw new Error("请先填写 token");
       }
-      if (state.ws && state.ws.readyState === WebSocket.OPEN && state.socketToken === token) {
-        return state.ws;
+      if (state.ws) {
+        state.ws.close();
       }
-      if (state.ws && state.ws.readyState === WebSocket.OPEN && state.socketToken !== token) {
-        const staleSocket = state.ws;
+
+      const baseUrl = new URL(el.wsUrlInput.value);
+      baseUrl.searchParams.set("token", state.token);
+      const ws = new WebSocket(baseUrl.toString());
+      state.ws = ws;
+      state.sessionId = null;
+      updateStatus("", "连接中");
+
+      ws.onopen = () => {
+        updateStatus("connected", "已连接");
+      };
+      ws.onmessage = (message) => {
+        const event = JSON.parse(message.data);
+        appendEvent(event);
+      };
+      ws.onerror = () => {
+        updateStatus("error", "连接异常");
+      };
+      ws.onclose = () => {
         state.ws = null;
-        state.socketPromise = null;
-        state.socketToken = "";
-        staleSocket.close(1000, "token_changed");
+        updateStatus("", "未连接");
+      };
+    }
+
+    function disconnectWebSocket() {
+      if (state.ws) {
+        state.ws.close();
       }
-      if (state.socketPromise) {
-        return state.socketPromise;
+      state.ws = null;
+      state.sessionId = null;
+      updateStatus("", "未连接");
+    }
+
+    function sendWsCommand(command, payload) {
+      if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+        throw new Error("WebSocket 未连接");
       }
-      const url = new URL("ws", chatRoot);
-      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-      url.searchParams.set("token", token);
+      const body = { command, payload };
+      setPreview(el.requestPreview, body);
+      state.ws.send(JSON.stringify(body));
+    }
 
-      state.socketPromise = new Promise((resolve, reject) => {
-        const ws = new WebSocket(url.toString());
-        state.ws = ws;
-        refreshSocketChip();
-
-        ws.addEventListener("open", () => {
-          state.socketToken = token;
-          refreshSocketChip();
-          setNotice("WebSocket 已连接，可以直接发送消息。", "info");
-          resolve(ws);
-        }, { once: true });
-
-        ws.addEventListener("message", async (event) => {
-          const message = JSON.parse(event.data);
-          await handleSocketMessage(message);
-        });
-
-        ws.addEventListener("close", () => {
-          if (state.ws === ws) {
-            state.ws = null;
-            state.socketPromise = null;
-            state.socketToken = "";
-          }
-          refreshSocketChip();
-        });
-
-        ws.addEventListener("error", () => {
-          setNotice("WebSocket 连接失败", "error");
-          reject(new Error("WebSocket 连接失败"));
-        }, { once: true });
+    async function createCapability() {
+      state.token = el.tokenInput.value.trim();
+      const manifest = parseJsonInput(el.capabilityManifestInput, "Capability Manifest");
+      const url = absoluteApiUrl(capabilityBase);
+      const data = await requestJson(url, {
+        method: "POST",
+        body: JSON.stringify({ manifest })
       });
-
-      return state.socketPromise;
+      state.selectedCapabilityId = data.id;
+      el.capabilityManifestInput.value = pretty(data.manifest);
+      await refreshCapabilities();
     }
 
-    async function handleSocketMessage(message) {
-      if (message.event === "error") {
-        setNotice(message.payload?.message || "收到错误事件", "error");
-        return;
+    async function updateCapability() {
+      state.token = el.tokenInput.value.trim();
+      if (!state.selectedCapabilityId) {
+        throw new Error("请先选择 capability package");
       }
-
-      if (message.conversation_id && (!state.currentConversation || state.currentConversation.id !== message.conversation_id)) {
-        await hydrateConversationSummary(message.conversation_id);
-      }
-
-      if (message.event === "ack" && message.payload?.command === "turn.start") {
-        const record = fallbackTurnRecord(message);
-        record.requestId = message.payload.request_id || record.requestId;
-        renderChat();
-        return;
-      }
-
-      if (!message.turn_id) {
-        return;
-      }
-
-      const record = fallbackTurnRecord(message);
-      record.events.push(message);
-
-      if (message.payload?.turn) {
-        record.turn = {
-          ...record.turn,
-          ...message.payload.turn,
-        };
-      }
-      if (message.event === "message.delta") {
-        record.streamingText = `${record.streamingText || ""}${message.payload?.text || ""}`;
-      }
-      if (message.event === "message.completed") {
-        record.output = message.payload;
-        record.streamingText = bundleText(message.payload);
-      }
-      if (message.event === "turn.completed" || message.event === "turn.failed" || message.event === "turn.canceled") {
-        await loadConversations();
-        if (message.conversation_id) {
-          await hydrateConversationSummary(message.conversation_id);
-        }
-      }
-      renderChat();
-    }
-
-    async function saveSelection({ quiet = false } = {}) {
-      const payload = readSelectionPayload();
-      if (!state.currentConversation) {
-        if (!quiet) {
-          setNotice("当前还是空白草稿。发送第一条消息时会把这份配置作为会话默认配置一起创建。", "warn");
-        }
-        return payload;
-      }
-      const summary = await apiFetch(buildApiUrl(chatRoot, `conversation/${state.currentConversation.id}/resource-selection`), {
+      const manifest = parseJsonInput(el.capabilityManifestInput, "Capability Manifest");
+      const url = absoluteApiUrl(`${capabilityBase}/${state.selectedCapabilityId}`);
+      const data = await requestJson(url, {
         method: "PUT",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ manifest })
       });
-      state.currentConversation = summary;
-      applySelection(summary.default_resource_selection || payload);
-      await loadConversations();
-      renderChat();
-      if (!quiet) {
-        setNotice(`会话 ${state.currentConversation.id} 的 capability 配置已保存`, "info");
-      }
-      return payload;
+      el.capabilityManifestInput.value = pretty(data.manifest);
+      await refreshCapabilities();
     }
 
-    async function sendMessage() {
-      const text = els.messageInput.value.trim();
-      if (!text) {
-        setNotice("请输入聊天内容", "warn");
-        return;
+    async function deleteCapability() {
+      state.token = el.tokenInput.value.trim();
+      if (!state.selectedCapabilityId) {
+        throw new Error("请先选择 capability package");
       }
+      const url = absoluteApiUrl(`${capabilityBase}/${state.selectedCapabilityId}`);
+      await requestJson(url, { method: "DELETE" });
+      state.selectedCapabilityId = null;
+      await refreshCapabilities();
+    }
 
-      const selectionPayload = state.currentConversation
-        ? await saveSelection({ quiet: true })
-        : readSelectionPayload();
+    function injectCapabilityIntoSelection(capability) {
+      const selection = parseJsonInput(el.resourceSelectionInput, "Resource Selection");
+      if (!Array.isArray(selection.capabilities)) {
+        selection.capabilities = [];
+      }
+      const exists = selection.capabilities.some((item) =>
+        (item.capability_id && item.capability_id === capability.id) ||
+        (item.capability_key && item.capability_key === capability.capability_key)
+      );
+      if (!exists) {
+        selection.capabilities.push({
+          capability_id: capability.id,
+          capability_key: capability.capability_key,
+          kind: capability.kind
+        });
+      }
+      el.resourceSelectionInput.value = pretty(selection);
+    }
 
-      const requestId = createRequestId();
-      const draftTurn = normalizeTurnRecord({
-        requestId,
-        turn: {
-          id: null,
-          conversation_id: state.currentConversation?.id ?? null,
-          seq: null,
-          status: "pending",
-        },
+    async function sendTurn() {
+      const text = el.messageInput.value.trim();
+      if (!text) {
+        throw new Error("请输入消息");
+      }
+      syncCapabilityRouterIntoEditor();
+      const resourceSelection = syncRagSelectionIntoEditor();
+      const conversationIdRaw = el.conversationIdInput.value.trim();
+      const payload = {
+        conversation_id: conversationIdRaw ? Number(conversationIdRaw) : null,
+        conversation_title: el.conversationTitleInput.value.trim() || null,
+        request_id: `demo-${Date.now()}`,
         input: {
           role: "user",
-          blocks: [{ type: "text", text }],
+          blocks: [{ type: "text", text }]
         },
-        output: null,
-        events: [],
-      });
-      state.turns.push(draftTurn);
-      renderChat();
-
-      const ws = await ensureSocket();
-      ws.send(JSON.stringify({
-        command: "turn.start",
-        payload: {
-          conversation_id: state.currentConversation ? state.currentConversation.id : null,
-          request_id: requestId,
-          input: {
-            role: "user",
-            blocks: [{ type: "text", text }],
-          },
-          resource_selection: state.currentConversation
-            ? { use_conversation_defaults: true }
-            : selectionPayload,
-        },
-      }));
-
-      els.messageInput.value = "";
-      setNotice("消息已发送，等待 turn 事件流。", "info");
+        resource_selection: resourceSelection
+      };
+      appendUserMessage(text);
+      sendWsCommand("turn.start", payload);
     }
 
-    async function connectAndLoad() {
-      if (!authToken()) {
-        throw new Error("请先填写 token");
+    async function saveSelection() {
+      state.token = el.tokenInput.value.trim();
+      const conversationIdRaw = el.conversationIdInput.value.trim();
+      if (!conversationIdRaw) {
+        throw new Error("请先选择或创建会话");
       }
-      localStorage.setItem("kb_chat_demo_token", authToken());
-      setNotice("正在使用 token 校验 HTTP 接口...", "info");
-      await Promise.all([loadProfiles(), loadConversations()]);
-      setNotice("token 校验通过，正在建立 WebSocket...", "info");
-      await ensureSocket();
-      renderChat();
+      syncCapabilityRouterIntoEditor();
+      const selection = syncRagSelectionIntoEditor();
+      const url = absoluteApiUrl(`${chatBase}/conversation/${conversationIdRaw}/resource-selection`);
+      await requestJson(url, {
+        method: "PUT",
+        body: JSON.stringify(selection)
+      });
+      await refreshConversations();
+    }
+
+    function cancelTurn() {
+      if (!state.turnId) {
+        throw new Error("当前没有可取消的 turn");
+      }
+      sendWsCommand("turn.cancel", {
+        turn_id: state.turnId
+      });
+    }
+
+    function replayTurn() {
+      if (!state.turnId) {
+        throw new Error("当前没有可回放的 turn");
+      }
+      sendWsCommand("turn.resume", {
+        turn_id: state.turnId,
+        last_seq: 0
+      });
+    }
+
+    function ping() {
+      sendWsCommand("ping", { nonce: `demo-${Date.now()}` });
+    }
+
+    function clearEvents() {
+      state.events = [];
+      renderEvents();
+    }
+
+    function exportEvents() {
+      const blob = new Blob([pretty(state.events)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `chat-events-${Date.now()}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
     }
 
     function bindEvents() {
-      els.connectBtn.addEventListener("click", async () => {
-        try {
-          await connectAndLoad();
-        } catch (error) {
-          setNotice(error.message || "连接失败", "error");
+      document.getElementById("connect-btn").addEventListener("click", handleAction(connectWebSocket));
+      document.getElementById("disconnect-btn").addEventListener("click", handleAction(disconnectWebSocket));
+      document.getElementById("ping-btn").addEventListener("click", handleAction(ping));
+      document.getElementById("refresh-capabilities-btn").addEventListener("click", handleAction(refreshCapabilities));
+      document.getElementById("create-capability-btn").addEventListener("click", handleAction(createCapability));
+      document.getElementById("update-capability-btn").addEventListener("click", handleAction(updateCapability));
+      document.getElementById("delete-capability-btn").addEventListener("click", handleAction(deleteCapability));
+      document.getElementById("refresh-conversations-btn").addEventListener("click", handleAction(refreshConversations));
+      document.getElementById("sync-router-selection-btn").addEventListener("click", handleAction(syncCapabilityRouterIntoEditor));
+      document.getElementById("send-turn-btn").addEventListener("click", handleAction(sendTurn));
+      document.getElementById("save-selection-btn").addEventListener("click", handleAction(saveSelection));
+      document.getElementById("sync-rag-selection-btn").addEventListener("click", handleAction(syncRagSelectionIntoEditor));
+      document.getElementById("cancel-turn-btn").addEventListener("click", handleAction(cancelTurn));
+      document.getElementById("replay-turn-btn").addEventListener("click", handleAction(replayTurn));
+      document.getElementById("clear-events-btn").addEventListener("click", clearEvents);
+      document.getElementById("export-events-btn").addEventListener("click", exportEvents);
+
+      el.capabilityList.addEventListener("click", (event) => {
+        const target = event.target.closest("button");
+        if (!target) return;
+        const action = target.dataset.action;
+        const id = Number(target.dataset.id);
+        const capability = state.capabilities.find((item) => item.id === id);
+        if (!capability) return;
+        if (action === "select-capability") {
+          state.selectedCapabilityId = id;
+          el.capabilityManifestInput.value = pretty(capability.manifest);
+          renderCapabilities();
+        }
+        if (action === "inject-capability") {
+          injectCapabilityIntoSelection(capability);
         }
       });
 
-      els.newConversationBtn.addEventListener("click", () => {
-        resetDraftConversation();
-      });
-
-      els.saveSelectionBtn.addEventListener("click", async () => {
-        try {
-          await saveSelection();
-        } catch (error) {
-          setNotice(error.message || "保存 capability 配置失败", "error");
+      el.conversationList.addEventListener("click", (event) => {
+        const target = event.target.closest("button");
+        if (!target) return;
+        const id = Number(target.dataset.id);
+        if (target.dataset.action === "select-conversation") {
+          state.selectedConversationId = id;
+          state.conversationId = id;
+          el.conversationIdInput.value = String(id);
+          renderConversations();
         }
-      });
-
-      els.sendBtn.addEventListener("click", async () => {
-        try {
-          await sendMessage();
-        } catch (error) {
-          setNotice(error.message || "发送失败", "error");
-          renderChat();
-        }
-      });
-
-      els.messageInput.addEventListener("keydown", async (event) => {
-        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-          event.preventDefault();
-          try {
-            await sendMessage();
-          } catch (error) {
-            setNotice(error.message || "发送失败", "error");
-            renderChat();
-          }
-        }
-      });
-
-      els.profileList.addEventListener("change", (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
-          return;
-        }
-        const profileId = Number(target.dataset.profileId);
-        if (!Number.isInteger(profileId)) {
-          return;
-        }
-        if (target.checked) {
-          state.selectedProfileIds.add(profileId);
-        } else {
-          state.selectedProfileIds.delete(profileId);
-        }
-        renderSelectionStats();
-      });
-
-      els.selectionExtras.addEventListener("input", () => {
-        renderSelectionStats();
-      });
-
-      els.conversationList.addEventListener("click", async (event) => {
-        const target = event.target;
-        const trigger = target.closest("[data-id]");
-        if (!trigger) {
-          return;
-        }
-        const conversationId = Number(trigger.dataset.id);
-        if (!Number.isInteger(conversationId)) {
-          return;
-        }
-        try {
-          await openConversation(conversationId);
-        } catch (error) {
-          setNotice(error.message || "恢复历史失败", "error");
+        if (target.dataset.action === "load-timeline") {
+          handleAction(() => loadConversationTimeline(id))();
         }
       });
     }
 
-    async function bootstrap() {
-      els.selectionExtras.value = prettyJSON(SELECTION_EXTRAS_TEMPLATE);
-      const cachedToken = localStorage.getItem("kb_chat_demo_token");
-      if (cachedToken) {
-        els.tokenInput.value = cachedToken;
-      }
-      bindEvents();
-      renderConversationList();
-      renderProfiles();
-      renderSelectionStats();
-      renderChat();
+    function handleAction(fn) {
+      return async () => {
+        try {
+          await fn();
+        } catch (error) {
+          console.error(error);
+          setPreview(el.responsePreview, { error: error.message || String(error) });
+        }
+      };
     }
 
-    bootstrap();
+    setInitialValues();
+    bindEvents();
   </script>
 </body>
 </html>

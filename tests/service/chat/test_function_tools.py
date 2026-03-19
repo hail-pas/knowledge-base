@@ -1,8 +1,8 @@
 import pytest
 
-from service.chat.capability.registry import CapabilityDescriptor
+from service.chat.execution.registry import ExecutionAction
 from service.chat.domain.schema import (
-    ChatCapabilityKindEnum,
+    ChatActionKindEnum,
     ChatRoleEnum,
     ConversationSummary,
     FunctionCallConfig,
@@ -40,10 +40,10 @@ def _session(query: str) -> ChatSessionContext:
             ),
         ),
         resolved_selection=ResourceSelection(),
-        resolved_capabilities=[
-            CapabilityDescriptor(
-                capability_id="builtin:function",
-                kind=ChatCapabilityKindEnum.function_call,
+        resolved_actions=[
+            ExecutionAction(
+                action_id="builtin:function",
+                kind=ChatActionKindEnum.function_call,
                 step_kind=ChatStepKindEnum.tool,
                 name="function_router",
                 config=FunctionCallConfig(tools=[FunctionToolSpec(tool_name="session_context")]),

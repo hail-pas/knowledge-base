@@ -213,3 +213,9 @@ class ChatDataKindEnum(StrEnum):
     intermediate = ("intermediate", "中间数据")
     reference = ("reference", "引用数据")
     control = ("control", "控制数据")
+
+
+class ChatCapabilityKindEnum(StrEnum):
+    skill = ("skill", "流程型能力")
+    extension = ("extension", "扩展能力")
+    sub_agent = ("sub_agent", "子代理能力")

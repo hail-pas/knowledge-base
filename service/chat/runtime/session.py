@@ -7,30 +7,30 @@ from service.chat.domain.schema import (
     DEFAULT_SYSTEM_PROMPT_PLACEHOLDERS,
     TurnStartRequest,
     ResourceSelection,
+    ChatActionKindEnum,
     SystemPromptConfig,
     ConversationSummary,
     PromptContextPayload,
-    ChatCapabilityKindEnum,
     SystemPromptPlaceholderEnum,
     SystemPromptTemplateKeyEnum,
 )
 from service.chat.runtime.context import TurnArtifacts
-from service.chat.capability.registry import CapabilityDescriptor
+from service.chat.execution.registry import ExecutionAction
 
 
 @dataclass(slots=True)
 class SystemPromptState:
     template_key: SystemPromptTemplateKeyEnum = SystemPromptTemplateKeyEnum.default
     include_placeholders: list[SystemPromptPlaceholderEnum] = field(default_factory=list)
-    highlight_capabilities: list[ChatCapabilityKindEnum] = field(default_factory=list)
+    highlight_actions: list[ChatActionKindEnum] = field(default_factory=list)
     instructions: list[str] = field(default_factory=list)
     variable_overrides: dict[str, str] = field(default_factory=dict)
-    applied_capability_ids: list[str] = field(default_factory=list)
+    applied_action_ids: list[str] = field(default_factory=list)
 
-    def merge(self, descriptor: CapabilityDescriptor, config: SystemPromptConfig) -> None:
+    def merge(self, action: ExecutionAction, config: SystemPromptConfig) -> None:
         self.template_key = config.template_key
         self._extend_unique(self.include_placeholders, list(config.include_placeholders))
-        self._extend_unique(self.highlight_capabilities, list(config.highlight_capabilities))
+        self._extend_unique(self.highlight_actions, list(config.highlight_actions))
         self._extend_unique(
             self.instructions,
             [instruction.strip() for instruction in config.instructions if instruction.strip()],
@@ -42,8 +42,8 @@ class SystemPromptState:
                 if key.strip() and value.strip()
             },
         )
-        if descriptor.capability_id not in self.applied_capability_ids:
-            self.applied_capability_ids.append(descriptor.capability_id)
+        if action.action_id not in self.applied_action_ids:
+            self.applied_action_ids.append(action.action_id)
 
     def selected_placeholders(self) -> list[SystemPromptPlaceholderEnum]:
         return list(self.include_placeholders or DEFAULT_SYSTEM_PROMPT_PLACEHOLDERS)
@@ -52,10 +52,10 @@ class SystemPromptState:
         return PromptContextPayload(
             template_key=self.template_key,
             placeholders=self.selected_placeholders(),
-            highlighted_capabilities=list(self.highlight_capabilities),
+            highlighted_actions=list(self.highlight_actions),
             instructions=list(self.instructions),
             variable_overrides=dict(self.variable_overrides),
-            applied_capability_ids=list(self.applied_capability_ids),
+            applied_action_ids=list(self.applied_action_ids),
         )
 
     def _extend_unique(self, target: list[Any], items: list[Any]) -> None:
@@ -73,7 +73,7 @@ class ChatSessionContext:
     conversation: ConversationSummary
     turn_request: TurnStartRequest
     resolved_selection: ResourceSelection
-    resolved_capabilities: list[CapabilityDescriptor]
+    resolved_actions: list[ExecutionAction]
     artifacts: TurnArtifacts = field(default_factory=TurnArtifacts)
     prompt_state: SystemPromptState = field(default_factory=SystemPromptState)
     state: dict[str, Any] = field(default_factory=dict)
@@ -100,8 +100,8 @@ class ChatSessionContext:
     def sync_prompt_context(self) -> None:
         self.artifacts.set_prompt_context(self.prompt_state.to_payload())
 
-    def apply_system_prompt_config(self, descriptor: CapabilityDescriptor, config: SystemPromptConfig) -> None:
-        self.prompt_state.merge(descriptor, config)
+    def apply_system_prompt_config(self, action: ExecutionAction, config: SystemPromptConfig) -> None:
+        self.prompt_state.merge(action, config)
         self.sync_prompt_context()
 
     def set_state(self, key: str, value: Any) -> None:

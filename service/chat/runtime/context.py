@@ -7,26 +7,26 @@ from service.chat.domain.schema import (
     UsagePayload,
     RetrievalBlock,
     ChatHistoryItem,
+    ActionContextItem,
     ChatContextEnvelope,
+    ActionTerminalOutput,
     MessageBundlePayload,
     PromptContextPayload,
-    CapabilityContextItem,
     ChatContextItemTypeEnum,
     IntentRecognitionResult,
-    CapabilityTerminalOutput,
     FunctionExecutionSummary,
 )
-from service.chat.capability.registry import CapabilityDescriptor
+from service.chat.execution.registry import ExecutionAction
 
 
 @dataclass(slots=True)
 class TurnArtifacts:
     instructions: list[str] = field(default_factory=list)
-    context_items: list[CapabilityContextItem] = field(default_factory=list)
+    context_items: list[ActionContextItem] = field(default_factory=list)
     prompt_context: PromptContextPayload | None = None
     intent_result: IntentRecognitionResult | None = None
     executed_functions: list[FunctionExecutionSummary] = field(default_factory=list)
-    terminal_output: CapabilityTerminalOutput | None = None
+    terminal_output: ActionTerminalOutput | None = None
     output_payload: MessageBundlePayload | None = None
     usage: UsagePayload | None = None
 
@@ -37,7 +37,7 @@ class TurnArtifacts:
 
     def add_text_context(
         self,
-        descriptor: CapabilityDescriptor,
+        action: ExecutionAction,
         *,
         text: str,
         title: str | None = None,
@@ -47,14 +47,14 @@ class TurnArtifacts:
         if not text:
             return
         self.context_items.append(
-            CapabilityContextItem(
-                capability_id=descriptor.capability_id,
-                capability_kind=descriptor.kind,
-                capability_name=descriptor.name,
-                source=descriptor.source,
+            ActionContextItem(
+                action_id=action.action_id,
+                action_kind=action.kind,
+                action_name=action.name,
+                source=action.source,
                 item_type=ChatContextItemTypeEnum.text,
-                title=title or descriptor.name,
-                priority=descriptor.priority,
+                title=title or action.name,
+                priority=action.priority,
                 text=text,
                 metadata=metadata or {},
             ),
@@ -62,21 +62,21 @@ class TurnArtifacts:
 
     def add_json_context(
         self,
-        descriptor: CapabilityDescriptor,
+        action: ExecutionAction,
         *,
         data: dict[str, Any],
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         self.context_items.append(
-            CapabilityContextItem(
-                capability_id=descriptor.capability_id,
-                capability_kind=descriptor.kind,
-                capability_name=descriptor.name,
-                source=descriptor.source,
+            ActionContextItem(
+                action_id=action.action_id,
+                action_kind=action.kind,
+                action_name=action.name,
+                source=action.source,
                 item_type=ChatContextItemTypeEnum.json,
-                title=title or descriptor.name,
-                priority=descriptor.priority,
+                title=title or action.name,
+                priority=action.priority,
                 data=data,
                 metadata=metadata or {},
             ),
@@ -84,7 +84,7 @@ class TurnArtifacts:
 
     def add_retrieval_context(
         self,
-        descriptor: CapabilityDescriptor,
+        action: ExecutionAction,
         *,
         retrievals: list[RetrievalBlock],
         title: str | None = None,
@@ -93,14 +93,14 @@ class TurnArtifacts:
         if not retrievals:
             return
         self.context_items.append(
-            CapabilityContextItem(
-                capability_id=descriptor.capability_id,
-                capability_kind=descriptor.kind,
-                capability_name=descriptor.name,
-                source=descriptor.source,
+            ActionContextItem(
+                action_id=action.action_id,
+                action_kind=action.kind,
+                action_name=action.name,
+                source=action.source,
                 item_type=ChatContextItemTypeEnum.retrieval,
-                title=title or descriptor.name,
-                priority=descriptor.priority,
+                title=title or action.name,
+                priority=action.priority,
                 retrievals=retrievals,
                 metadata=metadata or {},
             ),
@@ -117,16 +117,16 @@ class TurnArtifacts:
 
     def set_terminal_output(
         self,
-        descriptor: CapabilityDescriptor,
+        action: ExecutionAction,
         *,
         payload: MessageBundlePayload,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        self.terminal_output = CapabilityTerminalOutput(
-            capability_id=descriptor.capability_id,
-            capability_kind=descriptor.kind,
-            capability_name=descriptor.name,
-            source=descriptor.source,
+        self.terminal_output = ActionTerminalOutput(
+            action_id=action.action_id,
+            action_kind=action.kind,
+            action_name=action.name,
+            source=action.source,
             payload=payload,
             metadata=metadata or {},
         )

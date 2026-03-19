@@ -15,6 +15,7 @@ from ext.ext_tortoise.enums import (
     FileSourceTypeEnum,
     WorkflowStatusEnum,
     ChatTurnTriggerEnum,
+    ChatCapabilityKindEnum,
     EmbeddingModelTypeEnum,
     IndexingBackendTypeEnum,
     WorkflowConfigFormatEnum,
@@ -493,52 +494,26 @@ class LLMModelConfig(BaseModel):
         return f"{self.name} ({self.type.value})"
 
 
-class ChatCapabilityProfile(BaseModel):
+class ChatCapabilityPackage(BaseModel):
     owner_account_id = fields.BigIntField(null=True, description="所属账户ID，空表示全局")
-    name = fields.CharField(max_length=128, description="Capability 名称")
-    kind = fields.CharField(max_length=64, description="Capability 类型")
-    description = fields.TextField(default="", description="描述")
-    config = fields.JSONField(default=dict, description="Capability 配置")
+    kind = fields.CharEnumField(ChatCapabilityKindEnum, description="能力包类型")
+    capability_key = fields.CharField(max_length=128, description="能力包唯一键")
+    name = fields.CharField(max_length=128, description="能力包名称")
+    description = fields.TextField(default="", description="能力包描述")
+    manifest = fields.JSONField(default=dict, description="能力包 manifest")
     is_enabled = fields.BooleanField(default=True, description="是否启用")
     metadata = fields.JSONField(default=dict, description="附加元数据")
     version = fields.IntField(default=1, description="版本号")
 
     class Meta:  # type: ignore
-        table = "chat_capability_profile"
-        table_description = "聊天能力配置表"
+        table = "chat_capability_package"
+        table_description = "聊天能力包定义表"
         app = _KBConnectionName
-        unique_together = [("owner_account_id", "name", "deleted_at")]
+        unique_together = [("owner_account_id", "kind", "capability_key", "deleted_at")]
         indexes = [
             ("owner_account_id", "kind", "is_enabled"),
-            ("owner_account_id", "is_enabled"),
-            ("kind", "is_enabled"),
-            ("is_enabled",),
+            ("kind", "capability_key", "is_enabled"),
             ("created_at",),
-        ]
-        ordering = ["-id"]
-
-
-class ChatCapabilityBinding(BaseModel):
-    owner_type = fields.CharField(max_length=32, description="绑定对象类型")
-    owner_id = fields.BigIntField(null=True, description="绑定对象ID")
-    capability_profile = fields.ForeignKeyField(
-        f"{_KBConnectionName}.ChatCapabilityProfile",
-        related_name="bindings",
-        on_delete=fields.CASCADE,
-        description="关联能力配置",
-    )
-    priority = fields.IntField(default=100, description="执行优先级")
-    is_enabled = fields.BooleanField(default=True, description="是否启用")
-    metadata = fields.JSONField(default=dict, description="附加元数据")
-
-    class Meta:  # type: ignore
-        table = "chat_capability_binding"
-        table_description = "聊天能力绑定表"
-        app = _KBConnectionName
-        unique_together = [("owner_type", "owner_id", "capability_profile_id", "deleted_at")]
-        indexes = [
-            ("owner_type", "owner_id", "is_enabled"),
-            ("capability_profile_id", "is_enabled"),
         ]
         ordering = ["-id"]
 

@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 from service.chat.domain.schema import (
     DEFAULT_SYSTEM_PROMPT_PLACEHOLDERS,
+    ActionContextItem,
+    ChatActionKindEnum,
     ChatContextEnvelope,
-    CapabilityContextItem,
-    ChatCapabilityKindEnum,
     ChatContextItemTypeEnum,
     SystemPromptPlaceholderEnum,
 )
@@ -39,7 +39,7 @@ class ChatPromptBuilder:
         ordered_context = context.ordered_context_items()
         if ordered_context:
             user_sections.append(
-                "Capability 上下文：\n"
+                "执行上下文：\n"
                 + "\n\n".join(
                     self.render_context_item(index=index, item=item)
                     for index, item in enumerate(ordered_context, start=1)
@@ -53,7 +53,7 @@ class ChatPromptBuilder:
                     for idx, item in enumerate(context.references, start=1)
                 ),
             )
-        user_sections.append("输出要求：优先吸收 capability 上下文形成答案；无法确认时直接说明不确定。")
+        user_sections.append("输出要求：优先吸收执行上下文形成答案；无法确认时直接说明不确定。")
         return ChatPromptBundle(
             system_prompt="\n\n".join(section for section in system_sections if section.strip()),
             user_prompt="\n\n".join(section for section in user_sections if section.strip()),
@@ -96,8 +96,8 @@ class ChatPromptBuilder:
     ) -> str:
         if placeholder.value in overrides:
             return overrides[placeholder.value]
-        if placeholder == SystemPromptPlaceholderEnum.capability_summary:
-            return self.render_capability_summary(context=context, session=session)
+        if placeholder == SystemPromptPlaceholderEnum.action_summary:
+            return self.render_action_summary(context=context, session=session)
         if placeholder == SystemPromptPlaceholderEnum.intent_summary:
             return self.render_intent_summary(context=context)
         if placeholder == SystemPromptPlaceholderEnum.function_summary:
@@ -108,12 +108,12 @@ class ChatPromptBuilder:
             return self.render_instruction_summary(context=context)
         if placeholder == SystemPromptPlaceholderEnum.context_policy:
             return (
-                "上下文策略：优先使用 capability 输出；检索结果是证据片段；"
-                "函数/工具结果是结构化事实；历史对话只用于补充语境，不覆盖最新 capability 结果。"
+                "上下文策略：优先使用执行步骤输出；检索结果是证据片段；"
+                "函数/工具结果是结构化事实；历史对话只用于补充语境，不覆盖最新执行结果。"
             )
         return ""
 
-    def render_capability_summary(
+    def render_action_summary(
         self,
         *,
         context: ChatContextEnvelope,
@@ -122,15 +122,15 @@ class ChatPromptBuilder:
         if session is None:
             capabilities = [
                 (
-                    item.capability_name,
-                    item.capability_kind,
+                    item.action_name,
+                    item.action_kind,
                     item.source,
                 )
                 for item in context.ordered_context_items()
             ]
         else:
-            highlighted = set(session.prompt_state.highlight_capabilities)
-            raw_items = session.resolved_capabilities
+            highlighted = set(session.prompt_state.highlight_actions)
+            raw_items = session.resolved_actions
             if highlighted:
                 filtered = [item for item in raw_items if item.kind in highlighted]
                 raw_items = filtered or raw_items
@@ -140,9 +140,9 @@ class ChatPromptBuilder:
         lines = [
             f"- {name} ({kind.value} / {source})"
             for name, kind, source in capabilities
-            if isinstance(kind, ChatCapabilityKindEnum)
+            if isinstance(kind, ChatActionKindEnum)
         ]
-        return "当前 capability 计划：\n" + "\n".join(lines)
+        return "当前执行计划：\n" + "\n".join(lines)
 
     def render_intent_summary(self, *, context: ChatContextEnvelope) -> str:
         if context.intent_result is None:
@@ -195,8 +195,8 @@ class ChatPromptBuilder:
             return ""
         return "额外执行约束：\n" + "\n".join(f"- {item}" for item in deduplicated)
 
-    def render_context_item(self, *, index: int, item: CapabilityContextItem) -> str:
-        header = f"[{index}] {item.title or item.capability_name} ({item.capability_kind.value} / {item.source})"
+    def render_context_item(self, *, index: int, item: ActionContextItem) -> str:
+        header = f"[{index}] {item.title or item.action_name} ({item.action_kind.value} / {item.source})"
         if item.item_type == ChatContextItemTypeEnum.text:
             body = item.text or ""
         elif item.item_type == ChatContextItemTypeEnum.json:

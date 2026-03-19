@@ -4,20 +4,26 @@ from pydantic import ValidationError
 
 from service.chat.domain.schema import (
     AckPayload,
+    CapabilitySelection,
     ClientCommand,
     ClientCommandEnum,
-    ChatCapabilityKindEnum,
+    ChatActionKindEnum,
+    CapabilityKindEnum,
     ChatErrorCodeEnum,
     ChatEvent,
     ChatWarningCodeEnum,
     DataEventPayload,
     ErrorPayload,
+    ExtensionEventStageEnum,
+    ExtensionEventPayload,
     FunctionCallConfig,
     IntentDetectionConfig,
     MessageBundlePayload,
     ResourceSelection,
     RetrievalBlock,
     RetrievalListPayload,
+    StepIOPayload,
+    StepIOPhaseEnum,
     SystemPromptConfig,
     TextBlock,
     TurnStartRequest,
@@ -84,10 +90,64 @@ def test_generic_event_payload_strict_validation():
     )
 
 
+def test_extension_event_payload_supports_nested_step_data_validation():
+    event = ChatEvent[DataEventPayload[ExtensionEventPayload]].model_validate(
+        {
+            "id": "evt_2",
+            "session_id": "session_1",
+            "conversation_id": 1,
+            "turn_id": 2,
+            "seq": 4,
+            "event": "data.created",
+            "ts": "2026-03-17T12:00:01Z",
+            "payload": {
+                "data": {
+                    "id": 12,
+                    "turn_id": 2,
+                    "step_id": 6,
+                    "kind": "intermediate",
+                    "payload_type": "extension_event",
+                    "payload": {
+                        "type": "extension_event",
+                        "extension_key": "knowledge_base_retrieval",
+                        "capability_id": 9,
+                        "action_id": "capability:9:action:1",
+                        "action_name": "knowledge_base_retrieval",
+                        "stage": "reranking",
+                        "level": "info",
+                        "message": "正在 rerank 检索结果",
+                        "data": {"candidate_count": 12},
+                    },
+                },
+            },
+        },
+    )
+
+    assert event.payload.data.payload.stage == ExtensionEventStageEnum.reranking
+    assert event.payload.data.payload.extension_key == "knowledge_base_retrieval"
+
+
+def test_step_io_payload_uses_enum_and_strict_shape():
+    payload = StepIOPayload.model_validate(
+        {
+            "type": "step_io",
+            "phase": "input",
+            "action_id": "capability:1:action:1",
+            "action_name": "knowledge_base_retrieval",
+            "action_kind": "knowledge_retrieval",
+            "message": "知识库检索输入",
+            "data": {"collection_ids": [1], "top_k": 5},
+        },
+    )
+
+    assert payload.phase == StepIOPhaseEnum.input
+
+
 def test_resource_selection_constraints():
     selection = ResourceSelection.model_validate(
         {
-            "capabilities": [
+            "capabilities": [{"capability_key": "grounded_qa", "kind": "skill"}],
+            "actions": [
                 {
                     "kind": "knowledge_retrieval",
                     "priority": 10,
@@ -97,19 +157,23 @@ def test_resource_selection_constraints():
         },
     )
 
-    normalized = selection.normalized_capabilities()
-    assert normalized[0].kind == ChatCapabilityKindEnum.knowledge_retrieval
+    normalized = selection.normalized_actions()
+    normalized_capabilities = selection.normalized_capabilities()
+    assert normalized_capabilities == [
+        CapabilitySelection(capability_key="grounded_qa", kind=CapabilityKindEnum.skill),
+    ]
+    assert normalized[0].kind == ChatActionKindEnum.knowledge_retrieval
     assert normalized[0].config.collection_ids == [1, 2]
-    assert normalized[1].kind == ChatCapabilityKindEnum.llm_response
+    assert normalized[1].kind == ChatActionKindEnum.llm_response
 
 
-def test_resource_selection_rejects_unknown_capability_kind():
+def test_resource_selection_rejects_unknown_action_kind():
     try:
         ResourceSelection.model_validate(
             {
-                "capabilities": [
+                "actions": [
                     {
-                        "kind": "unknown_capability",
+                        "kind": "unknown_action",
                         "priority": 10,
                         "config": {},
                     },
@@ -119,13 +183,13 @@ def test_resource_selection_rejects_unknown_capability_kind():
     except ValidationError:
         pass
     else:
-        raise AssertionError("expected validation failure for invalid capability kind")
+        raise AssertionError("expected validation failure for invalid action kind")
 
 
-def test_resource_selection_uses_explicit_capability_execution_order():
+def test_resource_selection_uses_explicit_action_execution_order():
     selection = ResourceSelection.model_validate(
         {
-            "capabilities": [
+            "actions": [
                 {"kind": "function_call", "priority": 10, "config": {"tools": [{"tool_name": "session_context"}]}},
                 {
                     "kind": "knowledge_retrieval",
@@ -143,14 +207,14 @@ def test_resource_selection_uses_explicit_capability_execution_order():
         },
     )
 
-    normalized = selection.normalized_capabilities()
+    normalized = selection.normalized_actions()
 
     assert [item.kind for item in normalized] == [
-        ChatCapabilityKindEnum.system_prompt,
-        ChatCapabilityKindEnum.intent_detection,
-        ChatCapabilityKindEnum.knowledge_retrieval,
-        ChatCapabilityKindEnum.function_call,
-        ChatCapabilityKindEnum.llm_response,
+        ChatActionKindEnum.system_prompt,
+        ChatActionKindEnum.intent_detection,
+        ChatActionKindEnum.knowledge_retrieval,
+        ChatActionKindEnum.function_call,
+        ChatActionKindEnum.llm_response,
     ]
     assert isinstance(normalized[0].config, SystemPromptConfig)
     assert isinstance(normalized[1].config, IntentDetectionConfig)
@@ -203,27 +267,41 @@ def test_parse_resource_selection_discards_legacy_flat_payload():
         },
     )
 
-    normalized = selection.normalized_capabilities()
+    normalized = selection.normalized_actions()
 
     assert len(normalized) == 1
-    assert normalized[0].kind == ChatCapabilityKindEnum.llm_response
+    assert normalized[0].kind == ChatActionKindEnum.llm_response
 
 
-def test_parse_resource_selection_ignores_legacy_keys_when_new_shape_exists():
+def test_parse_resource_selection_ignores_unknown_legacy_keys():
     selection = parse_resource_selection(
         {
-            "capability_profile_ids": [7],
             "metadata": {"source": "saved"},
-            "collection_ids": [3],
-            "top_k": 6,
-            "tool_policy": "optional",
+            "capabilities": [
+                {"capability_id": 3, "kind": "extension"},
+            ],
+            "capability_profile_ids": [7],
+            "capability_binding_ids": [3],
+            "actions": [
+                {
+                    "kind": "function_call",
+                    "priority": 10,
+                    "config": {"tools": [{"tool_name": "session_context"}]},
+                },
+            ],
         },
     )
 
-    assert selection.capability_profile_ids == [7]
     assert selection.metadata == {"source": "saved"}
-    assert len(selection.normalized_capabilities()) == 1
-    assert selection.normalized_capabilities()[0].kind == ChatCapabilityKindEnum.llm_response
+    assert selection.normalized_capabilities() == [
+        CapabilitySelection(capability_id=3, kind=CapabilityKindEnum.extension),
+    ]
+    assert "capability_profile_ids" not in selection.model_dump(mode="json")
+    assert "capability_binding_ids" not in selection.model_dump(mode="json")
+    assert [item.kind for item in selection.normalized_actions()] == [
+        ChatActionKindEnum.function_call,
+        ChatActionKindEnum.llm_response,
+    ]
 
 
 def test_client_command_uses_enum_and_typed_payload():

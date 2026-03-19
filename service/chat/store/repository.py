@@ -537,5 +537,7 @@ class ChatRepository:
             finished_at=step.finished_at,
             metrics=StepMetricPayload.model_validate(step.metrics or {}),
             error_message=step.error_message,
+            input_data_ids=[int(item) for item in (step.input_data_ids or [])],
+            output_data_ids=[int(item) for item in (step.output_data_ids or [])],
             metadata=step.metadata or {},
         )

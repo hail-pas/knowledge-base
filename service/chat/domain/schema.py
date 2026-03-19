@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Generic, Literal, TypeVar, Annotated
 from datetime import datetime
 
-from pydantic import Field, BaseModel, ConfigDict
+from pydantic import Field, BaseModel, ConfigDict, model_validator
 
 from core.types import StrEnum
 from service.document.schema import (
@@ -59,6 +59,8 @@ class EventNameEnum(StrEnum):
 class ChatWarningCodeEnum(StrEnum):
     warning = ("warning", "通用警告")
     knowledge_retrieval_skipped = ("knowledge_retrieval_skipped", "知识库检索跳过")
+    knowledge_retrieval_no_hit = ("knowledge_retrieval_no_hit", "知识库检索无命中")
+    knowledge_retrieval_unavailable = ("knowledge_retrieval_unavailable", "知识库检索未实际执行")
     function_call_skipped = ("function_call_skipped", "函数调用跳过")
     tool_call_skipped = ("tool_call_skipped", "工具调用跳过")
 
@@ -72,38 +74,39 @@ class ChatErrorCodeEnum(StrEnum):
     command_error = ("command_error", "命令执行失败")
 
 
-class ChatCapabilityKindEnum(StrEnum):
+class ChatActionKindEnum(StrEnum):
     intent_detection = ("intent_detection", "意图识别")
     system_prompt = ("system_prompt", "系统提示词")
     knowledge_retrieval = ("knowledge_retrieval", "知识库检索")
     function_call = ("function_call", "函数调用")
     tool_call = ("tool_call", "工具调用")
     mcp_call = ("mcp_call", "MCP调用")
+    sub_agent_call = ("sub_agent_call", "子代理调用")
     llm_response = ("llm_response", "模型响应")
 
 
-CAPABILITY_EXECUTION_ORDER: dict[ChatCapabilityKindEnum, int] = {
-    ChatCapabilityKindEnum.system_prompt: 10,
-    ChatCapabilityKindEnum.intent_detection: 20,
-    ChatCapabilityKindEnum.knowledge_retrieval: 30,
-    ChatCapabilityKindEnum.function_call: 40,
-    ChatCapabilityKindEnum.tool_call: 50,
-    ChatCapabilityKindEnum.mcp_call: 60,
-    ChatCapabilityKindEnum.llm_response: 90,
+ACTION_EXECUTION_ORDER: dict[ChatActionKindEnum, int] = {
+    ChatActionKindEnum.system_prompt: 10,
+    ChatActionKindEnum.intent_detection: 20,
+    ChatActionKindEnum.knowledge_retrieval: 30,
+    ChatActionKindEnum.function_call: 40,
+    ChatActionKindEnum.tool_call: 50,
+    ChatActionKindEnum.mcp_call: 60,
+    ChatActionKindEnum.sub_agent_call: 70,
+    ChatActionKindEnum.llm_response: 90,
 }
 
 
-def capability_execution_order(kind: ChatCapabilityKindEnum) -> int:
-    return CAPABILITY_EXECUTION_ORDER.get(kind, 999)
+def action_execution_order(kind: ChatActionKindEnum) -> int:
+    return ACTION_EXECUTION_ORDER.get(kind, 999)
 
 
 RESOURCE_SELECTION_TOP_LEVEL_KEYS = frozenset(
     {
         "use_system_defaults",
         "use_conversation_defaults",
-        "capability_profile_ids",
-        "capability_binding_ids",
         "capabilities",
+        "actions",
         "metadata",
     },
 )
@@ -122,9 +125,12 @@ class ChatPayloadTypeEnum(StrEnum):
     intent_result = ("intent_result", "意图结果")
     function_result = ("function_result", "函数结果")
     prompt_context = ("prompt_context", "提示词上下文")
+    step_io = ("step_io", "步骤输入输出")
     retrieval_hit_list = ("retrieval_hit_list", "检索命中列表")
+    extension_event = ("extension_event", "扩展中间事件")
     tool_result = ("tool_result", "工具结果")
     mcp_result = ("mcp_result", "MCP结果")
+    capability_plan = ("capability_plan", "能力规划结果")
 
 
 class ResponseModeEnum(StrEnum):
@@ -136,6 +142,18 @@ class ToolExecutionPolicyEnum(StrEnum):
     stub = ("stub", "占位执行")
     optional = ("optional", "可选执行")
     required = ("required", "必须执行")
+
+
+class SelectionModeEnum(StrEnum):
+    heuristic = ("heuristic", "启发式")
+    llm = ("llm", "模型判定")
+    hybrid = ("hybrid", "混合")
+
+
+class CapabilityKindEnum(StrEnum):
+    skill = ("skill", "流程型能力")
+    extension = ("extension", "扩展能力")
+    sub_agent = ("sub_agent", "子代理能力")
 
 
 class TextBlock(StrictModel):
@@ -238,6 +256,13 @@ class MCPCallConfig(StrictModel):
     timeout_ms: int = Field(default=30000, ge=1000, le=300000)
 
 
+class SubAgentCallConfig(StrictModel):
+    llm_model_config_id: int | None = Field(default=None, ge=1)
+    system_prompt: str = Field(min_length=1, max_length=8000)
+    instructions: list[str] = Field(default_factory=list)
+    actions: list[ResourceAction] = Field(default_factory=list)
+
+
 class IntentRule(StrictModel):
     intent: str = Field(min_length=1, max_length=64)
     description: str = Field(default="", max_length=500)
@@ -259,7 +284,7 @@ class SystemPromptTemplateKeyEnum(StrEnum):
 
 
 class SystemPromptPlaceholderEnum(StrEnum):
-    capability_summary = ("capability_summary", "能力摘要")
+    action_summary = ("action_summary", "执行摘要")
     intent_summary = ("intent_summary", "意图摘要")
     function_summary = ("function_summary", "函数摘要")
     conversation_summary = ("conversation_summary", "会话摘要")
@@ -268,7 +293,7 @@ class SystemPromptPlaceholderEnum(StrEnum):
 
 
 DEFAULT_SYSTEM_PROMPT_PLACEHOLDERS: tuple[SystemPromptPlaceholderEnum, ...] = (
-    SystemPromptPlaceholderEnum.capability_summary,
+    SystemPromptPlaceholderEnum.action_summary,
     SystemPromptPlaceholderEnum.intent_summary,
     SystemPromptPlaceholderEnum.function_summary,
     SystemPromptPlaceholderEnum.conversation_summary,
@@ -280,7 +305,7 @@ DEFAULT_SYSTEM_PROMPT_PLACEHOLDERS: tuple[SystemPromptPlaceholderEnum, ...] = (
 class SystemPromptConfig(StrictModel):
     template_key: SystemPromptTemplateKeyEnum = SystemPromptTemplateKeyEnum.default
     include_placeholders: list[SystemPromptPlaceholderEnum] = Field(default_factory=list)
-    highlight_capabilities: list[ChatCapabilityKindEnum] = Field(default_factory=list)
+    highlight_actions: list[ChatActionKindEnum] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list)
     variable_overrides: dict[str, str] = Field(default_factory=dict)
 
@@ -299,14 +324,15 @@ class FunctionToolSpec(StrictModel):
 
 class FunctionCallConfig(StrictModel):
     tools: list[FunctionToolSpec] = Field(min_length=1)
+    selection_mode: SelectionModeEnum = SelectionModeEnum.heuristic
+    planner_model_config_id: int | None = Field(default=None, ge=1)
+    max_selected_tools: int = Field(default=3, ge=1, le=8)
     fail_on_no_match: bool = False
     stop_after_terminal: bool = True
 
 
-class BaseResourceCapability(StrictModel):
-    capability_id: str | None = Field(default=None, min_length=1, max_length=128)
-    profile_id: int | None = Field(default=None, ge=1)
-    binding_id: int | None = Field(default=None, ge=1)
+class BaseResourceAction(StrictModel):
+    action_id: str | None = Field(default=None, min_length=1, max_length=128)
     name: str | None = Field(default=None, min_length=1, max_length=100)
     source: str | None = Field(default=None, min_length=1, max_length=64)
     enabled: bool = True
@@ -314,88 +340,108 @@ class BaseResourceCapability(StrictModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class KnowledgeRetrievalCapability(BaseResourceCapability):
-    kind: Literal[ChatCapabilityKindEnum.knowledge_retrieval] = ChatCapabilityKindEnum.knowledge_retrieval
+class KnowledgeRetrievalAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.knowledge_retrieval] = ChatActionKindEnum.knowledge_retrieval
     config: KnowledgeRetrievalConfig
 
 
-class IntentDetectionCapability(BaseResourceCapability):
-    kind: Literal[ChatCapabilityKindEnum.intent_detection] = ChatCapabilityKindEnum.intent_detection
+class IntentDetectionAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.intent_detection] = ChatActionKindEnum.intent_detection
     config: IntentDetectionConfig
 
 
-class SystemPromptCapability(BaseResourceCapability):
-    kind: Literal[ChatCapabilityKindEnum.system_prompt] = ChatCapabilityKindEnum.system_prompt
+class SystemPromptAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.system_prompt] = ChatActionKindEnum.system_prompt
     config: SystemPromptConfig
 
 
-class FunctionCallCapability(BaseResourceCapability):
-    kind: Literal[ChatCapabilityKindEnum.function_call] = ChatCapabilityKindEnum.function_call
+class FunctionCallAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.function_call] = ChatActionKindEnum.function_call
     config: FunctionCallConfig
 
 
-class ToolCallCapability(BaseResourceCapability):
-    kind: Literal[ChatCapabilityKindEnum.tool_call] = ChatCapabilityKindEnum.tool_call
+class ToolCallAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.tool_call] = ChatActionKindEnum.tool_call
     config: ToolCallConfig = Field(default_factory=ToolCallConfig)
 
 
-class MCPCallCapability(BaseResourceCapability):
-    kind: Literal[ChatCapabilityKindEnum.mcp_call] = ChatCapabilityKindEnum.mcp_call
+class MCPCallAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.mcp_call] = ChatActionKindEnum.mcp_call
     config: MCPCallConfig
 
 
-class LLMResponseCapability(BaseResourceCapability):
-    kind: Literal[ChatCapabilityKindEnum.llm_response] = ChatCapabilityKindEnum.llm_response
+class SubAgentCallAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.sub_agent_call] = ChatActionKindEnum.sub_agent_call
+    config: SubAgentCallConfig
+
+
+class LLMResponseAction(BaseResourceAction):
+    kind: Literal[ChatActionKindEnum.llm_response] = ChatActionKindEnum.llm_response
     config: LLMResponseConfig = Field(default_factory=LLMResponseConfig)
 
 
-ResourceCapability = Annotated[
-    IntentDetectionCapability
-    | SystemPromptCapability
-    | KnowledgeRetrievalCapability
-    | FunctionCallCapability
-    | ToolCallCapability
-    | MCPCallCapability
-    | LLMResponseCapability,
+ResourceAction = Annotated[
+    IntentDetectionAction
+    | SystemPromptAction
+    | KnowledgeRetrievalAction
+    | FunctionCallAction
+    | ToolCallAction
+    | MCPCallAction
+    | SubAgentCallAction
+    | LLMResponseAction,
     Field(discriminator="kind"),
 ]
+
+
+class CapabilitySelection(StrictModel):
+    capability_id: int | None = Field(default=None, ge=1)
+    capability_key: str | None = Field(default=None, min_length=1, max_length=128)
+    kind: CapabilityKindEnum | None = None
+    enabled: bool = True
+    required: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_reference(self) -> CapabilitySelection:
+        if self.capability_id is None and self.capability_key is None:
+            raise ValueError("capability_id 或 capability_key 至少需要一个")
+        return self
 
 
 class ResourceSelection(StrictModel):
     use_system_defaults: bool = True
     use_conversation_defaults: bool = True
-    capability_profile_ids: list[int] = Field(default_factory=list)
-    capability_binding_ids: list[int] = Field(default_factory=list)
-    capabilities: list[ResourceCapability] = Field(default_factory=list)
+    capabilities: list[CapabilitySelection] = Field(default_factory=list)
+    actions: list[ResourceAction] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def capabilities_by_kind(self) -> dict[ChatCapabilityKindEnum, list[ResourceCapability]]:
-        grouped: dict[ChatCapabilityKindEnum, list[ResourceCapability]] = {}
-        for item in self.capabilities:
+    def actions_by_kind(self) -> dict[ChatActionKindEnum, list[ResourceAction]]:
+        grouped: dict[ChatActionKindEnum, list[ResourceAction]] = {}
+        for item in self.actions:
             if not item.enabled:
                 continue
             grouped.setdefault(item.kind, []).append(item)
         return grouped
 
-    def normalized_capabilities(self) -> list[ResourceCapability]:
-        normalized: list[ResourceCapability] = []
+    def normalized_actions(self) -> list[ResourceAction]:
+        normalized: list[ResourceAction] = []
         seen_ids: set[str] = set()
         has_llm = False
-        for item in self.capabilities:
+        for item in self.actions:
             if not item.enabled:
                 continue
-            if item.capability_id and item.capability_id in seen_ids:
+            if item.action_id and item.action_id in seen_ids:
                 continue
-            if item.capability_id:
-                seen_ids.add(item.capability_id)
+            if item.action_id:
+                seen_ids.add(item.action_id)
             normalized.append(item)
-            if item.kind == ChatCapabilityKindEnum.llm_response:
+            if item.kind == ChatActionKindEnum.llm_response:
                 has_llm = True
 
         if not has_llm:
             normalized.append(
-                LLMResponseCapability(
-                    capability_id="builtin:llm_response",
+                LLMResponseAction(
+                    action_id="builtin:llm_response",
                     name="llm_response",
                     source="builtin",
                     priority=100,
@@ -406,19 +452,38 @@ class ResourceSelection(StrictModel):
             normalized,
             key=lambda item: (
                 item.priority,
-                capability_execution_order(item.kind),
-                item.capability_id or item.name or "",
+                action_execution_order(item.kind),
+                item.action_id or item.name or "",
             ),
         )
-        final_items: list[ResourceCapability] = []
+        final_items: list[ResourceAction] = []
         llm_seen = False
         for item in sorted_items:
-            if item.kind == ChatCapabilityKindEnum.llm_response:
+            if item.kind == ChatActionKindEnum.llm_response:
                 if llm_seen:
                     continue
                 llm_seen = True
             final_items.append(item)
         return final_items
+
+    def normalized_capabilities(self) -> list[CapabilitySelection]:
+        normalized: list[CapabilitySelection] = []
+        seen_ids: set[int] = set()
+        seen_keys: set[str] = set()
+        for item in self.capabilities:
+            if not item.enabled:
+                continue
+            if item.capability_id is not None:
+                if item.capability_id in seen_ids:
+                    continue
+                seen_ids.add(item.capability_id)
+            if item.capability_key is not None:
+                lowered_key = item.capability_key.casefold()
+                if lowered_key in seen_keys:
+                    continue
+                seen_keys.add(lowered_key)
+            normalized.append(item)
+        return normalized
 
 
 def parse_resource_selection(value: Any) -> ResourceSelection:
@@ -478,6 +543,8 @@ class StepSummary(StrictModel):
     finished_at: datetime | None = None
     metrics: StepMetricPayload = Field(default_factory=StepMetricPayload)
     error_message: str | None = None
+    input_data_ids: list[int] = Field(default_factory=list)
+    output_data_ids: list[int] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -544,6 +611,21 @@ class DataEventPayload(StrictModel, Generic[PayloadT]):
     data: ChatDataSchema[PayloadT]
 
 
+class StepIOPhaseEnum(StrEnum):
+    input = ("input", "输入")
+    output = ("output", "输出")
+
+
+class StepIOPayload(StrictModel):
+    type: Literal["step_io"] = "step_io"
+    phase: StepIOPhaseEnum
+    action_id: str = Field(min_length=1, max_length=128)
+    action_name: str = Field(min_length=1, max_length=100)
+    action_kind: ChatActionKindEnum
+    message: str = Field(min_length=1, max_length=2000)
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
 class RetrievalListPayload(StrictModel):
     items: list[RetrievalBlock] = Field(default_factory=list)
 
@@ -566,14 +648,66 @@ class FunctionResultPayload(StrictModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ExtensionEventLevelEnum(StrEnum):
+    info = ("info", "信息")
+    warning = ("warning", "警告")
+    error = ("error", "错误")
+
+
+class ExtensionEventStageEnum(StrEnum):
+    started = ("started", "开始")
+    preparing = ("preparing", "准备中")
+    rewriting = ("rewriting", "改写中")
+    retrieving = ("retrieving", "检索中")
+    reranking = ("reranking", "重排中")
+    completed = ("completed", "完成")
+    no_hit = ("no_hit", "无命中")
+    unavailable = ("unavailable", "未实际执行")
+    collection_start = ("collection_start", "集合检索开始")
+    collection_completed = ("collection_completed", "集合检索完成")
+    collection_missing = ("collection_missing", "集合不存在")
+    collection_inaccessible = ("collection_inaccessible", "集合不可访问")
+    collection_failed = ("collection_failed", "集合检索失败")
+
+
+class ExtensionEventPayload(StrictModel):
+    type: Literal["extension_event"] = "extension_event"
+    extension_key: str | None = Field(default=None, min_length=1, max_length=128)
+    capability_id: int | None = Field(default=None, ge=1)
+    action_id: str = Field(min_length=1, max_length=128)
+    action_name: str = Field(min_length=1, max_length=100)
+    stage: ExtensionEventStageEnum
+    level: ExtensionEventLevelEnum = ExtensionEventLevelEnum.info
+    message: str = Field(min_length=1, max_length=2000)
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
 class PromptContextPayload(StrictModel):
     type: Literal["prompt_context"] = "prompt_context"
     template_key: SystemPromptTemplateKeyEnum
     placeholders: list[SystemPromptPlaceholderEnum] = Field(default_factory=list)
-    highlighted_capabilities: list[ChatCapabilityKindEnum] = Field(default_factory=list)
+    highlighted_actions: list[ChatActionKindEnum] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list)
     variable_overrides: dict[str, str] = Field(default_factory=dict)
-    applied_capability_ids: list[str] = Field(default_factory=list)
+    applied_action_ids: list[str] = Field(default_factory=list)
+
+
+class CapabilityPlanCandidate(StrictModel):
+    capability_id: int | None = Field(default=None, ge=1)
+    capability_key: str = Field(min_length=1, max_length=128)
+    capability_kind: CapabilityKindEnum
+    score: float = Field(default=0.0, ge=0.0, le=1.0)
+    selected: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class CapabilityPlanPayload(StrictModel):
+    type: Literal["capability_plan"] = "capability_plan"
+    mode: str = Field(min_length=1, max_length=32)
+    summary: str = Field(default="", max_length=1000)
+    selected_capability_ids: list[int] = Field(default_factory=list)
+    selected_capability_keys: list[str] = Field(default_factory=list)
+    candidates: list[CapabilityPlanCandidate] = Field(default_factory=list)
 
 
 class ConversationListItem(StrictModel):
@@ -635,7 +769,7 @@ class ChatHistoryItem(StrictModel):
     assistant_text: str
 
 
-class CapabilityResultDispositionEnum(StrEnum):
+class ActionResultDispositionEnum(StrEnum):
     context = ("context", "作为上下文")
     terminal = ("terminal", "作为终态输出")
 
@@ -646,12 +780,12 @@ class ChatContextItemTypeEnum(StrEnum):
     retrieval = ("retrieval", "检索结果")
 
 
-class CapabilityContextItem(StrictModel):
-    capability_id: str = Field(min_length=1, max_length=128)
-    capability_kind: ChatCapabilityKindEnum
-    capability_name: str = Field(min_length=1, max_length=100)
+class ActionContextItem(StrictModel):
+    action_id: str = Field(min_length=1, max_length=128)
+    action_kind: ChatActionKindEnum
+    action_name: str = Field(min_length=1, max_length=100)
     source: str = Field(min_length=1, max_length=64)
-    disposition: CapabilityResultDispositionEnum = CapabilityResultDispositionEnum.context
+    disposition: ActionResultDispositionEnum = ActionResultDispositionEnum.context
     item_type: ChatContextItemTypeEnum
     title: str | None = Field(default=None, max_length=200)
     priority: int = Field(default=100, ge=0, le=1000)
@@ -661,10 +795,10 @@ class CapabilityContextItem(StrictModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class CapabilityTerminalOutput(StrictModel):
-    capability_id: str = Field(min_length=1, max_length=128)
-    capability_kind: ChatCapabilityKindEnum
-    capability_name: str = Field(min_length=1, max_length=100)
+class ActionTerminalOutput(StrictModel):
+    action_id: str = Field(min_length=1, max_length=128)
+    action_kind: ChatActionKindEnum
+    action_name: str = Field(min_length=1, max_length=100)
     source: str = Field(min_length=1, max_length=64)
     payload: MessageBundlePayload
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -690,16 +824,16 @@ class FunctionExecutionSummary(StrictModel):
 class ChatContextEnvelope(StrictModel):
     history: list[ChatHistoryItem] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list)
-    context_items: list[CapabilityContextItem] = Field(default_factory=list)
+    context_items: list[ActionContextItem] = Field(default_factory=list)
     prompt_context: PromptContextPayload | None = None
     intent_result: IntentRecognitionResult | None = None
     executed_functions: list[FunctionExecutionSummary] = Field(default_factory=list)
-    terminal_output: CapabilityTerminalOutput | None = None
+    terminal_output: ActionTerminalOutput | None = None
 
-    def ordered_context_items(self) -> list[CapabilityContextItem]:
+    def ordered_context_items(self) -> list[ActionContextItem]:
         return sorted(
             self.context_items,
-            key=lambda item: (item.priority, item.capability_kind.value, item.capability_id),
+            key=lambda item: (item.priority, item.action_kind.value, item.action_id),
         )
 
     @property
@@ -714,3 +848,10 @@ class ChatContextEnvelope(StrictModel):
 class DemoPageState(StrictModel):
     websocket_path: str
     demo_title: str = "Chat Demo"
+
+
+SkillPlanCandidate = CapabilityPlanCandidate
+SkillPlanPayload = CapabilityPlanPayload
+
+
+SubAgentCallConfig.model_rebuild()

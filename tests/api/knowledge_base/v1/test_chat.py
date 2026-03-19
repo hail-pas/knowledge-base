@@ -1,27 +1,11 @@
 import pytest
 
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 from uuid import uuid4
 
 from api.knowledge_base.factory import knowledge_api
 from ext.ext_tortoise.models.user_center import Account, Role
 from service.chat.domain.schema import ChatErrorCodeEnum
-
-
-def _create_capability_profile(client, *, name: str, kind: str, config: dict) -> int:
-    response = client.post(
-        "/v1/chat/capability/profile",
-        json={
-            "name": name,
-            "kind": kind,
-            "config": config,
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["code"] == 0
-    return payload["data"]["id"]
 
 
 def _create_conversation(*, token: str, title: str) -> int:
@@ -39,9 +23,9 @@ def _create_conversation(*, token: str, title: str) -> int:
                         "blocks": [{"type": "text", "text": "请计算 1 + 1"}],
                     },
                     "resource_selection": {
-                        "capabilities": [
+                        "actions": [
                             {
-                                "capability_id": "inline:function",
+                                "action_id": "inline:function",
                                 "kind": "function_call",
                                 "priority": 10,
                                 "config": {
@@ -75,11 +59,7 @@ def _install_token_auth(
     viewer: Account,
     staff: Account,
 ) -> None:
-    token_map = {
-        "owner": owner,
-        "viewer": viewer,
-        "staff": staff,
-    }
+    token_map = {"owner": owner, "viewer": viewer, "staff": staff}
 
     async def mock_validate(request, token):
         account = token_map[token.credentials]
@@ -141,46 +121,6 @@ async def chat_access_accounts():
     return owner, viewer, staff
 
 
-def test_chat_capability_profile_crud(client):
-    profile_id = _create_capability_profile(
-        client,
-        name="api-chat-profile",
-        kind="knowledge_retrieval",
-        config={"collection_ids": [1], "top_k": 3},
-    )
-
-    list_response = client.get("/v1/chat/capability/profile", params={"kind": "knowledge_retrieval"})
-    assert list_response.status_code == 200
-    list_payload = list_response.json()
-    assert list_payload["code"] == 0
-    assert any(item["id"] == profile_id for item in list_payload["data"])
-
-    update_response = client.put(
-        f"/v1/chat/capability/profile/{profile_id}",
-        json={
-            "description": "updated profile",
-            "is_enabled": False,
-        },
-    )
-    assert update_response.status_code == 200
-    update_payload = update_response.json()
-    assert update_payload["code"] == 0
-    assert update_payload["data"]["description"] == "updated profile"
-    assert update_payload["data"]["is_enabled"] is False
-
-    detail_response = client.get(f"/v1/chat/capability/profile/{profile_id}")
-    assert detail_response.status_code == 200
-    detail_payload = detail_response.json()
-    assert detail_payload["code"] == 0
-    assert detail_payload["data"]["id"] == profile_id
-
-    delete_response = client.delete(f"/v1/chat/capability/profile/{profile_id}")
-    assert delete_response.status_code == 200
-    delete_payload = delete_response.json()
-    assert delete_payload["code"] == 0
-    assert delete_payload["data"]["deleted"] == 1
-
-
 def test_chat_create_conversation_endpoint_removed(client):
     response = client.post(
         "/v1/chat/conversation",
@@ -190,81 +130,21 @@ def test_chat_create_conversation_endpoint_removed(client):
     assert response.status_code == 405
 
 
-def test_chat_capability_binding_crud(client):
-    profile_id = _create_capability_profile(
-        client,
-        name="api-binding-profile",
-        kind="tool_call",
-        config={"policy": "stub", "tool_names": ["search"]},
-    )
-    conversation_id = _create_conversation(token="token", title="binding-conversation")
-
-    create_response = client.post(
-        "/v1/chat/capability/binding",
-        json={
-            "owner_type": "conversation",
-            "owner_id": conversation_id,
-            "capability_profile_id": profile_id,
-            "priority": 15,
-        },
-    )
-    assert create_response.status_code == 200
-    create_payload = create_response.json()
-    assert create_payload["code"] == 0
-    binding_id = create_payload["data"]["id"]
-    assert create_payload["data"]["profile"]["id"] == profile_id
-
-    list_response = client.get(
-        "/v1/chat/capability/binding",
-        params={"owner_type": "conversation", "owner_id": conversation_id},
-    )
-    assert list_response.status_code == 200
-    list_payload = list_response.json()
-    assert list_payload["code"] == 0
-    assert any(item["id"] == binding_id for item in list_payload["data"])
-
-    update_response = client.put(
-        f"/v1/chat/capability/binding/{binding_id}",
-        json={
-            "priority": 5,
-            "is_enabled": False,
-        },
-    )
-    assert update_response.status_code == 200
-    update_payload = update_response.json()
-    assert update_payload["code"] == 0
-    assert update_payload["data"]["priority"] == 5
-    assert update_payload["data"]["is_enabled"] is False
-
-    detail_response = client.get(f"/v1/chat/capability/binding/{binding_id}")
-    assert detail_response.status_code == 200
-    detail_payload = detail_response.json()
-    assert detail_payload["code"] == 0
-    assert detail_payload["data"]["id"] == binding_id
-
-    delete_response = client.delete(f"/v1/chat/capability/binding/{binding_id}")
-    assert delete_response.status_code == 200
-    delete_payload = delete_response.json()
-    assert delete_payload["code"] == 0
-    assert delete_payload["data"]["deleted"] == 1
-
-
 def test_update_conversation_default_resource_selection(client):
-    profile_id = _create_capability_profile(
-        client,
-        name="api-conversation-default",
-        kind="knowledge_retrieval",
-        config={"collection_ids": [9], "top_k": 5},
-    )
     conversation_id = _create_conversation(token="token", title="conversation-defaults")
 
     update_response = client.put(
         f"/v1/chat/conversation/{conversation_id}/resource-selection",
         json={
-            "capability_profile_ids": [profile_id],
-            "capabilities": [
+            "actions": [
                 {
-                    "capability_id": "inline:tool",
+                    "action_id": "inline:function",
+                    "kind": "function_call",
+                    "priority": 10,
+                    "config": {"tools": [{"tool_name": "calculate_expression"}]},
+                },
+                {
+                    "action_id": "inline:tool",
                     "kind": "tool_call",
                     "priority": 30,
                     "config": {"policy": "optional", "tool_names": ["lookup"]},
@@ -275,58 +155,38 @@ def test_update_conversation_default_resource_selection(client):
     assert update_response.status_code == 200
     update_payload = update_response.json()
     assert update_payload["code"] == 0
-    assert update_payload["data"]["default_resource_selection"]["capability_profile_ids"] == [profile_id]
+    assert "capability_profile_ids" not in update_payload["data"]["default_resource_selection"]
+    assert "capability_binding_ids" not in update_payload["data"]["default_resource_selection"]
 
     detail_response = client.get(f"/v1/chat/conversation/{conversation_id}")
     assert detail_response.status_code == 200
     detail_payload = detail_response.json()
     assert detail_payload["code"] == 0
     selection = detail_payload["data"]["default_resource_selection"]
-    assert selection["capability_profile_ids"] == [profile_id]
-    assert selection["capabilities"][0]["capability_id"] == "inline:tool"
+    assert "capability_profile_ids" not in selection
+    assert "capability_binding_ids" not in selection
+    assert [item["action_id"] for item in selection["actions"]] == [
+        "inline:function",
+        "inline:tool",
+        "builtin:llm_response",
+    ]
 
 
-def test_chat_conversation_and_binding_respect_owner_scope(monkeypatch: pytest.MonkeyPatch, chat_access_accounts):
+def test_chat_conversation_scope_respects_owner(monkeypatch: pytest.MonkeyPatch, chat_access_accounts):
     owner, viewer, staff = chat_access_accounts
     _install_token_auth(monkeypatch, owner, viewer, staff)
 
-    owner_client = _client("owner")
     viewer_client = _client("viewer")
-
     conversation_id = _create_conversation(token="owner", title="owner-conversation")
-    profile_id = _create_capability_profile(
-        owner_client,
-        name="owner-only-binding-profile",
-        kind="tool_call",
-        config={"policy": "stub", "tool_names": ["session_context"]},
-    )
-    create_response = owner_client.post(
-        "/v1/chat/capability/binding",
-        json={
-            "owner_type": "conversation",
-            "owner_id": conversation_id,
-            "capability_profile_id": profile_id,
-            "priority": 10,
-        },
-    )
-    binding_id = create_response.json()["data"]["id"]
 
     _assert_api_error(viewer_client.get(f"/v1/chat/conversation/{conversation_id}"), "会话不存在")
     _assert_api_error(
         viewer_client.put(
             f"/v1/chat/conversation/{conversation_id}/resource-selection",
-            json={"capabilities": []},
+            json={"actions": []},
         ),
         "会话不存在",
     )
-    _assert_api_error(
-        viewer_client.get(
-            "/v1/chat/capability/binding",
-            params={"owner_type": "conversation", "owner_id": conversation_id},
-        ),
-        "会话不存在",
-    )
-    _assert_api_error(viewer_client.get(f"/v1/chat/capability/binding/{binding_id}"), "会话不存在")
     viewer_conversations = viewer_client.get("/v1/chat/conversation").json()["data"]
     assert all(item["conversation"]["id"] != conversation_id for item in viewer_conversations)
     _assert_api_error(
@@ -389,87 +249,6 @@ def test_chat_websocket_rejects_foreign_conversation(monkeypatch: pytest.MonkeyP
     assert payload["payload"]["message"] == "会话不存在"
 
 
-def test_chat_profile_visibility_and_system_binding_permissions(
-    monkeypatch: pytest.MonkeyPatch,
-    chat_access_accounts,
-):
-    owner, viewer, staff = chat_access_accounts
-    _install_token_auth(monkeypatch, owner, viewer, staff)
-
-    owner_client = _client("owner")
-    viewer_client = _client("viewer")
-    staff_client = _client("staff")
-
-    global_profile_id = _create_capability_profile(
-        staff_client,
-        name=f"global-profile-{uuid4().hex[:6]}",
-        kind="tool_call",
-        config={"policy": "stub", "tool_names": ["session_context"]},
-    )
-    owner_profile_id = _create_capability_profile(
-        owner_client,
-        name=f"owner-profile-{uuid4().hex[:6]}",
-        kind="tool_call",
-        config={"policy": "stub", "tool_names": ["session_context"]},
-    )
-    viewer_profile_id = _create_capability_profile(
-        viewer_client,
-        name=f"viewer-profile-{uuid4().hex[:6]}",
-        kind="tool_call",
-        config={"policy": "stub", "tool_names": ["session_context"]},
-    )
-
-    owner_profiles = owner_client.get("/v1/chat/capability/profile").json()["data"]
-    owner_profile_ids = {item["id"] for item in owner_profiles}
-    assert global_profile_id in owner_profile_ids
-    assert owner_profile_id in owner_profile_ids
-    assert viewer_profile_id not in owner_profile_ids
-
-    owner_global_profiles = owner_client.get(
-        "/v1/chat/capability/profile",
-        params={"scope": "global_only"},
-    ).json()["data"]
-    owner_global_profile_ids = {item["id"] for item in owner_global_profiles}
-    assert global_profile_id in owner_global_profile_ids
-    assert owner_profile_id not in owner_global_profile_ids
-    assert viewer_profile_id not in owner_global_profile_ids
-
-    owner_owned_profiles = owner_client.get(
-        "/v1/chat/capability/profile",
-        params={"scope": "owned_only"},
-    ).json()["data"]
-    assert {item["id"] for item in owner_owned_profiles} == {owner_profile_id}
-
-    staff_profiles = staff_client.get("/v1/chat/capability/profile").json()["data"]
-    assert {item["id"] for item in staff_profiles} >= {global_profile_id, owner_profile_id, viewer_profile_id}
-
-    global_detail = owner_client.get(f"/v1/chat/capability/profile/{global_profile_id}").json()["data"]
-    assert global_detail["owner_account_id"] is None
-
-    _assert_api_error(
-        viewer_client.get(f"/v1/chat/capability/profile/{owner_profile_id}"),
-        "Capability 配置不存在",
-    )
-    _assert_api_error(
-        owner_client.put(
-            f"/v1/chat/capability/profile/{global_profile_id}",
-            json={"description": "should-fail"},
-        ),
-        "Capability 配置不存在",
-    )
-    _assert_api_error(
-        owner_client.post(
-            "/v1/chat/capability/binding",
-            json={
-                "owner_type": "system",
-                "capability_profile_id": global_profile_id,
-                "priority": 1,
-            },
-        ),
-        "仅 staff 可管理 system binding",
-    )
-
-
 def test_chat_first_turn_creates_conversation_and_timeline(
     monkeypatch: pytest.MonkeyPatch,
     chat_access_accounts,
@@ -490,9 +269,9 @@ def test_chat_first_turn_creates_conversation_and_timeline(
                         "blocks": [{"type": "text", "text": "请计算 12 + 7 * 2"}],
                     },
                     "resource_selection": {
-                        "capabilities": [
+                        "actions": [
                             {
-                                "capability_id": "inline:function",
+                                "action_id": "inline:function",
                                 "kind": "function_call",
                                 "priority": 10,
                                 "config": {

@@ -3,6 +3,8 @@ from __future__ import annotations
 from uuid import uuid4
 from typing import Any, Callable, Awaitable
 
+from loguru import logger
+
 from core.types import ApiException
 from service.chat.domain.schema import (
     ChatEvent,
@@ -19,21 +21,20 @@ from service.chat.domain.schema import (
 from service.chat.runtime.engine import ChatRuntime
 from service.chat.store.repository import ChatRepository
 from service.chat.capability.service import ChatCapabilityService
-from service.chat.capability.registry import (
-    CapabilityRegistry,
-    create_default_capability_registry,
+from service.chat.execution.registry import (
+    ExecutionActionRegistry,
+    create_default_action_registry,
 )
 
 
 class ChatApplicationService:
     def __init__(self) -> None:
         self.repository: ChatRepository = ChatRepository()
-        self.capability_registry: CapabilityRegistry = create_default_capability_registry()
+        self.action_registry: ExecutionActionRegistry = create_default_action_registry()
         self.capability_service: ChatCapabilityService = ChatCapabilityService(
-            self.capability_registry,
-            chat_repository=self.repository,
+            action_registry=self.action_registry,
         )
-        self.runtime: ChatRuntime = ChatRuntime(self.repository, self.capability_registry)
+        self.runtime: ChatRuntime = ChatRuntime(self.repository, self.action_registry)
 
     async def list_conversations(
         self,
@@ -172,11 +173,7 @@ class ChatApplicationService:
         account_id: int | None,
         is_staff: bool,
     ) -> ConversationSummary:
-        await self.capability_service.validate_resource_selection(
-            payload,
-            account_id=account_id,
-            is_staff=is_staff,
-        )
+        normalized_payload = self._normalize_inline_resource_selection(payload)
         conversation = await self._get_accessible_conversation(
             conversation_id,
             account_id=account_id,
@@ -184,7 +181,10 @@ class ChatApplicationService:
         )
         if conversation is None:
             raise ApiException("会话不存在")
-        conversation = await self.repository.update_conversation_default_resource_selection(conversation_id, payload)
+        conversation = await self.repository.update_conversation_default_resource_selection(
+            conversation_id,
+            normalized_payload,
+        )
         assert conversation is not None
         return await self.repository.summarize_conversation(conversation)
 
@@ -208,15 +208,11 @@ class ChatApplicationService:
             if conversation is None:
                 raise ApiException("会话不存在")
         else:
-            await self.capability_service.validate_resource_selection(
-                payload.resource_selection,
-                account_id=account_id,
-                is_staff=is_staff,
-            )
+            normalized_resource_selection = self._normalize_inline_resource_selection(payload.resource_selection)
             conversation = await self.repository.create_conversation(
                 title=self._derive_conversation_title(payload),
                 user_id=account_id,
-                resource_selection=payload.resource_selection,
+                resource_selection=normalized_resource_selection,
             )
 
         await self._validate_ws_session_access(
@@ -231,11 +227,36 @@ class ChatApplicationService:
                 ws_public_session_id,
                 conversation_id=conversation.id,
             )
-        resolved_selection = await self.capability_service.resolve_resource_selection(
-            conversation=conversation,
-            request_selection=payload.resource_selection,
+        resolved_selection = self._normalize_inline_resource_selection(payload.resource_selection)
+        capability_selection, capability_decision = await self.capability_service.resolve_turn_capabilities(
+            query=payload.input.text,
+            resource_selection=resolved_selection,
             account_id=account_id,
             is_staff=is_staff,
+        )
+        logger.info(
+            "Chat turn capability plan ready: conversation_id={}, "
+            "selected_capability_ids={}, selected_capability_keys={}",
+            conversation.id,
+            capability_decision.selected_capability_ids,
+            [candidate.capability_key for candidate in capability_decision.candidates if candidate.selected],
+        )
+        merged_selection = self.action_registry.normalize_selection(
+            ResourceSelection(
+                use_system_defaults=resolved_selection.use_system_defaults,
+                use_conversation_defaults=resolved_selection.use_conversation_defaults,
+                capabilities=[
+                    *resolved_selection.normalized_capabilities(),
+                    *capability_selection.normalized_capabilities(),
+                ],
+                actions=[
+                    *capability_selection.normalized_actions(),
+                ],
+                metadata={
+                    **resolved_selection.metadata,
+                    **capability_selection.metadata,
+                },
+            ),
         )
         conversation_summary = await self.repository.summarize_conversation(conversation)
         turn_id = await self.runtime.execute_turn(
@@ -245,7 +266,11 @@ class ChatApplicationService:
             turn_request=payload.model_copy(
                 update={
                     "conversation_id": conversation.id,
-                    "resource_selection": resolved_selection,
+                    "resource_selection": merged_selection,
+                    "metadata": {
+                        **payload.metadata,
+                        "capability_plan": capability_decision.model_dump(mode="json"),
+                    },
                 },
             ),
             account_id=account_id,
@@ -253,6 +278,20 @@ class ChatApplicationService:
             send_event=send_event,
         )
         return TurnStartAccepted(turn_id=turn_id, conversation=conversation_summary)
+
+    def _normalize_inline_resource_selection(self, selection: ResourceSelection) -> ResourceSelection:
+        return self.action_registry.normalize_selection(
+            ResourceSelection(
+                use_system_defaults=False,
+                use_conversation_defaults=False,
+                actions=self.action_registry.assign_inline_action_ids(
+                    selection.actions,
+                    source="inline",
+                    prefix="request:inline",
+                ),
+                metadata=selection.metadata,
+            ),
+        )
 
     async def cancel_turn(
         self,

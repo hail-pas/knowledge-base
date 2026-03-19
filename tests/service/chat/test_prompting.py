@@ -1,9 +1,9 @@
 from typing import Any, cast
 
 from ext.ext_tortoise.enums import ChatStepKindEnum
-from service.chat.capability.registry import CapabilityDescriptor
+from service.chat.execution.registry import ExecutionAction
 from service.chat.domain.schema import (
-    ChatCapabilityKindEnum,
+    ChatActionKindEnum,
     ChatRoleEnum,
     ConversationSummary,
     FunctionCallConfig,
@@ -29,17 +29,17 @@ from service.chat.runtime.session import ChatSessionContext
 
 def _descriptor(
     *,
-    capability_id: str,
+    action_id: str,
     kind: str,
     name: str,
     priority: int,
     source: str,
     step_kind: str,
     config: Any,
-) -> CapabilityDescriptor:
-    return CapabilityDescriptor(
-        capability_id=capability_id,
-        kind=ChatCapabilityKindEnum(kind),
+) -> ExecutionAction:
+    return ExecutionAction(
+        action_id=action_id,
+        kind=ChatActionKindEnum(kind),
         step_kind=ChatStepKindEnum(step_kind),
         name=name,
         config=config,
@@ -48,10 +48,10 @@ def _descriptor(
     )
 
 
-def test_turn_artifacts_build_context_with_structured_capability_results() -> None:
+def test_turn_artifacts_build_context_with_structured_action_results() -> None:
     artifacts = TurnArtifacts()
     retrieval_descriptor = _descriptor(
-        capability_id="cap:retrieval",
+        action_id="act:retrieval",
         kind="knowledge_retrieval",
         name="kb_search",
         priority=10,
@@ -60,7 +60,7 @@ def test_turn_artifacts_build_context_with_structured_capability_results() -> No
         config=KnowledgeRetrievalConfig(collection_ids=[1], top_k=3),
     )
     tool_descriptor = _descriptor(
-        capability_id="cap:tool",
+        action_id="act:tool",
         kind="tool_call",
         name="weather_tool",
         priority=20,
@@ -69,7 +69,7 @@ def test_turn_artifacts_build_context_with_structured_capability_results() -> No
         config=ToolCallConfig(policy=ToolExecutionPolicyEnum.optional, tool_names=["weather"]),
     )
 
-    artifacts.add_instruction("回答时优先使用最新 capability 结果。")
+    artifacts.add_instruction("回答时优先使用最新执行结果。")
     artifacts.add_retrieval_context(
         retrieval_descriptor,
         retrievals=[
@@ -97,11 +97,11 @@ def test_turn_artifacts_build_context_with_structured_capability_results() -> No
 
     context = artifacts.build_context([])
 
-    assert context.instructions == ["回答时优先使用最新 capability 结果。"]
+    assert context.instructions == ["回答时优先使用最新执行结果。"]
     assert len(context.references) == 1
-    assert [item.capability_id for item in context.ordered_context_items()] == [
-        "cap:retrieval",
-        "cap:tool",
+    assert [item.action_id for item in context.ordered_context_items()] == [
+        "act:retrieval",
+        "act:tool",
     ]
     assert context.terminal_output is not None
     assert context.terminal_output.payload.text == "直接返回最终结果。"
@@ -110,7 +110,7 @@ def test_turn_artifacts_build_context_with_structured_capability_results() -> No
 def test_chat_prompt_builder_renders_context_sections() -> None:
     artifacts = TurnArtifacts()
     retrieval_descriptor = _descriptor(
-        capability_id="cap:retrieval",
+        action_id="act:retrieval",
         kind="knowledge_retrieval",
         name="kb_search",
         priority=10,
@@ -119,7 +119,7 @@ def test_chat_prompt_builder_renders_context_sections() -> None:
         config=KnowledgeRetrievalConfig(collection_ids=[1], top_k=3),
     )
     tool_descriptor = _descriptor(
-        capability_id="cap:tool",
+        action_id="act:tool",
         kind="tool_call",
         name="weather_tool",
         priority=20,
@@ -151,7 +151,7 @@ def test_chat_prompt_builder_renders_context_sections() -> None:
     )
 
     assert "额外执行约束" in prompt.system_prompt
-    assert "Capability 上下文" in prompt.user_prompt
+    assert "执行上下文" in prompt.user_prompt
     assert "知识库命中" in prompt.user_prompt
     assert "天气工具结果" in prompt.user_prompt
     assert '"weather": "sunny"' in prompt.user_prompt
@@ -160,7 +160,7 @@ def test_chat_prompt_builder_renders_context_sections() -> None:
 def test_chat_prompt_builder_supports_dynamic_system_prompt_placeholders() -> None:
     artifacts = TurnArtifacts()
     system_prompt_descriptor = _descriptor(
-        capability_id="cap:system_prompt",
+        action_id="act:system_prompt",
         kind="system_prompt",
         name="dynamic_prompt",
         priority=5,
@@ -177,7 +177,7 @@ def test_chat_prompt_builder_supports_dynamic_system_prompt_placeholders() -> No
         ),
     )
     tool_descriptor = _descriptor(
-        capability_id="cap:function",
+        action_id="act:function",
         kind="function_call",
         name="function_router",
         priority=20,
@@ -205,7 +205,7 @@ def test_chat_prompt_builder_supports_dynamic_system_prompt_placeholders() -> No
             ),
         ),
         resolved_selection=ResourceSelection(),
-        resolved_capabilities=[system_prompt_descriptor, tool_descriptor],
+        resolved_actions=[system_prompt_descriptor, tool_descriptor],
         artifacts=artifacts,
     )
     session.apply_system_prompt_config(
@@ -240,4 +240,4 @@ def test_chat_prompt_builder_supports_dynamic_system_prompt_placeholders() -> No
     assert "意图识别结果" in prompt.system_prompt
     assert "已执行函数" in prompt.system_prompt
     assert "优先引用函数结果。" in prompt.system_prompt
-    assert "当前 capability 计划" not in prompt.system_prompt
+    assert "当前执行计划" not in prompt.system_prompt

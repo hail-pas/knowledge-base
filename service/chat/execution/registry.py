@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, cast
+from typing import Any, Iterable
 from dataclasses import field, dataclass
 
 from pydantic import BaseModel, TypeAdapter
@@ -8,98 +8,93 @@ from pydantic import BaseModel, TypeAdapter
 from ext.ext_tortoise.enums import ChatStepKindEnum
 from service.chat.domain.schema import (
     MCPCallConfig,
+    ResourceAction,
     ToolCallConfig,
     LLMResponseConfig,
     ResourceSelection,
+    ChatActionKindEnum,
     FunctionCallConfig,
-    ResourceCapability,
+    SubAgentCallConfig,
     SystemPromptConfig,
     IntentDetectionConfig,
-    ChatCapabilityKindEnum,
     KnowledgeRetrievalConfig,
 )
 
-_RESOURCE_CAPABILITY_ADAPTER = TypeAdapter(ResourceCapability)
+_RESOURCE_ACTION_ADAPTER = TypeAdapter(ResourceAction)
 
 
 @dataclass(slots=True)
-class CapabilityDefinition:
-    kind: ChatCapabilityKindEnum
+class ExecutionActionDefinition:
+    kind: ChatActionKindEnum
     step_kind: ChatStepKindEnum
     default_name: str
     config_model: type[BaseModel]
 
 
 @dataclass(slots=True)
-class CapabilityDescriptor:
-    capability_id: str
-    kind: ChatCapabilityKindEnum
+class ExecutionAction:
+    action_id: str
+    kind: ChatActionKindEnum
     step_kind: ChatStepKindEnum
     name: str
     config: BaseModel
     priority: int
     source: str
     metadata: dict[str, Any] = field(default_factory=dict)
-    profile_id: int | None = None
-    binding_id: int | None = None
 
 
-class CapabilityRegistry:
+class ExecutionActionRegistry:
     def __init__(self) -> None:
-        self._definitions: dict[ChatCapabilityKindEnum, CapabilityDefinition] = {}
+        self._definitions: dict[ChatActionKindEnum, ExecutionActionDefinition] = {}
 
     def register(
         self,
-        kind: ChatCapabilityKindEnum,
+        kind: ChatActionKindEnum,
         *,
         step_kind: ChatStepKindEnum,
         default_name: str,
         config_model: type[BaseModel],
     ) -> None:
-        self._definitions[kind] = CapabilityDefinition(
+        self._definitions[kind] = ExecutionActionDefinition(
             kind=kind,
             step_kind=step_kind,
             default_name=default_name,
             config_model=config_model,
         )
 
-    def parse_kind(self, kind: ChatCapabilityKindEnum | str) -> ChatCapabilityKindEnum:
-        return kind if isinstance(kind, ChatCapabilityKindEnum) else ChatCapabilityKindEnum(kind)
+    def parse_kind(self, kind: ChatActionKindEnum | str) -> ChatActionKindEnum:
+        return kind if isinstance(kind, ChatActionKindEnum) else ChatActionKindEnum(kind)
 
-    def get_definition(self, kind: ChatCapabilityKindEnum | str) -> CapabilityDefinition:
+    def get_definition(self, kind: ChatActionKindEnum | str) -> ExecutionActionDefinition:
         parsed_kind = self.parse_kind(kind)
         definition = self._definitions.get(parsed_kind)
         if definition is None:
-            raise ValueError(f"Unsupported capability kind: {parsed_kind}")
+            raise ValueError(f"Unsupported action kind: {parsed_kind}")
         return definition
 
-    def parse_config(self, kind: ChatCapabilityKindEnum | str, config: BaseModel | dict[str, Any]) -> BaseModel:
+    def parse_config(self, kind: ChatActionKindEnum | str, config: BaseModel | dict[str, Any]) -> BaseModel:
         definition = self.get_definition(kind)
         payload = config.model_dump(mode="json") if isinstance(config, BaseModel) else config
         return definition.config_model.model_validate(payload)
 
-    def build_capability(
+    def build_action(
         self,
-        kind: ChatCapabilityKindEnum | str,
+        kind: ChatActionKindEnum | str,
         *,
         config: BaseModel | dict[str, Any],
-        capability_id: str | None = None,
-        profile_id: int | None = None,
-        binding_id: int | None = None,
+        action_id: str | None = None,
         name: str | None = None,
         source: str | None = None,
         enabled: bool = True,
         priority: int = 100,
         metadata: dict[str, Any] | None = None,
-    ) -> ResourceCapability:
+    ) -> ResourceAction:
         parsed_kind = self.parse_kind(kind)
         validated_config = self.parse_config(parsed_kind, config)
-        return _RESOURCE_CAPABILITY_ADAPTER.validate_python(
+        return _RESOURCE_ACTION_ADAPTER.validate_python(
             {
                 "kind": parsed_kind.value,
-                "capability_id": capability_id,
-                "profile_id": profile_id,
-                "binding_id": binding_id,
+                "action_id": action_id,
                 "name": name or self.get_definition(parsed_kind).default_name,
                 "source": source,
                 "enabled": enabled,
@@ -109,94 +104,99 @@ class CapabilityRegistry:
             },
         )
 
-    def assign_inline_capability_ids(
+    def assign_inline_action_ids(
         self,
-        capabilities: Iterable[ResourceCapability],
+        actions: Iterable[ResourceAction],
         *,
         source: str,
         prefix: str,
-    ) -> list[ResourceCapability]:
-        assigned: list[ResourceCapability] = []
-        for index, capability in enumerate(capabilities, start=1):
-            definition = self.get_definition(capability.kind)
+    ) -> list[ResourceAction]:
+        assigned: list[ResourceAction] = []
+        for index, action in enumerate(actions, start=1):
+            definition = self.get_definition(action.kind)
             assigned.append(
-                capability.model_copy(
+                action.model_copy(
                     update={
-                        "capability_id": capability.capability_id or f"{prefix}:{index}",
-                        "name": capability.name or str(capability.metadata.get("step_name") or definition.default_name),
-                        "source": capability.source or source,
+                        "action_id": action.action_id or f"{prefix}:{index}",
+                        "name": action.name or str(action.metadata.get("step_name") or definition.default_name),
+                        "source": action.source or source,
                     },
                 ),
             )
         return assigned
 
-    def build(self, capability: ResourceCapability) -> CapabilityDescriptor | None:
+    def build(self, action: ResourceAction) -> ExecutionAction | None:
         try:
-            definition = self.get_definition(capability.kind)
+            definition = self.get_definition(action.kind)
         except ValueError:
             return None
-        return CapabilityDescriptor(
-            capability_id=capability.capability_id or f"anonymous:{capability.kind.value}",
-            kind=capability.kind,
+        return ExecutionAction(
+            action_id=action.action_id or f"anonymous:{action.kind.value}",
+            kind=action.kind,
             step_kind=definition.step_kind,
-            name=str(capability.name or capability.metadata.get("step_name") or definition.default_name),
-            config=capability.config,
-            priority=capability.priority,
-            source=str(capability.source or "unknown"),
-            metadata=capability.metadata,
-            profile_id=capability.profile_id,
-            binding_id=capability.binding_id,
+            name=str(action.name or action.metadata.get("step_name") or definition.default_name),
+            config=action.config,
+            priority=action.priority,
+            source=str(action.source or "unknown"),
+            metadata=action.metadata,
         )
 
     def normalize_selection(self, selection: ResourceSelection) -> ResourceSelection:
         return ResourceSelection(
-            use_system_defaults=False,
-            use_conversation_defaults=False,
+            use_system_defaults=selection.use_system_defaults,
+            use_conversation_defaults=selection.use_conversation_defaults,
             capabilities=selection.normalized_capabilities(),
+            actions=selection.normalized_actions(),
             metadata=selection.metadata,
         )
 
 
-def create_default_capability_registry() -> CapabilityRegistry:
-    registry = CapabilityRegistry()
+def create_default_action_registry() -> ExecutionActionRegistry:
+    registry = ExecutionActionRegistry()
     registry.register(
-        ChatCapabilityKindEnum.system_prompt,
+        ChatActionKindEnum.system_prompt,
         step_kind=ChatStepKindEnum.system,
         default_name="system_prompt",
         config_model=SystemPromptConfig,
     )
     registry.register(
-        ChatCapabilityKindEnum.intent_detection,
+        ChatActionKindEnum.intent_detection,
         step_kind=ChatStepKindEnum.system,
         default_name="intent_detection",
         config_model=IntentDetectionConfig,
     )
     registry.register(
-        ChatCapabilityKindEnum.knowledge_retrieval,
+        ChatActionKindEnum.knowledge_retrieval,
         step_kind=ChatStepKindEnum.retrieval,
         default_name="knowledge_retrieval",
         config_model=KnowledgeRetrievalConfig,
     )
     registry.register(
-        ChatCapabilityKindEnum.function_call,
+        ChatActionKindEnum.function_call,
         step_kind=ChatStepKindEnum.tool,
         default_name="function_call",
         config_model=FunctionCallConfig,
     )
     registry.register(
-        ChatCapabilityKindEnum.tool_call,
+        ChatActionKindEnum.tool_call,
         step_kind=ChatStepKindEnum.tool,
         default_name="tool_call",
         config_model=ToolCallConfig,
     )
     registry.register(
-        ChatCapabilityKindEnum.mcp_call,
+        ChatActionKindEnum.mcp_call,
         step_kind=ChatStepKindEnum.tool,
         default_name="mcp_call",
         config_model=MCPCallConfig,
     )
     registry.register(
-        ChatCapabilityKindEnum.llm_response,
+        ChatActionKindEnum.sub_agent_call,
+        step_kind=ChatStepKindEnum.llm,
+        default_name="sub_agent_call",
+        config_model=SubAgentCallConfig,
+    )
+    registry.register(
+        ChatActionKindEnum.llm_response,
         step_kind=ChatStepKindEnum.llm,
         default_name="llm_response",
         config_model=LLMResponseConfig,

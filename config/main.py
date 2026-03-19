@@ -1,3 +1,4 @@
+from typing import Any
 from functools import lru_cache
 
 from pydantic_settings import (
@@ -16,6 +17,7 @@ class LocalConfig(BaseSettings):
     server: ServerConfig
     project: ProjectConfig
     extensions: ExtensionRegistry
+    service: dict[str, Any] = {}
 
     @classmethod
     def settings_customise_sources(
