@@ -165,34 +165,19 @@ class IndexingStatusEnum(StrEnum):
 # =============================================================================
 
 
-class ChatConversationStatusEnum(StrEnum):
-    active = ("active", "活跃")
-    archived = ("archived", "已归档")
-
-
 class ChatTurnStatusEnum(StrEnum):
-    pending = ("pending", "待处理")
-    accepted = ("accepted", "已受理")
     running = ("running", "运行中")
-    streaming = ("streaming", "流式输出中")
     completed = ("completed", "已完成")
     failed = ("failed", "失败")
     canceled = ("canceled", "已取消")
-    rolled_back = ("rolled_back", "已回退")
 
 
 class ChatTurnTriggerEnum(StrEnum):
     user = ("user", "用户触发")
-    system = ("system", "系统触发")
-    retry = ("retry", "重试")
-    resume = ("resume", "恢复")
-    rollback = ("rollback", "回退")
 
 
 class ChatStepStatusEnum(StrEnum):
-    pending = ("pending", "待处理")
     running = ("running", "运行中")
-    streaming = ("streaming", "流式输出中")
     completed = ("completed", "已完成")
     failed = ("failed", "失败")
     canceled = ("canceled", "已取消")
@@ -203,19 +188,38 @@ class ChatStepKindEnum(StrEnum):
     retrieval = ("retrieval", "检索步骤")
     llm = ("llm", "模型步骤")
     tool = ("tool", "工具步骤")
-    guardrail = ("guardrail", "护栏步骤")
-    response = ("response", "响应步骤")
 
 
 class ChatDataKindEnum(StrEnum):
     input = ("input", "输入")
     output = ("output", "输出")
-    intermediate = ("intermediate", "中间数据")
-    reference = ("reference", "引用数据")
-    control = ("control", "控制数据")
 
 
 class ChatCapabilityKindEnum(StrEnum):
     skill = ("skill", "流程型能力")
     extension = ("extension", "扩展能力")
     sub_agent = ("sub_agent", "子代理能力")
+
+
+class ChatCapabilityCategoryEnum(StrEnum):
+    core = ("core", "核心能力")
+    domain = ("domain", "领域能力")
+    infra = ("infra", "基础设施能力")
+    agent = ("agent", "代理能力")
+    guarded = ("guarded", "受控能力")
+
+
+class ChatCapabilityRuntimeKindEnum(StrEnum):
+    local_toolset = ("local_toolset", "本地工具集")
+    mcp_toolset = ("mcp_toolset", "MCP 工具集")
+    agent_delegate = ("agent_delegate", "代理委派")
+    agent_handoff = ("agent_handoff", "代理切换")
+
+
+class ChatAgentRoleEnum(StrEnum):
+    orchestrator = ("orchestrator", "编排代理")
+    specialist = ("specialist", "专家代理")
+
+
+class ChatAgentMountModeEnum(StrEnum):
+    delegate = ("delegate", "委派")

@@ -7,51 +7,49 @@ from loguru import logger
 from tortoise.exceptions import IntegrityError
 
 from core.types import ApiException
+from ext.ext_tortoise.models.knowledge_base import ChatCapabilityPackage
+from service.chat.capability.repository import ChatCapabilityRepository
+from service.chat.capability.schema import (
+    BaseCapabilityManifest,
+    CapabilityKindEnum,
+    CapabilityPackageCreate,
+    CapabilityPackageQuery,
+    CapabilityPackageSummary,
+    CapabilityPackageUpdate,
+    CapabilityScopeEnum,
+    ExtensionCapabilityManifest,
+    SkillCapabilityManifest,
+    SubAgentCapabilityManifest,
+)
 from service.chat.domain.schema import (
-    ResourceAction,
-    ResourceSelection,
+    ActionConfigOverride,
+    ActionCapabilityMetadata,
+    ActionMetadata,
+    CapabilityCategoryEnum,
+    CapabilityRuntimeKindEnum,
+    CapabilitySelection,
     ChatActionKindEnum,
+    ResourceAction,
     SubAgentCallConfig,
     SystemPromptConfig,
-    CapabilitySelection,
+    merge_action_metadata,
 )
-from service.chat.capability.router import ChatCapabilityRouter
-from service.chat.capability.schema import (
-    CapabilityKindEnum,
-    CapabilityScopeEnum,
-    BaseCapabilityManifest,
-    CapabilityPackageQuery,
-    CapabilityPackageCreate,
-    CapabilityPackageUpdate,
-    SkillCapabilityManifest,
-    CapabilityPackageSummary,
-    CapabilityRoutingDecision,
-    CapabilityRoutingModeEnum,
-    CapabilityRegistrySnapshot,
-    SubAgentCapabilityManifest,
-    ExtensionCapabilityManifest,
-)
-from service.chat.execution.registry import (
-    ExecutionActionRegistry,
-    create_default_action_registry,
-)
-from service.chat.capability.repository import ChatCapabilityRepository
-from ext.ext_tortoise.models.knowledge_base import ChatCapabilityPackage
+from service.chat.execution.registry import ExecutionActionRegistry, create_default_action_registry
 
 
 class ChatCapabilityService:
+    BUILTIN_CORE_DATETIME_KEY = "core_datetime"
     BUILTIN_KB_RETRIEVAL_KEY = "knowledge_base_retrieval"
+    BUILTIN_GUARDED_WORK_ORDER_KEY = "guarded_work_order_create"
 
     def __init__(
         self,
         *,
         repository: ChatCapabilityRepository | None = None,
         action_registry: ExecutionActionRegistry | None = None,
-        router: ChatCapabilityRouter | None = None,
     ) -> None:
         self.repository = repository or ChatCapabilityRepository()
         self.action_registry = action_registry or create_default_action_registry()
-        self.router = router or ChatCapabilityRouter()
 
     async def create_package(
         self,
@@ -65,10 +63,14 @@ class ChatCapabilityService:
             package = await self.repository.create_package(
                 owner_account_id=None if is_staff or account_id is None else account_id,
                 kind=manifest.kind.value,
+                category=manifest.category.value,
+                runtime_kind=manifest.runtime_kind.value,
                 capability_key=manifest.capability_key,
                 name=manifest.name,
                 description=manifest.description,
                 manifest=manifest.model_dump(mode="json"),
+                visible_to_agents=manifest.governance.visible_to_agents,
+                requires_deps=manifest.governance.requires_deps,
                 is_enabled=payload.is_enabled,
                 metadata=payload.metadata,
             )
@@ -91,13 +93,30 @@ class ChatCapabilityService:
         update_fields: list[str] = []
         if payload.manifest is not None:
             manifest = self._normalize_manifest(payload.manifest)
-            package.kind = manifest.kind.value
+            package.kind = manifest.kind.value  # type: ignore
+            package.category = manifest.category.value  # type: ignore
+            package.runtime_kind = manifest.runtime_kind.value  # type: ignore
             package.capability_key = manifest.capability_key
             package.name = manifest.name
             package.description = manifest.description
             package.manifest = manifest.model_dump(mode="json")
+            package.visible_to_agents = manifest.governance.visible_to_agents
+            package.requires_deps = manifest.governance.requires_deps
             package.version += 1
-            update_fields.extend(["kind", "capability_key", "name", "description", "manifest", "version"])
+            update_fields.extend(
+                [
+                    "kind",
+                    "category",
+                    "runtime_kind",
+                    "capability_key",
+                    "name",
+                    "description",
+                    "manifest",
+                    "visible_to_agents",
+                    "requires_deps",
+                    "version",
+                ],
+            )
         if payload.is_enabled is not None:
             package.is_enabled = payload.is_enabled
             update_fields.append("is_enabled")
@@ -134,6 +153,8 @@ class ChatCapabilityService:
         packages = await self.repository.list_packages(
             scope=(query.scope.value if isinstance(query.scope, CapabilityScopeEnum) else str(query.scope)),
             kind=query.kind,
+            category=query.category.value if query.category is not None else None,
+            runtime_kind=query.runtime_kind.value if query.runtime_kind is not None else None,
             is_enabled=query.is_enabled,
             name_contains=query.name,
             tags=query.tags,
@@ -155,101 +176,18 @@ class ChatCapabilityService:
         await package.delete()
         return 1
 
-    async def build_registry_snapshot(
+    def compile_package_actions(
         self,
+        package: CapabilityPackageSummary,
         *,
-        account_id: int | None = None,
-        is_staff: bool = True,
-    ) -> CapabilityRegistrySnapshot:
-        await self.ensure_builtin_packages()
-        packages = await self.list_packages(
-            CapabilityPackageQuery(is_enabled=True),
-            account_id=account_id,
-            is_staff=is_staff,
+        package_order: int = 100,
+        selection: CapabilitySelection | None = None,
+    ) -> list[ResourceAction]:
+        return self._materialize_package_actions(
+            package,
+            package_order=package_order,
+            selection=selection,
         )
-        return CapabilityRegistrySnapshot(
-            skills=[item for item in packages if item.kind == CapabilityKindEnum.skill],
-            extensions=[item for item in packages if item.kind == CapabilityKindEnum.extension],
-            sub_agents=[item for item in packages if item.kind == CapabilityKindEnum.sub_agent],
-        )
-
-    async def resolve_turn_capabilities(
-        self,
-        *,
-        query: str,
-        resource_selection: ResourceSelection,
-        account_id: int | None = None,
-        is_staff: bool = True,
-    ) -> tuple[ResourceSelection, CapabilityRoutingDecision]:
-        registry = await self.build_registry_snapshot(account_id=account_id, is_staff=is_staff)
-        registry_map_by_id = {item.id: item for item in registry.all_packages}
-        forced_capability_keys = set()
-        required_capability_keys = set()
-        for item in resource_selection.capabilities:
-            if not item.enabled:
-                continue
-            if item.capability_key:
-                forced_capability_keys.add(item.capability_key)
-                if item.required:
-                    required_capability_keys.add(item.capability_key)
-                continue
-            if item.capability_id and item.capability_id in registry_map_by_id:
-                resolved_key = registry_map_by_id[item.capability_id].capability_key
-                forced_capability_keys.add(resolved_key)
-                if item.required:
-                    required_capability_keys.add(resolved_key)
-        self._validate_required_capabilities(
-            required_capability_keys=required_capability_keys,
-            packages=registry.all_packages,
-        )
-        router_config = self._resolve_router_config(resource_selection)
-        decision = await self.router.route(
-            query=query,
-            packages=registry.all_packages,
-            forced_capability_keys=forced_capability_keys,
-            required_capability_keys=required_capability_keys,
-            mode_override=router_config["mode"],
-            planner_model_config_id=router_config["planner_model_config_id"],
-        )
-        logger.info(
-            "Capability routing resolved: query={!r}, forced_keys={}, required_keys={}, selected_keys={}, mode={}",
-            query[:200],
-            sorted(forced_capability_keys),
-            sorted(required_capability_keys),
-            [item.capability_key for item in registry.all_packages if item.id in set(decision.selected_capability_ids)],
-            decision.mode.value,
-        )
-
-        package_map = {item.id: item for item in registry.all_packages}
-        selected_packages = [package_map[item] for item in decision.selected_capability_ids if item in package_map]
-        selection_map = self._build_selection_map(resource_selection.normalized_capabilities())
-
-        actions: list[ResourceAction] = []
-        for order, package in enumerate(selected_packages, start=1):
-            actions.extend(
-                self._materialize_package_actions(
-                    package,
-                    package_order=order,
-                    selection=selection_map.get(package.id) or selection_map.get(package.capability_key),
-                ),
-            )
-
-        actions.extend(resource_selection.actions)
-        selection = self.action_registry.normalize_selection(
-            ResourceSelection(
-                use_system_defaults=resource_selection.use_system_defaults,
-                use_conversation_defaults=resource_selection.use_conversation_defaults,
-                capabilities=resource_selection.normalized_capabilities(),
-                actions=actions,
-                metadata={
-                    **resource_selection.metadata,
-                    "selected_capability_ids": decision.selected_capability_ids,
-                    "selected_capability_keys": [item.capability_key for item in selected_packages],
-                    "capability_routing": decision.model_dump(mode="json"),
-                },
-            ),
-        )
-        return selection, decision
 
     def _materialize_package_actions(
         self,
@@ -259,78 +197,37 @@ class ChatCapabilityService:
         selection: CapabilitySelection | None = None,
     ) -> list[ResourceAction]:
         manifest = package.manifest
-        package_metadata = {
-            "capability_id": package.id,
-            "capability_key": package.capability_key,
-            "capability_kind": package.kind.value,
-            "capability_name": package.name,
-            "capability_version": package.version,
-            "capability_order": package_order,
-            "capability_required": bool(selection.required) if selection is not None else False,
-        }
+        package_metadata = ActionCapabilityMetadata(
+            capability_id=package.id,
+            capability_key=package.capability_key,
+            capability_kind=package.kind,
+            capability_category=package.category,
+            capability_name=package.name,
+            capability_version=package.version,
+            capability_order=package_order,
+            capability_required=bool(selection.required) if selection is not None else False,
+            capability_runtime_kind=package.runtime_kind,
+        )
 
         if isinstance(manifest, SkillCapabilityManifest):
-            actions = [
-                action.model_copy(
-                    update={
-                        "action_id": action.action_id or f"capability:{package.id}:action:{index}",
-                        "name": action.name or f"{package.capability_key}:{action.kind.value}",
-                        "source": "capability:skill",
-                        "config": self._resolve_action_config(action, selection=selection),
-                        "metadata": {
-                            **package_metadata,
-                            **(selection.metadata if selection is not None else {}),
-                            **action.metadata,
-                        },
-                    },
-                )
-                for index, action in enumerate(manifest.actions, start=1)
-            ]
-            if manifest.instructions:
-                actions.append(
-                    self.action_registry.build_action(
-                        ChatActionKindEnum.system_prompt,
-                        config=SystemPromptConfig(instructions=list(manifest.instructions)),
-                        action_id=f"capability:{package.id}:instructions",
-                        name=f"{package.capability_key}:instructions",
-                        source="capability:skill",
-                        priority=min([item.priority for item in manifest.actions] or [100]) - 1,
-                        metadata=package_metadata,
-                    ),
-                )
-            return actions
+            return self._materialize_inline_package_actions(
+                package=package,
+                package_metadata=package_metadata,
+                selection=selection,
+                actions=manifest.actions,
+                instructions=manifest.instructions,
+                source="capability:skill",
+            )
 
         if isinstance(manifest, ExtensionCapabilityManifest):
-            actions = []
-            for index, action in enumerate(manifest.actions, start=1):
-                actions.append(
-                    action.model_copy(
-                        update={
-                            "action_id": action.action_id or f"capability:{package.id}:action:{index}",
-                            "name": action.name or f"{package.capability_key}:{action.kind.value}",
-                            "source": "capability:extension",
-                            "config": self._resolve_action_config(action, selection=selection),
-                            "metadata": {
-                                **package_metadata,
-                                **(selection.metadata if selection is not None else {}),
-                                **action.metadata,
-                            },
-                        },
-                    ),
-                )
-            if manifest.instructions:
-                actions.append(
-                    self.action_registry.build_action(
-                        ChatActionKindEnum.system_prompt,
-                        config=SystemPromptConfig(instructions=list(manifest.instructions)),
-                        action_id=f"capability:{package.id}:instructions",
-                        name=f"{package.capability_key}:instructions",
-                        source="capability:extension",
-                        priority=min([item.priority for item in manifest.actions] or [100]) - 1,
-                        metadata=package_metadata,
-                    ),
-                )
-            return actions
+            return self._materialize_inline_package_actions(
+                package=package,
+                package_metadata=package_metadata,
+                selection=selection,
+                actions=manifest.actions,
+                instructions=manifest.instructions,
+                source="capability:extension",
+            )
 
         if isinstance(manifest, SubAgentCapabilityManifest):
             return [
@@ -346,10 +243,49 @@ class ChatCapabilityService:
                     name=package.capability_key,
                     source="capability:sub_agent",
                     priority=100,
-                    metadata=package_metadata,
+                    metadata=ActionMetadata(capability=package_metadata),
                 ),
             ]
         return []
+
+    def _materialize_inline_package_actions(
+        self,
+        *,
+        package: CapabilityPackageSummary,
+        package_metadata: ActionCapabilityMetadata,
+        selection: CapabilitySelection | None,
+        actions: list[ResourceAction],
+        instructions: list[str],
+        source: str,
+    ) -> list[ResourceAction]:
+        resolved_actions = [
+            action.model_copy(
+                update={
+                    "action_id": action.action_id or f"capability:{package.id}:action:{index}",
+                    "name": action.name or f"{package.capability_key}:{action.kind.value}",
+                    "source": source,
+                    "config": self._resolve_action_config(action, selection=selection),
+                    "metadata": merge_action_metadata(
+                        ActionMetadata(capability=package_metadata),
+                        action.metadata,
+                    ),
+                },
+            )
+            for index, action in enumerate(actions, start=1)
+        ]
+        if instructions:
+            resolved_actions.append(
+                self.action_registry.build_action(
+                    ChatActionKindEnum.system_prompt,
+                    config=SystemPromptConfig(instructions=list(instructions)),
+                    action_id=f"capability:{package.id}:instructions",
+                    name=f"{package.capability_key}:instructions",
+                    source=source,
+                    priority=min([item.priority for item in actions] or [100]) - 1,
+                    metadata=ActionMetadata(capability=package_metadata),
+                ),
+            )
+        return resolved_actions
 
     def _normalize_manifest(self, manifest: BaseCapabilityManifest) -> BaseCapabilityManifest:
         actions = getattr(manifest, "actions", None)
@@ -381,9 +317,15 @@ class ChatCapabilityService:
     def _serialize_package(self, package: ChatCapabilityPackage) -> CapabilityPackageSummary:
         manifest_payload = {
             "kind": package.kind,
+            "category": getattr(package, "category", CapabilityCategoryEnum.domain.value),
+            "runtime_kind": getattr(package, "runtime_kind", CapabilityRuntimeKindEnum.local_toolset.value),
             "capability_key": package.capability_key,
             "name": package.name,
             "description": package.description,
+            "governance": {
+                "visible_to_agents": list(getattr(package, "visible_to_agents", []) or []),
+                "requires_deps": list(getattr(package, "requires_deps", []) or []),
+            },
             **(package.manifest or {}),
         }
         manifest = self._manifest_model_from_kind(str(package.kind)).model_validate(manifest_payload)
@@ -391,10 +333,14 @@ class ChatCapabilityService:
             id=package.id,
             owner_account_id=package.owner_account_id,
             kind=CapabilityKindEnum(str(package.kind)),
+            category=manifest.category,
+            runtime_kind=manifest.runtime_kind,
             capability_key=package.capability_key,
             name=package.name,
             description=package.description,
-            manifest=manifest,
+            manifest=manifest,  # type: ignore
+            visible_to_agents=list(manifest.governance.visible_to_agents),
+            requires_deps=list(manifest.governance.requires_deps),
             is_enabled=package.is_enabled,
             metadata=package.metadata or {},
             version=package.version,
@@ -411,39 +357,72 @@ class ChatCapabilityService:
         return SubAgentCapabilityManifest
 
     async def ensure_builtin_packages(self) -> None:
-        existing = await self.repository.get_global_package_by_key(
-            kind=CapabilityKindEnum.extension,
-            capability_key=self.BUILTIN_KB_RETRIEVAL_KEY,
-        )
-        if existing is not None:
-            return
-        manifest = self._normalize_manifest(self._build_builtin_kb_retrieval_manifest())
-        await self.repository.create_package(
-            owner_account_id=None,
-            kind=manifest.kind.value,
-            capability_key=manifest.capability_key,
-            name=manifest.name,
-            description=manifest.description,
-            manifest=manifest.model_dump(mode="json"),
-            is_enabled=True,
-            metadata={"builtin": True},
+        builtins = [
+            self._build_builtin_core_datetime_manifest(),
+            self._build_builtin_kb_retrieval_manifest(),
+            self._build_builtin_guarded_work_order_manifest(),
+        ]
+        for builtin in builtins:
+            existing = await self.repository.get_global_package_by_key(
+                kind=builtin.kind,
+                capability_key=builtin.capability_key,
+            )
+            if existing is not None:
+                continue
+            manifest = self._normalize_manifest(builtin)
+            try:
+                await self.repository.create_package(
+                    owner_account_id=None,
+                    kind=manifest.kind.value,
+                    category=manifest.category.value,
+                    runtime_kind=manifest.runtime_kind.value,
+                    capability_key=manifest.capability_key,
+                    name=manifest.name,
+                    description=manifest.description,
+                    manifest=manifest.model_dump(mode="json"),
+                    visible_to_agents=manifest.governance.visible_to_agents,
+                    requires_deps=manifest.governance.requires_deps,
+                    is_enabled=True,
+                    metadata={"builtin": True},
+                )
+            except IntegrityError:
+                logger.info("Builtin capability package already created concurrently: {}", manifest.capability_key)
+
+    def _build_builtin_core_datetime_manifest(self) -> SkillCapabilityManifest:
+        return SkillCapabilityManifest.model_validate(
+            {
+                "kind": "skill",
+                "category": "core",
+                "runtime_kind": "local_toolset",
+                "capability_key": self.BUILTIN_CORE_DATETIME_KEY,
+                "name": "当前时间",
+                "description": "提供时间日期等平台基础能力。",
+                "tags": ["time", "date", "clock"],
+                "instructions": ["涉及当前时间或日期时，优先使用时间能力。"],
+                "actions": [
+                    {
+                        "kind": "tool_call",
+                        "priority": 10,
+                        "config": {
+                            "tools": [{"tool_name": "current_datetime"}],
+                            "stop_after_terminal": True,
+                        },
+                    },
+                ],
+            },
         )
 
     def _build_builtin_kb_retrieval_manifest(self) -> ExtensionCapabilityManifest:
         return ExtensionCapabilityManifest.model_validate(
             {
                 "kind": "extension",
+                "category": "infra",
+                "runtime_kind": "local_toolset",
                 "capability_key": self.BUILTIN_KB_RETRIEVAL_KEY,
                 "name": "知识库检索",
                 "description": "按需执行知识库检索，将命中内容作为上下文提供给聊天回复。",
                 "tags": ["rag", "retrieval", "knowledge-base"],
-                "triggers": ["grounded_answer", "citation_required", "knowledge_retrieval"],
                 "constraints": ["do_not_guess"],
-                "routing": {
-                    "keywords": ["知识库", "文档", "检索", "根据文档", "RAG", "资料里"],
-                    "min_score": 0.2,
-                    "max_selected": 1,
-                },
                 "instructions": [
                     "当启用知识库检索时，优先基于检索到的结果回答；证据不足时明确说明。",
                 ],
@@ -451,31 +430,53 @@ class ChatCapabilityService:
                 "provides_actions": True,
                 "actions": [
                     {
-                        "kind": "knowledge_retrieval",
+                        "kind": "tool_call",
                         "priority": 30,
-                        "name": "knowledge_base_retrieval",
+                        "name": "knowledge_base_search",
                         "config": {
-                            "collection_ids": [1],
-                            "top_k": 5,
+                            "tools": [
+                                {
+                                    "tool_name": "knowledge_base_search",
+                                    "args": {
+                                        "collection_ids": [1],
+                                        "top_k": 5,
+                                    },
+                                },
+                            ],
                         },
                         "metadata": {
-                            "builtin": True,
-                            "supports_runtime_override": True,
-                            "emit_intermediate_events": True,
+                            "runtime": {
+                                "emit_intermediate_events": True,
+                            },
                         },
                     },
                 ],
             },
         )
 
-    def _build_selection_map(self, selections: list[CapabilitySelection]) -> dict[int | str, CapabilitySelection]:
-        mapping: dict[int | str, CapabilitySelection] = {}
-        for item in selections:
-            if item.capability_id is not None:
-                mapping[item.capability_id] = item
-            if item.capability_key is not None:
-                mapping[item.capability_key] = item
-        return mapping
+    def _build_builtin_guarded_work_order_manifest(self) -> SkillCapabilityManifest:
+        return SkillCapabilityManifest.model_validate(
+            {
+                "kind": "skill",
+                "category": "guarded",
+                "runtime_kind": "local_toolset",
+                "capability_key": self.BUILTIN_GUARDED_WORK_ORDER_KEY,
+                "name": "模拟创建工单",
+                "description": "演示受控写操作能力，不再带审批链。",
+                "tags": ["guarded", "write", "ticket", "work-order"],
+                "instructions": ["该能力属于受控写操作，执行前需要明确用户意图。"],
+                "actions": [
+                    {
+                        "kind": "tool_call",
+                        "priority": 20,
+                        "config": {
+                            "tools": [{"tool_name": "create_work_order"}],
+                            "stop_after_terminal": True,
+                        },
+                    },
+                ],
+            },
+        )
 
     def _resolve_action_config(
         self,
@@ -485,42 +486,79 @@ class ChatCapabilityService:
     ):
         if selection is None:
             return action.config
-        overrides = selection.metadata.get("action_config_overrides", {})
-        if not isinstance(overrides, dict):
+        overrides = selection.action_config_overrides
+        if not overrides:
             return action.config
 
-        override_payload = overrides.get(action.kind.value)
-        if not isinstance(override_payload, dict):
+        override_payload = self._resolve_override_payload(action, overrides)
+        if override_payload is None:
             return action.config
 
         base_payload = deepcopy(action.config.model_dump(mode="json"))
-        base_payload.update(override_payload)
-        return self.action_registry.parse_config(action.kind, base_payload)
+        merged_payload = self._deep_merge_dicts(
+            base_payload,
+            override_payload.config,
+        )
+        if action.kind == ChatActionKindEnum.tool_call and override_payload.tool_args:
+            merged_payload = self._apply_tool_args_override(merged_payload, override_payload.tool_args)
+        return self.action_registry.parse_config(action.kind, merged_payload)
 
-    def _validate_required_capabilities(
+    def _resolve_override_payload(
         self,
-        *,
-        required_capability_keys: set[str],
-        packages: list[CapabilityPackageSummary],
-    ) -> None:
-        if not required_capability_keys:
-            return
-        visible_keys = {item.capability_key for item in packages}
-        missing = sorted(required_capability_keys - visible_keys)
-        if missing:
-            raise ApiException(f"必需 capability package 不存在或不可见: {', '.join(missing)}")
+        action: ResourceAction,
+        overrides: dict[str, ActionConfigOverride],
+    ) -> ActionConfigOverride | None:
+        for key in [action.action_id, action.name]:
+            if not key:
+                continue
+            payload = overrides.get(key)
+            if payload is not None:
+                return payload
+        return None
 
-    def _resolve_router_config(self, resource_selection: ResourceSelection) -> dict[str, Any]:
-        payload = resource_selection.metadata.get("capability_router", {})
-        if not isinstance(payload, dict):
-            return {"mode": None, "planner_model_config_id": None}
-        mode = payload.get("mode")
-        planner_model_config_id = payload.get("planner_model_config_id")
-        return {
-            "mode": CapabilityRoutingModeEnum(mode) if isinstance(mode, str) else None,
-            "planner_model_config_id": (
-                int(planner_model_config_id)
-                if isinstance(planner_model_config_id, int) and planner_model_config_id > 0
-                else None
-            ),
-        }
+    def _apply_tool_args_override(
+        self,
+        payload: dict[str, Any],
+        tool_args_override: dict[str, Any],
+    ) -> dict[str, Any]:
+        tools = payload.get("tools")
+        if not isinstance(tools, list):
+            return payload
+        next_payload = deepcopy(payload)
+        next_tools: list[dict[str, Any]] = []
+        for item in tools:
+            if not isinstance(item, dict):
+                next_tools.append(item)
+                continue
+            tool_name = item.get("tool_name")
+            override_args = tool_args_override.get(tool_name) if isinstance(tool_name, str) else None
+            if not isinstance(override_args, dict):
+                next_tools.append(item)
+                continue
+            next_tools.append(
+                {
+                    **item,
+                    "args": self._deep_merge_dicts(
+                        item.get("args") if isinstance(item.get("args"), dict) else {},
+                        override_args,
+                    ),
+                },
+            )
+        next_payload["tools"] = next_tools
+        return next_payload
+
+    def _deep_merge_dicts(
+        self,
+        base: dict[str, Any],
+        override: dict[str, Any],
+    ) -> dict[str, Any]:
+        merged = deepcopy(base)
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = self._deep_merge_dicts(merged[key], value)
+                continue
+            merged[key] = deepcopy(value)
+        return merged
+
+    def build_ready_query(self) -> CapabilityPackageQuery:
+        return CapabilityPackageQuery(is_enabled=True)

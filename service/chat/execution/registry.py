@@ -7,17 +7,15 @@ from pydantic import BaseModel, TypeAdapter
 
 from ext.ext_tortoise.enums import ChatStepKindEnum
 from service.chat.domain.schema import (
+    ActionMetadata,
     MCPCallConfig,
+    PersistedToolCallConfig,
     ResourceAction,
-    ToolCallConfig,
     LLMResponseConfig,
     ResourceSelection,
     ChatActionKindEnum,
-    FunctionCallConfig,
     SubAgentCallConfig,
     SystemPromptConfig,
-    IntentDetectionConfig,
-    KnowledgeRetrievalConfig,
 )
 
 _RESOURCE_ACTION_ADAPTER = TypeAdapter(ResourceAction)
@@ -40,7 +38,7 @@ class ExecutionAction:
     config: BaseModel
     priority: int
     source: str
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: ActionMetadata = field(default_factory=ActionMetadata)
 
 
 class ExecutionActionRegistry:
@@ -87,7 +85,7 @@ class ExecutionActionRegistry:
         source: str | None = None,
         enabled: bool = True,
         priority: int = 100,
-        metadata: dict[str, Any] | None = None,
+        metadata: ActionMetadata | None = None,
     ) -> ResourceAction:
         parsed_kind = self.parse_kind(kind)
         validated_config = self.parse_config(parsed_kind, config)
@@ -99,7 +97,15 @@ class ExecutionActionRegistry:
                 "source": source,
                 "enabled": enabled,
                 "priority": priority,
-                "metadata": metadata or {},
+                "metadata": (
+                    metadata.model_dump(
+                        mode="json",
+                        exclude_none=True,
+                        exclude_unset=True,
+                    )
+                    if metadata is not None
+                    else {}
+                ),
                 "config": validated_config.model_dump(mode="json"),
             },
         )
@@ -118,12 +124,31 @@ class ExecutionActionRegistry:
                 action.model_copy(
                     update={
                         "action_id": action.action_id or f"{prefix}:{index}",
-                        "name": action.name or str(action.metadata.get("step_name") or definition.default_name),
+                        "name": action.name or str(action.metadata.runtime.step_name or definition.default_name),
                         "source": action.source or source,
                     },
                 ),
             )
         return assigned
+
+    def normalize_inline_selection(
+        self,
+        selection: ResourceSelection,
+        *,
+        source: str,
+        prefix: str,
+    ) -> ResourceSelection:
+        return self.normalize_selection(
+            selection.model_copy(
+                update={
+                    "actions": self.assign_inline_action_ids(
+                        selection.actions,
+                        source=source,
+                        prefix=prefix,
+                    ),
+                },
+            ),
+        )
 
     def build(self, action: ResourceAction) -> ExecutionAction | None:
         try:
@@ -134,12 +159,20 @@ class ExecutionActionRegistry:
             action_id=action.action_id or f"anonymous:{action.kind.value}",
             kind=action.kind,
             step_kind=definition.step_kind,
-            name=str(action.name or action.metadata.get("step_name") or definition.default_name),
+            name=str(action.name or action.metadata.runtime.step_name or definition.default_name),
             config=action.config,
             priority=action.priority,
             source=str(action.source or "unknown"),
-            metadata=action.metadata,
+            metadata=action.metadata.model_copy(deep=True),
         )
+
+    def build_actions(self, selection: ResourceSelection) -> list[ExecutionAction]:
+        actions: list[ExecutionAction] = []
+        for item in selection.normalized_actions():
+            action = self.build(item)
+            if action is not None:
+                actions.append(action)
+        return actions
 
     def normalize_selection(self, selection: ResourceSelection) -> ResourceSelection:
         return ResourceSelection(
@@ -147,7 +180,7 @@ class ExecutionActionRegistry:
             use_conversation_defaults=selection.use_conversation_defaults,
             capabilities=selection.normalized_capabilities(),
             actions=selection.normalized_actions(),
-            metadata=selection.metadata,
+            planner=selection.planner,
         )
 
 
@@ -160,28 +193,10 @@ def create_default_action_registry() -> ExecutionActionRegistry:
         config_model=SystemPromptConfig,
     )
     registry.register(
-        ChatActionKindEnum.intent_detection,
-        step_kind=ChatStepKindEnum.system,
-        default_name="intent_detection",
-        config_model=IntentDetectionConfig,
-    )
-    registry.register(
-        ChatActionKindEnum.knowledge_retrieval,
-        step_kind=ChatStepKindEnum.retrieval,
-        default_name="knowledge_retrieval",
-        config_model=KnowledgeRetrievalConfig,
-    )
-    registry.register(
-        ChatActionKindEnum.function_call,
-        step_kind=ChatStepKindEnum.tool,
-        default_name="function_call",
-        config_model=FunctionCallConfig,
-    )
-    registry.register(
         ChatActionKindEnum.tool_call,
         step_kind=ChatStepKindEnum.tool,
         default_name="tool_call",
-        config_model=ToolCallConfig,
+        config_model=PersistedToolCallConfig,
     )
     registry.register(
         ChatActionKindEnum.mcp_call,

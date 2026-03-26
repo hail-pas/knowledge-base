@@ -7,11 +7,17 @@ def test_chat_capability_crud(client):
                 "capability_key": "policy_lookup",
                 "name": "政策检索",
                 "description": "检索政策知识库",
-                "routing": {"keywords": ["政策", "报销"]},
                 "actions": [
                     {
-                        "kind": "knowledge_retrieval",
-                        "config": {"collection_ids": [1], "top_k": 3},
+                        "kind": "tool_call",
+                        "config": {
+                            "tools": [
+                                {
+                                    "tool_name": "knowledge_base_search",
+                                    "args": {"collection_ids": [1], "top_k": 3},
+                                },
+                            ],
+                        },
                     },
                 ],
             },
@@ -30,4 +36,12 @@ def test_chat_capability_crud(client):
 
     detail_response = client.get(f"/v1/chat/capability/{created['id']}")
     assert detail_response.status_code == 200
-    assert detail_response.json()["data"]["manifest"]["actions"][0]["kind"] == "knowledge_retrieval"
+    assert detail_response.json()["data"]["manifest"]["actions"][0]["kind"] == "tool_call"
+
+
+def test_chat_capability_supports_category_filters(client):
+    response = client.get("/v1/chat/capability", params={"category": "guarded"})
+
+    assert response.status_code == 200
+    items = response.json()["data"]
+    assert any(item["category"] == "guarded" for item in items)

@@ -51,6 +51,8 @@ class ChatCapabilityRepository:
         *,
         ids: Iterable[int] | None = None,
         kind: CapabilityKindEnum | None = None,
+        category: str | None = None,
+        runtime_kind: str | None = None,
         is_enabled: bool | None = None,
         name_contains: str | None = None,
         tags: list[str] | None = None,
@@ -61,6 +63,10 @@ class ChatCapabilityRepository:
         queryset = self.package_queryset()
         if kind is not None:
             queryset = queryset.filter(kind=kind.value)
+        if category is not None:
+            queryset = queryset.filter(category=category)
+        if runtime_kind is not None:
+            queryset = queryset.filter(runtime_kind=runtime_kind)
         if scope == "global_only":
             queryset = queryset.filter(owner_account_id=None)
         elif scope == "owned_only":

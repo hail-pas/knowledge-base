@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Annotated
 from datetime import datetime
+from typing import Annotated, Any, Literal
 
-from pydantic import Field, ConfigDict, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from core.types import StrEnum
-from service.chat.domain.schema import StrictModel, ResourceAction, CapabilityKindEnum
+from service.chat.domain.schema import (
+    CapabilityCategoryEnum,
+    CapabilityKindEnum,
+    CapabilityPlannerModeEnum,
+    CapabilityRuntimeKindEnum,
+    ResourceAction,
+    StrictModel,
+)
 
 
 class CapabilityScopeEnum(StrEnum):
@@ -15,38 +22,30 @@ class CapabilityScopeEnum(StrEnum):
     owned_only = ("owned_only", "仅当前用户能力包")
 
 
-class CapabilityRoutingModeEnum(StrEnum):
-    heuristic = ("heuristic", "启发式")
-    llm = ("llm", "仅模型")
-    hybrid = ("hybrid", "混合")
-
-
-class CapabilityRoutingRule(StrictModel):
-    always_on: bool = False
-    min_score: float = Field(default=0.15, ge=0.0, le=1.0)
-    max_selected: int = Field(default=3, ge=1, le=8)
-    keywords: list[str] = Field(default_factory=list)
-    all_of: list[str] = Field(default_factory=list)
-    any_of: list[str] = Field(default_factory=list)
-    excluded_keywords: list[str] = Field(default_factory=list)
-    examples: list[str] = Field(default_factory=list)
+class CapabilityGovernance(StrictModel):
+    visible_to_agents: list[str] = Field(default_factory=list)
+    requires_deps: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class BaseCapabilityManifest(StrictModel):
     kind: CapabilityKindEnum
+    category: CapabilityCategoryEnum = CapabilityCategoryEnum.domain
+    runtime_kind: CapabilityRuntimeKindEnum = CapabilityRuntimeKindEnum.local_toolset
     capability_key: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=128)
     description: str = Field(default="", max_length=4000)
     tags: list[str] = Field(default_factory=list)
-    triggers: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list)
-    routing: CapabilityRoutingRule = Field(default_factory=CapabilityRoutingRule)
+    always_on: bool = False
+    governance: CapabilityGovernance = Field(default_factory=CapabilityGovernance)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SkillCapabilityManifest(BaseCapabilityManifest):
-    kind: Literal[CapabilityKindEnum.skill] = CapabilityKindEnum.skill
+    kind: Literal[CapabilityKindEnum.skill] = CapabilityKindEnum.skill  # type: ignore
+    runtime_kind: Literal[CapabilityRuntimeKindEnum.local_toolset] = CapabilityRuntimeKindEnum.local_toolset  # type: ignore
     preferred_extension_keys: list[str] = Field(default_factory=list)
     preferred_sub_agent_keys: list[str] = Field(default_factory=list)
     actions: list[ResourceAction] = Field(default_factory=list)
@@ -64,7 +63,8 @@ class SkillCapabilityManifest(BaseCapabilityManifest):
 
 
 class ExtensionCapabilityManifest(BaseCapabilityManifest):
-    kind: Literal[CapabilityKindEnum.extension] = CapabilityKindEnum.extension
+    kind: Literal[CapabilityKindEnum.extension] = CapabilityKindEnum.extension  # type: ignore
+    runtime_kind: CapabilityRuntimeKindEnum = CapabilityRuntimeKindEnum.local_toolset
     actions: list[ResourceAction] = Field(min_length=1)
     provides_tools: bool = False
     provides_context: bool = False
@@ -72,7 +72,9 @@ class ExtensionCapabilityManifest(BaseCapabilityManifest):
 
 
 class SubAgentCapabilityManifest(BaseCapabilityManifest):
-    kind: Literal[CapabilityKindEnum.sub_agent] = CapabilityKindEnum.sub_agent
+    kind: Literal[CapabilityKindEnum.sub_agent] = CapabilityKindEnum.sub_agent  # type: ignore
+    category: CapabilityCategoryEnum = CapabilityCategoryEnum.agent
+    runtime_kind: Literal[CapabilityRuntimeKindEnum.agent_delegate] = CapabilityRuntimeKindEnum.agent_delegate  # type: ignore
     system_prompt: str = Field(min_length=1, max_length=8000)
     llm_model_config_id: int | None = Field(default=None, ge=1)
     actions: list[ResourceAction] = Field(default_factory=list)
@@ -99,6 +101,8 @@ class CapabilityPackageUpdate(StrictModel):
 class CapabilityPackageQuery(StrictModel):
     scope: CapabilityScopeEnum = CapabilityScopeEnum.all
     kind: CapabilityKindEnum | None = None
+    category: CapabilityCategoryEnum | None = None
+    runtime_kind: CapabilityRuntimeKindEnum | None = None
     is_enabled: bool | None = None
     name: str | None = Field(default=None, min_length=1, max_length=128)
     tags: list[str] = Field(default_factory=list)
@@ -110,40 +114,16 @@ class CapabilityPackageSummary(StrictModel):
     id: int
     owner_account_id: int | None = None
     kind: CapabilityKindEnum
+    category: CapabilityCategoryEnum
+    runtime_kind: CapabilityRuntimeKindEnum
     capability_key: str
     name: str
     description: str
     manifest: CapabilityManifest
+    visible_to_agents: list[str] = Field(default_factory=list)
+    requires_deps: list[str] = Field(default_factory=list)
     is_enabled: bool
     metadata: dict[str, Any] = Field(default_factory=dict)
     version: int
     created_at: datetime
     updated_at: datetime
-
-
-class CapabilityRoutingCandidate(StrictModel):
-    capability_id: int
-    capability_key: str
-    capability_kind: CapabilityKindEnum
-    name: str
-    score: float = Field(ge=0.0, le=1.0)
-    selected: bool = False
-    reasons: list[str] = Field(default_factory=list)
-    source: str = Field(default="", max_length=64)
-
-
-class CapabilityRoutingDecision(StrictModel):
-    mode: CapabilityRoutingModeEnum
-    summary: str = Field(default="", max_length=1000)
-    selected_capability_ids: list[int] = Field(default_factory=list)
-    candidates: list[CapabilityRoutingCandidate] = Field(default_factory=list)
-
-
-class CapabilityRegistrySnapshot(StrictModel):
-    skills: list[CapabilityPackageSummary] = Field(default_factory=list)
-    extensions: list[CapabilityPackageSummary] = Field(default_factory=list)
-    sub_agents: list[CapabilityPackageSummary] = Field(default_factory=list)
-
-    @property
-    def all_packages(self) -> list[CapabilityPackageSummary]:
-        return [*self.skills, *self.extensions, *self.sub_agents]

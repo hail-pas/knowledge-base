@@ -8,8 +8,10 @@ from service.chat.domain.schema import (
     ActionContextItem,
     ChatActionKindEnum,
     ChatContextEnvelope,
-    ChatContextItemTypeEnum,
+    JsonContextItem,
+    RetrievalContextItem,
     SystemPromptPlaceholderEnum,
+    TextContextItem,
 )
 from service.chat.runtime.session import ChatSessionContext
 
@@ -45,14 +47,6 @@ class ChatPromptBuilder:
                     for index, item in enumerate(ordered_context, start=1)
                 ),
             )
-        if context.references and not ordered_context:
-            user_sections.append(
-                "知识库参考：\n"
-                + "\n\n".join(
-                    f"[{idx}] 集合{item.collection_id} 分数{item.score:.3f}\n{item.snippet}"
-                    for idx, item in enumerate(context.references, start=1)
-                ),
-            )
         user_sections.append("输出要求：优先吸收执行上下文形成答案；无法确认时直接说明不确定。")
         return ChatPromptBundle(
             system_prompt="\n\n".join(section for section in system_sections if section.strip()),
@@ -74,6 +68,12 @@ class ChatPromptBuilder:
                 "回答要求：准确、简洁、结构清晰；如果上下文不足，需要明确说明。",
             ),
         ]
+        agent_overlay = self.render_agent_overlay(session=session)
+        capability_overlay = self.render_capability_overlay(session=session)
+        if agent_overlay:
+            sections.append(agent_overlay)
+        if capability_overlay:
+            sections.append(capability_overlay)
         placeholders = list(prompt_context.placeholders) if prompt_context else list(DEFAULT_SYSTEM_PROMPT_PLACEHOLDERS)
         for placeholder in placeholders:
             content = self.render_placeholder(
@@ -85,6 +85,22 @@ class ChatPromptBuilder:
             if content:
                 sections.append(content)
         return sections
+
+    def render_agent_overlay(self, *, session: ChatSessionContext | None) -> str:
+        if session is None or session.agent is None:
+            return ""
+        return session.agent.system_prompt.strip()
+
+    def render_capability_overlay(self, *, session: ChatSessionContext | None) -> str:
+        if session is None or not session.selected_capabilities:
+            return ""
+        lines: list[str] = []
+        for item in session.selected_capabilities:
+            summary = item.description or item.name
+            constraints = f"；约束：{', '.join(item.constraints)}" if item.constraints else ""
+            instructions = f"；指令：{', '.join(item.instructions)}" if item.instructions else ""
+            lines.append(f"- {item.name} [{item.runtime_kind.value}] {summary}{constraints}{instructions}")
+        return "已选能力 Overlay：\n" + "\n".join(lines)
 
     def render_placeholder(
         self,
@@ -98,10 +114,8 @@ class ChatPromptBuilder:
             return overrides[placeholder.value]
         if placeholder == SystemPromptPlaceholderEnum.action_summary:
             return self.render_action_summary(context=context, session=session)
-        if placeholder == SystemPromptPlaceholderEnum.intent_summary:
-            return self.render_intent_summary(context=context)
-        if placeholder == SystemPromptPlaceholderEnum.function_summary:
-            return self.render_function_summary(context=context)
+        if placeholder == SystemPromptPlaceholderEnum.tool_summary:
+            return self.render_tool_summary(context=context)
         if placeholder == SystemPromptPlaceholderEnum.conversation_summary:
             return self.render_conversation_summary(context=context, session=session)
         if placeholder == SystemPromptPlaceholderEnum.instructions_summary:
@@ -109,7 +123,7 @@ class ChatPromptBuilder:
         if placeholder == SystemPromptPlaceholderEnum.context_policy:
             return (
                 "上下文策略：优先使用执行步骤输出；检索结果是证据片段；"
-                "函数/工具结果是结构化事实；历史对话只用于补充语境，不覆盖最新执行结果。"
+                "工具/MCP 结果是结构化事实；历史对话只用于补充语境，不覆盖最新执行结果。"
             )
         return ""
 
@@ -129,6 +143,11 @@ class ChatPromptBuilder:
                 for item in context.ordered_context_items()
             ]
         else:
+            if session.selected_capabilities:
+                return "当前能力计划：\n" + "\n".join(
+                    f"- {item.name} ({item.capability_key} / {item.runtime_kind.value})"
+                    for item in session.selected_capabilities
+                )
             highlighted = set(session.prompt_state.highlight_actions)
             raw_items = session.resolved_actions
             if highlighted:
@@ -144,28 +163,14 @@ class ChatPromptBuilder:
         ]
         return "当前执行计划：\n" + "\n".join(lines)
 
-    def render_intent_summary(self, *, context: ChatContextEnvelope) -> str:
-        if context.intent_result is None:
-            return ""
-        matched_keywords = ", ".join(context.intent_result.matched_keywords) or "无"
-        description = context.intent_result.description or "未提供描述"
-        return (
-            "意图识别结果：\n"
-            f"- intent: {context.intent_result.intent}\n"
-            f"- confidence: {context.intent_result.confidence:.2f}\n"
-            f"- matched_keywords: {matched_keywords}\n"
-            f"- description: {description}"
-        )
-
-    def render_function_summary(self, *, context: ChatContextEnvelope) -> str:
-        if not context.executed_functions:
+    def render_tool_summary(self, *, context: ChatContextEnvelope) -> str:
+        if not context.executed_tools:
             return ""
         lines = []
-        for item in context.executed_functions:
-            status = "matched" if item.matched else "not_matched"
+        for item in context.executed_tools:
             summary = item.summary or "无摘要"
-            lines.append(f"- {item.tool_name} [{status} / {item.result_mode.value}] {summary}")
-        return "已执行函数：\n" + "\n".join(lines)
+            lines.append(f"- {item.tool_name} [{item.disposition.value}] {summary}")
+        return "已执行工具：\n" + "\n".join(lines)
 
     def render_conversation_summary(
         self,
@@ -179,7 +184,7 @@ class ChatPromptBuilder:
             "会话摘要：\n"
             f"- conversation_id: {session.conversation.id}\n"
             f"- title: {session.conversation.title}\n"
-            f"- status: {session.conversation.status}\n"
+            f"- agent_key: {session.conversation.agent_key}\n"
             f"- history_turns: {len(context.history)}"
         )
 
@@ -197,11 +202,12 @@ class ChatPromptBuilder:
 
     def render_context_item(self, *, index: int, item: ActionContextItem) -> str:
         header = f"[{index}] {item.title or item.action_name} ({item.action_kind.value} / {item.source})"
-        if item.item_type == ChatContextItemTypeEnum.text:
-            body = item.text or ""
-        elif item.item_type == ChatContextItemTypeEnum.json:
-            body = json.dumps(item.data or {}, ensure_ascii=False, indent=2)
+        if isinstance(item, TextContextItem):
+            body = item.text
+        elif isinstance(item, JsonContextItem):
+            body = json.dumps(item.data, ensure_ascii=False, indent=2)
         else:
+            assert isinstance(item, RetrievalContextItem)
             body = "\n\n".join(
                 f"[{entry_index}] 集合{retrieval.collection_id} 分数{retrieval.score:.3f}\n{retrieval.snippet}"
                 for entry_index, retrieval in enumerate(item.retrievals, start=1)

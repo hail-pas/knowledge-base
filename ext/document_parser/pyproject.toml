@@ -9,34 +9,34 @@ authors = [
 
 # 核心依赖（必需）
 dependencies = [
-    "pydantic>=2.0.0",
-    "loguru>=0.7.0",
+    "pydantic==2.0.0",
+    "loguru==0.7.3",
 ]
 
 # 可选依赖组
 [project.optional-dependencies]
 pdf = [
-    "PyMuPDF>=1.27.2",
-    "pdfplumber>=0.11.9",
+    "PyMuPDF==1.27.2",
+    "pdfplumber==0.11.9",
 ]
 office = [
-    "python-docx>=1.2.0",
-    "python-pptx>=1.0.2",
-    "openpyxl>=3.1.5",
+    "python-docx==1.2.0",
+    "python-pptx==1.0.2",
+    "openpyxl==3.1.5",
 ]
 ocr = [
-    "paddlepaddle>=3.3.0",
-    "paddleocr>=3.4.0",
-    "pytesseract>=0.3.13",
-    "pdf2image>=1.17.0",
-    "Pillow>=12.1.1",
+    "paddlepaddle==3.3.0",
+    "paddleocr==3.4.0",
+    "pytesseract==0.3.13",
+    "pdf2image==1.17.0",
+    "Pillow==12.1.1",
 ]
 web = [
-    "trafilatura>=2.0.0",
-    "markitdown[all]>=0.1.5",
+    "trafilatura==2.0.0",
+    "markitdown[all]==0.1.5",
 ]
 structured = [
-    "pandas>=3.0.1",
+    "pandas==3.0.1",
 ]
 
 # 所有依赖（用于方便安装）

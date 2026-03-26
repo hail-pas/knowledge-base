@@ -8,20 +8,20 @@ authors = [
 ]
 
 dependencies = [
-    "pydantic>=2.0.0",
-    "loguru>=0.7.0",
+    "pydantic==2.0.0",
+    "loguru==0.7.3",
     "aiofiles==25.1.0",
 ]
 
 [project.optional-dependencies]
 s3 = [
-    "aiobotocore>=3.1.0",
+    "aiobotocore==3.1.0",
 ]
 minio = [
-    "minio>=7.0.0",
+    "minio==7.0.0",
 ]
 aliyun = [
-    "oss2>=2.19.0",
+    "oss2==2.19.0",
 ]
 
 all = [

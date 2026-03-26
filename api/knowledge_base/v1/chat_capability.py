@@ -10,6 +10,8 @@ from service.depend import api_permission_check
 from ext.ext_tortoise.curd import DeleteResp
 from service.chat.capability.schema import (
     CapabilityKindEnum,
+    CapabilityCategoryEnum,
+    CapabilityRuntimeKindEnum,
     CapabilityScopeEnum,
     CapabilityPackageQuery,
     CapabilityPackageCreate,
@@ -60,6 +62,8 @@ async def list_capability_packages(
     request: Request,
     scope: Annotated[CapabilityScopeEnum, Query()] = CapabilityScopeEnum.all,
     kind: Annotated[CapabilityKindEnum | None, Query()] = None,
+    category: Annotated[CapabilityCategoryEnum | None, Query()] = None,
+    runtime_kind: Annotated[CapabilityRuntimeKindEnum | None, Query()] = None,
     is_enabled: Annotated[bool | None, Query()] = None,
     name: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
     tags: Annotated[list[str] | None, Query()] = None,
@@ -69,6 +73,8 @@ async def list_capability_packages(
         CapabilityPackageQuery(
             scope=scope,
             kind=kind,
+            category=category,
+            runtime_kind=runtime_kind,
             is_enabled=is_enabled,
             name=name,
             tags=tags or [],

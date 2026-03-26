@@ -1,17 +1,15 @@
+from types import SimpleNamespace
 from typing import Any, cast
+from uuid import uuid4
 
 from ext.ext_tortoise.enums import ChatStepKindEnum
 from service.chat.execution.registry import ExecutionAction
 from service.chat.domain.schema import (
+    ActionResultDispositionEnum,
     ChatActionKindEnum,
+    ChatRequestContext,
     ChatRoleEnum,
     ConversationSummary,
-    FunctionCallConfig,
-    FunctionCallResultModeEnum,
-    FunctionExecutionSummary,
-    FunctionToolSpec,
-    IntentRecognitionResult,
-    KnowledgeRetrievalConfig,
     MessageBundlePayload,
     ResourceSelection,
     RetrievalBlock,
@@ -19,12 +17,20 @@ from service.chat.domain.schema import (
     SystemPromptPlaceholderEnum,
     TextBlock,
     ToolCallConfig,
-    ToolExecutionPolicyEnum,
+    ToolExecutionSummary,
+    ToolSpec,
     TurnStartRequest,
 )
 from service.chat.runtime.context import TurnArtifacts
 from service.chat.runtime.prompting import ChatPromptBuilder
 from service.chat.runtime.session import ChatSessionContext
+
+
+def _request_context(*, account_id: int = 1, is_staff: bool = False) -> ChatRequestContext:
+    return ChatRequestContext(
+        account=SimpleNamespace(id=account_id, is_staff=is_staff),
+        session_id=uuid4(),
+    )
 
 
 def _descriptor(
@@ -52,12 +58,14 @@ def test_turn_artifacts_build_context_with_structured_action_results() -> None:
     artifacts = TurnArtifacts()
     retrieval_descriptor = _descriptor(
         action_id="act:retrieval",
-        kind="knowledge_retrieval",
-        name="kb_search",
+        kind="tool_call",
+        name="knowledge_base_search",
         priority=10,
         source="profile",
-        step_kind="retrieval",
-        config=KnowledgeRetrievalConfig(collection_ids=[1], top_k=3),
+        step_kind="tool",
+        config=ToolCallConfig(
+            tools=[ToolSpec(tool_name="knowledge_base_search", args={"collection_ids": [1], "top_k": 3})],
+        ),
     )
     tool_descriptor = _descriptor(
         action_id="act:tool",
@@ -66,7 +74,7 @@ def test_turn_artifacts_build_context_with_structured_action_results() -> None:
         priority=20,
         source="binding:conversation",
         step_kind="tool",
-        config=ToolCallConfig(policy=ToolExecutionPolicyEnum.optional, tool_names=["weather"]),
+        config=ToolCallConfig(tools=[ToolSpec(tool_name="weather")]),
     )
 
     artifacts.add_instruction("回答时优先使用最新执行结果。")
@@ -111,12 +119,14 @@ def test_chat_prompt_builder_renders_context_sections() -> None:
     artifacts = TurnArtifacts()
     retrieval_descriptor = _descriptor(
         action_id="act:retrieval",
-        kind="knowledge_retrieval",
-        name="kb_search",
+        kind="tool_call",
+        name="knowledge_base_search",
         priority=10,
         source="profile",
-        step_kind="retrieval",
-        config=KnowledgeRetrievalConfig(collection_ids=[1], top_k=3),
+        step_kind="tool",
+        config=ToolCallConfig(
+            tools=[ToolSpec(tool_name="knowledge_base_search", args={"collection_ids": [1], "top_k": 3})],
+        ),
     )
     tool_descriptor = _descriptor(
         action_id="act:tool",
@@ -125,7 +135,7 @@ def test_chat_prompt_builder_renders_context_sections() -> None:
         priority=20,
         source="binding:conversation",
         step_kind="tool",
-        config=ToolCallConfig(policy=ToolExecutionPolicyEnum.optional, tool_names=["weather"]),
+        config=ToolCallConfig(tools=[ToolSpec(tool_name="weather")]),
     )
     artifacts.add_instruction("优先使用结构化工具结果。")
     artifacts.add_retrieval_context(
@@ -168,37 +178,34 @@ def test_chat_prompt_builder_supports_dynamic_system_prompt_placeholders() -> No
         step_kind="system",
         config=SystemPromptConfig(
             include_placeholders=[
-                SystemPromptPlaceholderEnum.intent_summary,
-                SystemPromptPlaceholderEnum.function_summary,
+                SystemPromptPlaceholderEnum.tool_summary,
                 SystemPromptPlaceholderEnum.instructions_summary,
             ],
-            instructions=["优先引用函数结果。"],
+            instructions=["优先引用工具结果。"],
             variable_overrides={"assistant_identity": "你是一个受控的工作流助手。"},
         ),
     )
     tool_descriptor = _descriptor(
-        action_id="act:function",
-        kind="function_call",
-        name="function_router",
+        action_id="act:tool",
+        kind="tool_call",
+        name="tool_router",
         priority=20,
         source="binding:conversation",
         step_kind="tool",
-        config=FunctionCallConfig(tools=[FunctionToolSpec(tool_name="session_context")]),
+        config=ToolCallConfig(tools=[ToolSpec(tool_name="session_context")]),
     )
     session = ChatSessionContext(
-        account_id=1,
-        is_staff=False,
-        ws_session_id=10,
-        ws_public_session_id="ws-public",
+        request_context=_request_context(),
         conversation=ConversationSummary(
             id=9,
             title="调试会话",
-            status="active",
+            agent_key="orchestrator.default",
             user_id=1,
             default_resource_selection=ResourceSelection(),
         ),
         turn_request=TurnStartRequest(
             conversation_id=9,
+            request_id=uuid4(),
             input=MessageBundlePayload(
                 role=ChatRoleEnum.user,
                 blocks=[TextBlock(text="请基于当前会话上下文回答。")],
@@ -213,19 +220,11 @@ def test_chat_prompt_builder_supports_dynamic_system_prompt_placeholders() -> No
         cast(SystemPromptConfig, system_prompt_descriptor.config),
     )
     artifacts.add_instruction("只输出关键结论。")
-    artifacts.set_intent_result(
-        IntentRecognitionResult(
-            intent="session_context",
-            confidence=0.9,
-            matched_keywords=["会话上下文"],
-            description="用户正在询问当前会话状态",
-        ),
-    )
-    artifacts.add_function_execution(
-        FunctionExecutionSummary(
+    artifacts.add_tool_execution(
+        ToolExecutionSummary(
             tool_name="session_context",
             title="会话上下文",
-            result_mode=FunctionCallResultModeEnum.context,
+            disposition=ActionResultDispositionEnum.context,
             summary="已提取当前会话上下文摘要",
         ),
     )
@@ -237,7 +236,6 @@ def test_chat_prompt_builder_supports_dynamic_system_prompt_placeholders() -> No
     )
 
     assert "你是一个受控的工作流助手。" in prompt.system_prompt
-    assert "意图识别结果" in prompt.system_prompt
-    assert "已执行函数" in prompt.system_prompt
-    assert "优先引用函数结果。" in prompt.system_prompt
+    assert "已执行工具" in prompt.system_prompt
+    assert "优先引用工具结果。" in prompt.system_prompt
     assert "当前执行计划" not in prompt.system_prompt

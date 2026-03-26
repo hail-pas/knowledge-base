@@ -5,7 +5,11 @@ from tortoise import fields
 from constant.symbol import PAGE_SEPARATOR
 from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import (
+    ChatAgentMountModeEnum,
+    ChatAgentRoleEnum,
+    ChatCapabilityCategoryEnum,
     ChatDataKindEnum,
+    ChatCapabilityRuntimeKindEnum,
     ChatStepKindEnum,
     LLMModelTypeEnum,
     ActivityStatusEnum,
@@ -19,7 +23,6 @@ from ext.ext_tortoise.enums import (
     EmbeddingModelTypeEnum,
     IndexingBackendTypeEnum,
     WorkflowConfigFormatEnum,
-    ChatConversationStatusEnum,
 )
 from ext.ext_tortoise.base.models import BaseModel, CreateOnlyModel
 
@@ -497,10 +500,22 @@ class LLMModelConfig(BaseModel):
 class ChatCapabilityPackage(BaseModel):
     owner_account_id = fields.BigIntField(null=True, description="所属账户ID，空表示全局")
     kind = fields.CharEnumField(ChatCapabilityKindEnum, description="能力包类型")
+    category = fields.CharEnumField(
+        ChatCapabilityCategoryEnum,
+        default=ChatCapabilityCategoryEnum.domain.value,
+        description="能力分类",
+    )
+    runtime_kind = fields.CharEnumField(
+        ChatCapabilityRuntimeKindEnum,
+        default=ChatCapabilityRuntimeKindEnum.local_toolset.value,
+        description="运行时承载类型",
+    )
     capability_key = fields.CharField(max_length=128, description="能力包唯一键")
     name = fields.CharField(max_length=128, description="能力包名称")
     description = fields.TextField(default="", description="能力包描述")
     manifest = fields.JSONField(default=dict, description="能力包 manifest")
+    visible_to_agents = fields.JSONField(default=list, description="允许暴露给哪些 agent")
+    requires_deps = fields.JSONField(default=list, description="依赖字段声明")
     is_enabled = fields.BooleanField(default=True, description="是否启用")
     metadata = fields.JSONField(default=dict, description="附加元数据")
     version = fields.IntField(default=1, description="版本号")
@@ -513,32 +528,90 @@ class ChatCapabilityPackage(BaseModel):
         indexes = [
             ("owner_account_id", "kind", "is_enabled"),
             ("kind", "capability_key", "is_enabled"),
+            ("category", "runtime_kind", "is_enabled"),
             ("created_at",),
+        ]
+        ordering = ["-id"]
+
+
+class ChatAgentProfile(BaseModel):
+    owner_account_id = fields.BigIntField(null=True, description="所属账户ID，空表示全局")
+    agent_key = fields.CharField(max_length=128, description="agent 唯一键")
+    role = fields.CharEnumField(ChatAgentRoleEnum, description="agent 角色")
+    name = fields.CharField(max_length=128, description="agent 名称")
+    description = fields.TextField(default="", description="agent 描述")
+    system_prompt = fields.TextField(default="", description="agent 系统提示词")
+    llm_model_config_id = fields.BigIntField(null=True, description="默认模型配置ID")
+    default_resource_config = fields.JSONField(default=dict, description="默认资源选择")
+    capability_keys = fields.JSONField(default=list, description="默认 capability keys")
+    metadata = fields.JSONField(default=dict, description="附加元数据")
+    is_enabled = fields.BooleanField(default=True, description="是否启用")
+    version = fields.IntField(default=1, description="版本号")
+
+    class Meta:  # type: ignore
+        table = "chat_agent_profile"
+        table_description = "聊天 agent 定义表"
+        app = _KBConnectionName
+        unique_together = [("owner_account_id", "agent_key", "deleted_at")]
+        indexes = [
+            ("owner_account_id", "role", "is_enabled"),
+            ("agent_key", "is_enabled"),
+            ("created_at",),
+        ]
+        ordering = ["-id"]
+
+
+class ChatAgentMount(BaseModel):
+    source_agent = fields.ForeignKeyField(
+        f"{_KBConnectionName}.ChatAgentProfile",
+        related_name="outgoing_mounts",
+        on_delete=fields.CASCADE,
+        description="源 agent",
+    )
+    mounted_agent = fields.ForeignKeyField(
+        f"{_KBConnectionName}.ChatAgentProfile",
+        related_name="incoming_mounts",
+        on_delete=fields.CASCADE,
+        description="被挂载 agent",
+    )
+    mode = fields.CharEnumField(ChatAgentMountModeEnum, description="挂载模式")
+    purpose = fields.TextField(default="", description="挂载目的")
+    trigger_tags = fields.JSONField(default=list, description="触发标签")
+    pass_message_history = fields.BooleanField(default=False, description="是否透传历史消息")
+    pass_deps_fields = fields.JSONField(default=list, description="透传依赖字段")
+    output_contract = fields.CharField(max_length=255, null=True, description="输出契约")
+    mounted_as_capability = fields.CharField(max_length=128, null=True, description="映射成的 capability key")
+    metadata = fields.JSONField(default=dict, description="附加元数据")
+    is_enabled = fields.BooleanField(default=True, description="是否启用")
+
+    class Meta:  # type: ignore
+        table = "chat_agent_mount"
+        table_description = "聊天 agent 挂载关系表"
+        app = _KBConnectionName
+        unique_together = [
+            ("source_agent_id", "mounted_agent_id", "mode", "mounted_as_capability", "deleted_at"),
+        ]
+        indexes = [
+            ("source_agent_id", "is_enabled"),
+            ("mounted_agent_id", "is_enabled"),
+            ("mode", "is_enabled"),
         ]
         ordering = ["-id"]
 
 
 class ChatConversation(BaseModel):
     user_id = fields.BigIntField(description="所属账户ID", null=True)
+    agent_key = fields.CharField(max_length=128, description="默认 agent key", default="orchestrator.default")
     title = fields.CharField(max_length=255, description="会话标题", default="新会话")
-    status = fields.CharEnumField(
-        ChatConversationStatusEnum,
-        default=ChatConversationStatusEnum.active.value,
-        description="会话状态",
-    )
     default_resource_config = fields.JSONField(default=dict, description="默认资源选择")
-    head_turn_id = fields.BigIntField(null=True, description="当前生效的最新turn")
-    active_turn_id = fields.BigIntField(null=True, description="当前运行中的turn")
-    branch_from_turn_id = fields.BigIntField(null=True, description="分支来源turn")
-    version = fields.IntField(default=1, description="版本号")
-    metadata = fields.JSONField(default=dict, description="附加元数据")
 
     class Meta:  # type: ignore
         table = "chat_conversation"
         table_description = "聊天会话表"
         app = _KBConnectionName
         indexes = [
-            ("user_id", "status"),
+            ("user_id", "agent_key"),
+            ("agent_key",),
         ]
         ordering = ["-id"]
 
@@ -551,9 +624,10 @@ class ChatTurn(BaseModel):
         description="所属会话",
     )
     seq = fields.IntField(description="会话内顺序号")
+    agent_key = fields.CharField(max_length=128, description="执行 turn 的 agent key", default="orchestrator.default")
     status = fields.CharEnumField(
         ChatTurnStatusEnum,
-        default=ChatTurnStatusEnum.pending.value,
+        default=ChatTurnStatusEnum.running.value,
         description="turn状态",
     )
     trigger = fields.CharEnumField(
@@ -561,18 +635,17 @@ class ChatTurn(BaseModel):
         default=ChatTurnTriggerEnum.user.value,
         description="触发方式",
     )
-    request_id = fields.CharField(max_length=100, null=True, description="客户端请求ID")
+    request_id = fields.UUIDField(null=True, description="客户端请求ID")
     input_root_data_id = fields.BigIntField(null=True, description="输入根数据ID")
     output_root_data_id = fields.BigIntField(null=True, description="输出根数据ID")
-    root_step_id = fields.BigIntField(null=True, description="根步骤ID")
     resource_selection = fields.JSONField(default=dict, description="资源选择")
-    cancel_requested_at = fields.DatetimeField(null=True, description="取消请求时间")
+    planner_mode = fields.CharField(max_length=32, null=True, description="规划模式")
+    planner_summary = fields.CharField(max_length=1000, null=True, description="规划摘要")
+    candidate_snapshot = fields.JSONField(default=list, description="候选能力快照")
+    execution_plan = fields.JSONField(default=dict, description="执行计划快照")
     started_at = fields.DatetimeField(null=True, description="开始时间")
     finished_at = fields.DatetimeField(null=True, description="结束时间")
-    error_message = fields.TextField(null=True, description="错误信息")
     usage = fields.JSONField(default=dict, description="模型/检索使用统计")
-    metadata = fields.JSONField(default=dict, description="附加元数据")
-    version = fields.IntField(default=1, description="版本号")
 
     class Meta:  # type: ignore
         table = "chat_turn"
@@ -581,11 +654,19 @@ class ChatTurn(BaseModel):
         unique_together = [("conversation_id", "seq")]
         indexes = [
             ("conversation_id", "status"),
+            ("conversation_id", "request_id"),
+            ("agent_key",),
         ]
         ordering = ["-id"]
 
 
 class ChatStep(BaseModel):
+    conversation = fields.ForeignKeyField(
+        f"{_KBConnectionName}.ChatConversation",
+        related_name="steps",
+        on_delete=fields.CASCADE,
+        description="所属会话",
+    )
     turn = fields.ForeignKeyField(
         f"{_KBConnectionName}.ChatTurn",
         related_name="steps",
@@ -599,35 +680,30 @@ class ChatStep(BaseModel):
         on_delete=fields.SET_NULL,
         description="父步骤",
     )
-    root_step_id = fields.BigIntField(null=True, description="根步骤ID")
     kind = fields.CharEnumField(
         ChatStepKindEnum,
         default=ChatStepKindEnum.system.value,
         description="步骤类型",
     )
+    capability_key = fields.CharField(max_length=128, null=True, description="所属能力 key")
+    operation_key = fields.CharField(max_length=128, null=True, description="计划操作 key")
     name = fields.CharField(max_length=100, description="步骤名称")
     status = fields.CharEnumField(
         ChatStepStatusEnum,
-        default=ChatStepStatusEnum.pending.value,
+        default=ChatStepStatusEnum.running.value,
         description="步骤状态",
     )
     sequence = fields.IntField(default=0, description="回放顺序")
-    parallel_group = fields.CharField(max_length=100, null=True, description="并行组")
-    attempt = fields.IntField(default=0, description="重试次数")
-    input_data_ids = fields.JSONField(default=list, description="输入数据ID列表")
-    output_data_ids = fields.JSONField(default=list, description="输出数据ID列表")
+    metadata = fields.JSONField(default=dict, description="步骤元数据")
     started_at = fields.DatetimeField(null=True, description="开始时间")
     finished_at = fields.DatetimeField(null=True, description="结束时间")
-    executor = fields.CharField(max_length=100, null=True, description="执行器")
-    metrics = fields.JSONField(default=dict, description="指标")
-    error_message = fields.TextField(null=True, description="错误信息")
-    metadata = fields.JSONField(default=dict, description="附加元数据")
 
     class Meta:  # type: ignore
         table = "chat_step"
         table_description = "聊天步骤表"
         app = _KBConnectionName
         indexes = [
+            ("conversation_id", "turn_id", "sequence"),
             ("turn_id", "sequence"),
             ("parent_step_id",),
             ("status",),
@@ -636,6 +712,12 @@ class ChatStep(BaseModel):
 
 
 class ChatData(BaseModel):
+    conversation = fields.ForeignKeyField(
+        f"{_KBConnectionName}.ChatConversation",
+        related_name="data_items",
+        on_delete=fields.CASCADE,
+        description="所属会话",
+    )
     turn = fields.ForeignKeyField(
         f"{_KBConnectionName}.ChatTurn",
         related_name="data_items",
@@ -645,118 +727,24 @@ class ChatData(BaseModel):
     step = fields.ForeignKeyField(
         f"{_KBConnectionName}.ChatStep",
         related_name="data_items",
-        null=True,
-        on_delete=fields.SET_NULL,
+        on_delete=fields.CASCADE,
         description="所属step",
     )
     kind = fields.CharEnumField(
         ChatDataKindEnum,
-        default=ChatDataKindEnum.intermediate.value,
+        default=ChatDataKindEnum.output.value,
         description="数据类别",
     )
     payload_type = fields.CharField(max_length=64, description="载荷类型")
-    role = fields.CharField(max_length=32, null=True, description="消息角色")
-    mime_type = fields.CharField(max_length=128, null=True, description="MIME类型")
-    is_final = fields.BooleanField(default=False, description="是否最终结果")
-    is_visible = fields.BooleanField(default=True, description="是否对客户端可见")
     payload = fields.JSONField(default=dict, description="数据载荷")
-    refs = fields.JSONField(default=list, description="关联引用")
-    metadata = fields.JSONField(default=dict, description="附加元数据")
 
     class Meta:  # type: ignore
         table = "chat_data"
         table_description = "聊天数据工件表"
         app = _KBConnectionName
         indexes = [
-            ("turn_id", "kind"),
+            ("conversation_id", "turn_id", "kind"),
             ("step_id",),
+            ("turn_id", "payload_type"),
         ]
         ordering = ["id"]
-
-
-class ChatWebSocketSession(BaseModel):
-    session_id = fields.CharField(max_length=64, unique=True, description="WebSocket会话ID")
-    conversation = fields.ForeignKeyField(
-        f"{_KBConnectionName}.ChatConversation",
-        related_name="ws_sessions",
-        null=True,
-        on_delete=fields.SET_NULL,
-        description="绑定的会话",
-    )
-    account_id = fields.BigIntField(null=True, description="账户ID")
-    status = fields.CharField(max_length=16, default="connected", description="连接状态")
-    client_info = fields.JSONField(default=dict, description="客户端信息")
-    last_seen_at = fields.DatetimeField(auto_now=True, description="最近活跃时间")
-    last_ack_seq = fields.IntField(default=0, description="客户端确认的最大seq")
-
-    class Meta:  # type: ignore
-        table = "chat_ws_session"
-        table_description = "聊天WebSocket会话表"
-        app = _KBConnectionName
-        indexes = [
-            ("conversation_id",),
-            ("account_id", "status"),
-        ]
-        ordering = ["-id"]
-
-
-class ChatEventLog(BaseModel):
-    conversation = fields.ForeignKeyField(
-        f"{_KBConnectionName}.ChatConversation",
-        related_name="event_logs",
-        on_delete=fields.CASCADE,
-        description="所属会话",
-    )
-    turn = fields.ForeignKeyField(
-        f"{_KBConnectionName}.ChatTurn",
-        related_name="event_logs",
-        on_delete=fields.CASCADE,
-        description="所属turn",
-    )
-    ws_session = fields.ForeignKeyField(
-        f"{_KBConnectionName}.ChatWebSocketSession",
-        related_name="event_logs",
-        null=True,
-        on_delete=fields.SET_NULL,
-        description="关联ws会话",
-    )
-    step_id = fields.BigIntField(null=True, description="关联step id")
-    data_id = fields.BigIntField(null=True, description="关联data id")
-    seq = fields.IntField(description="事件序号")
-    event = fields.CharField(max_length=64, description="事件类型")
-    payload = fields.JSONField(default=dict, description="事件载荷")
-    metadata = fields.JSONField(default=dict, description="附加元数据")
-    acked_at = fields.DatetimeField(null=True, description="被客户端确认时间")
-
-    class Meta:  # type: ignore
-        table = "chat_event_log"
-        table_description = "聊天事件日志表"
-        app = _KBConnectionName
-        unique_together = [("turn_id", "seq")]
-        indexes = [
-            ("conversation_id", "created_at"),
-            ("ws_session_id",),
-        ]
-        ordering = ["id"]
-
-
-class ChatTurnCheckpoint(CreateOnlyModel):
-    turn = fields.ForeignKeyField(
-        f"{_KBConnectionName}.ChatTurn",
-        related_name="checkpoints",
-        on_delete=fields.CASCADE,
-        description="所属turn",
-    )
-    checkpoint_no = fields.IntField(description="检查点编号")
-    snapshot = fields.JSONField(default=dict, description="快照")
-    latest_event_seq = fields.IntField(default=0, description="对应的最新事件序号")
-
-    class Meta:  # type: ignore
-        table = "chat_turn_checkpoint"
-        table_description = "聊天turn检查点表"
-        app = _KBConnectionName
-        unique_together = [("turn_id", "checkpoint_no")]
-        indexes = [
-            ("turn_id", "checkpoint_no"),
-        ]
-        ordering = ["-id"]

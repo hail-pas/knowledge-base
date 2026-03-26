@@ -18,7 +18,7 @@ dependencies = [
     "gunicorn==25.1.0",
     "uvicorn[standard]==0.41.0",
     "uvloop==0.22.1; sys_platform == 'linux'",  # uvicorn
-    "httptools>=0.7.1",    # uvicorn
+    "httptools==0.7.1",    # uvicorn
     # >>>>>>>
     "python-jose[cryptography]==3.5.0",
     "cachetools==7.0.4",
@@ -34,7 +34,7 @@ dependencies = [
     "indexing[all]",
     "text-chunker",
     "workflow",
-    
+
     # llm
     "pydantic-ai-slim[openai,anthropic]==1.68.0",
 ]
