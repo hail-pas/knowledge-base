@@ -14,6 +14,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "chat",
     "document-parser",
     "embedding",
     "ext-celery",
@@ -657,6 +658,11 @@ wheels = [
     { url = "http://mirrors.aliyun.com/pypi/packages/e9/b0/0200da600134e001d91851ddc797809e2fe0ea72de90e09bec5a2fbdaccb/charset_normalizer-3.4.2-cp313-cp313-win_amd64.whl", hash = "sha256:aa6af9e7d59f9c12b33ae4e9450619cf2488e2bbe9b44030905877f0b2324980" },
     { url = "http://mirrors.aliyun.com/pypi/packages/20/94/c5790835a017658cbfabd07f3bfb549140c3ac458cfc196323996b10095a/charset_normalizer-3.4.2-py3-none-any.whl", hash = "sha256:7f56930ab0abd1c45cd15be65cc741c28b1c9a34876ce8c17a2fa107810c0af0" },
 ]
+
+[[package]]
+name = "chat"
+version = "0.1.0"
+source = { editable = "agents/chat" }
 
 [[package]]
 name = "click"
