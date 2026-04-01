@@ -102,7 +102,7 @@ class CollectionList(
         ),
     ),
 ):
-    pass
+    document_count: int = 0
 
 
 class CollectionDetail(CollectionList):

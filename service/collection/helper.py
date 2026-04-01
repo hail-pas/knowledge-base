@@ -163,13 +163,12 @@ class CollectionService:
         - Update dense_model and faq_model indexes
         - If any failure, rollback to old embedding model
         """
-        await self.collection.embedding_model_config  # type: ignore
-
-        self.collection.embedding_model_config = new_embedding_model_config
+        self.collection.embedding_model_config_id = new_embedding_model_config.id
 
         # NOTE: Embedding migration side effects are not implemented yet; this method currently updates the config only.
 
-        await self.collection.save()
+        await self.collection.save(update_fields=["embedding_model_config_id"])
+
 
     async def can_delete_collection(self) -> bool:
         """

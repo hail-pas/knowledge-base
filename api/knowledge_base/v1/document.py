@@ -288,7 +288,7 @@ async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["wor
     async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
         obj = await queryset.filter(id=pk).select_for_update().first()
         if not obj:
-            raise ApiException("Document不存在重新切块")
+            raise ApiException("Document不存在")
 
         if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
             raise ApiException("当前状态不支持")

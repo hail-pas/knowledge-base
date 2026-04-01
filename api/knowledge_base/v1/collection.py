@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import Depends, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
+from tortoise.functions import Count
 
 from core.types import ApiException
 from core.schema import CRUDPager
@@ -33,6 +34,28 @@ from ext.ext_tortoise.models.knowledge_base import (
 )
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
+
+
+async def _enrich_collections_with_doc_count(data: list[CollectionList]) -> list[CollectionList]:
+    if not data:
+        return data
+
+    ids = [item.id for item in data]  # type: ignore
+    if not ids:
+        return data
+    counts = (
+        await Document.filter(
+            collection_id__in=ids,
+            deleted_at=0,
+        )
+        .annotate(count=Count("id"))
+        .group_by("collection_id")
+        .values("collection_id", "count")
+    )
+    count_map = {row["collection_id"]: row["count"] for row in counts}
+    for d in data:
+        d.document_count = count_map.get(d.id, 0)  # type: ignore
+    return data
 
 
 def get_collection_queryset(request: Request, user: Account) -> QuerySet[Collection]:
@@ -83,11 +106,14 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
         if update_data:
             await update_obj(obj, queryset, update_data)
 
+        await obj.fetch_related("embedding_model_config")
+
         service = CollectionService(obj)
         try:
             await service.switch_embedding_model(new_config)
         except Exception as e:
             await queryset.filter(pk=pk).update(embedding_model_config_id=old_config_id)
+            raise e
             raise ApiException(f"切换Embedding模型失败: {str(e)}") from e
     else:
         await update_obj(obj, queryset, update_data)
@@ -109,7 +135,7 @@ async def list_collections(
 ) -> Resp[PageData[CollectionList]]:
     user: Account = request.scope["user"]
     queryset = get_collection_queryset(request, user)
-    return await list_view(queryset, filter_, pager)
+    return await list_view(queryset, filter_, pager, post_process=_enrich_collections_with_doc_count)
 
 
 @router.get("/{pk}", summary="Collection详情")

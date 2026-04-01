@@ -1,7 +1,7 @@
 import re
 import uuid
 from typing import TypeVar
-from collections import defaultdict
+from collections import defaultdict, abc
 
 from fastapi import Body, Query, Depends
 from pydantic import BaseModel
@@ -222,6 +222,8 @@ async def list_view(
     queryset: QuerySet,
     filter: BaseModel,
     pager: CRUDPager,
+    *,
+    post_process: abc.Callable[[list], abc.Awaitable[list | None]] | None = None,
 ) -> Resp:
     if pager.selected_fields:
         queryset = queryset.only(*pager.selected_fields)
@@ -230,6 +232,10 @@ async def list_view(
         pagination=pager,
         **filter.model_dump(exclude_unset=True, exclude_none=True),
     )
+    if post_process:
+        result = await post_process(data)
+        if result is not None:
+            data = result
     return Resp(
         data=PageData.create(items=data, total_count=total, pager=pager),  # type: ignore
     )
