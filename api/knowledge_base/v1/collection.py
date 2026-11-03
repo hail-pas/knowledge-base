@@ -115,10 +115,9 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
         service = CollectionService(obj)
         try:
             await service.switch_embedding_model(new_config)
-        except Exception as e:
+        except Exception:
             await queryset.filter(pk=pk).update(embedding_model_config_id=old_config_id)
-            raise e
-            raise ApiException(f"切换Embedding模型失败: {str(e)}") from e
+            raise
     else:
         await update_obj(obj, queryset, update_data)
 
