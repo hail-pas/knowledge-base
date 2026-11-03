@@ -6,6 +6,7 @@ from fastapi import Body, File, Form, Depends, Request, APIRouter, UploadFile
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from core.types import ApiException
@@ -110,10 +111,10 @@ async def create_document(
 
     # 2. 验证 file_source
     file_source = await FileSource.filter(
+        Q(user_id=None) | Q(user_id=user.id),
         id=file_source_id,
         is_enabled=True,
         deleted_at=0,
-        user_id__in=[None, user.id],
     ).get_or_none()
     if not file_source:
         raise ApiException("文件源不存在或未启用")
