@@ -438,13 +438,13 @@ def test_create_collection_minimal(client):
     assert data["data"]["name"] == "minimal-collection"
 
 
-def test_create_public_collection_with_empty_user_id(client):
-    """测试创建公开 Collection 且 user_id 为空"""
+def test_create_public_collection_owned_by_authenticated_user(client):
+    """测试公开 Collection 仍由当前 Pero 用户作为所有者"""
     response = client.post(
         "/v1/collection",
         json={
             "name": "public-collection-no-user",
-            "description": "公共知识库，无特定用户",
+            "description": "公共知识库，创建者身份由 Pero 用户中心确定",
             "is_public": True,
             "is_external": False,
             "embedding_model_config_id": STATE["embedding_model_id"],
