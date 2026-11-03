@@ -109,7 +109,11 @@ async def create_document(
         raise ApiException("无权访问该Collection")
 
     # 2. 验证 file_source
-    file_source = await FileSource.get_or_none(id=file_source_id, is_enabled=True, deleted_at=0)
+    file_source = await FileSource.get_or_none(
+        id=file_source_id,
+        is_enabled=True,
+        deleted_at=0,
+    ).filter(user_id__in=[None, user.id])
     if not file_source:
         raise ApiException("文件源不存在或未启用")
 
@@ -421,6 +425,7 @@ async def update_document_chunk(request: Request, pk: int, chunk_id: int, schema
 
 @router.delete("/{pk}/chunks/{chunk_id}", summary="删除DocumentChunk")
 async def delete_document_chunk(request: Request, pk: int, chunk_id: int) -> Resp[DeleteResp]:
+    await get_document_or_raise(request, pk)
     deleted = await DocumentChunk.filter(id=chunk_id, document_id=pk, deleted_at=0).delete()
     return Resp(data=DeleteResp(deleted=deleted))
 
@@ -477,5 +482,6 @@ async def update_document_generated_faq(
 
 @router.delete("/{pk}/faqs/{faq_id}", summary="删除DocumentGeneratedFaq")
 async def delete_document_generated_faq(request: Request, pk: int, faq_id: int) -> Resp[DeleteResp]:
+    await get_document_or_raise(request, pk)
     deleted = await DocumentGeneratedFaq.filter(id=faq_id, document_id=pk, deleted_at=0).delete()
     return Resp(data=DeleteResp(deleted=deleted))
