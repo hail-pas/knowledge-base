@@ -1,4 +1,3 @@
-from uuid import UUID
 from typing import Self
 
 from pydantic import Field, BaseModel
@@ -18,7 +17,7 @@ from ext.ext_tortoise.models.knowledge_base import FileSource
 
 
 class FileSourceCreate(
-    pydantic_model_creator(FileSource, name="FileSourceCreate", exclude_readonly=True),
+    pydantic_model_creator(FileSource, name="FileSourceCreate", exclude_readonly=True, exclude=("user_id",)),
 ):
     @classmethod
     def validate_extra_config_by_type(cls, type_: FileSourceTypeEnum, extra_config: dict) -> None:
@@ -81,7 +80,7 @@ class FileSourceUpdate(BaseModel):
 
 
 class FileSourceList(
-    pydantic_model_creator(FileSource, name="FileSourceList", exclude=("secret_key",)),
+    pydantic_model_creator(FileSource, name="FileSourceList", exclude=("secret_key", "user_id")),
 ):
     pass
 
@@ -96,4 +95,3 @@ class FileSourceFilterSchema(BaseModel):
     is_enabled: bool | None = Field(None, description="是否启用")
     is_default: bool | None = Field(None, description="是否默认")
     name__icontains: str | None = Field(None, description="名称包含")
-    user_id: UUID | None = Field(None, description="用户ID")

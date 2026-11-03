@@ -79,6 +79,14 @@ class ServerConfig(BaseModel):
     swagger_servers: list[SwaggerServerConfig] = []
 
 
+class UserCenterIntegrationConfig(BaseModel):
+    """Connection details for the external Pero user center."""
+
+    base_url: HttpUrl = HttpUrl("http://127.0.0.1:8080")
+    userinfo_path: str = "/api/oauth2/userinfo"
+    timeout_seconds: float = 5.0
+
+
 class ProjectConfig(BaseModel):
     unique_code: str
     debug: bool = False

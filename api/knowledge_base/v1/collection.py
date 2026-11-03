@@ -8,7 +8,7 @@ from tortoise.functions import Count
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import api_permission_check
+from service.depend import CurrentUser, require_user
 from ext.ext_tortoise.curd import (
     DeleteResp,
     list_view,
@@ -26,14 +26,13 @@ from service.collection.schema import (
     CollectionUpdate,
     CollectionFilterSchema,
 )
-from ext.ext_tortoise.models.user_center import Account
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
     EmbeddingModelConfig,
 )
 
-router = APIRouter(dependencies=[Depends(api_permission_check)])
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
 async def _enrich_collections_with_doc_count(data: list[CollectionList]) -> list[CollectionList]:
@@ -58,23 +57,28 @@ async def _enrich_collections_with_doc_count(data: list[CollectionList]) -> list
     return data
 
 
-def get_collection_queryset(request: Request, user: Account) -> QuerySet[Collection]:
-    """
-    Permission-based queryset:
-    - Staff: see all
-    - Non-staff: see own + public
+def get_collection_queryset(
+    request: Request,
+    user: CurrentUser,
+    *,
+    writable: bool = False,
+) -> QuerySet[Collection]:
+    """Return collections visible to this identity.
+
+    Public and legacy ownerless collections are readable; mutations are restricted
+    to the collection owner.
     """
     queryset = Collection.filter(deleted_at=0)
-
-    if not user.is_staff:
-        queryset = queryset.filter(Q(user_id=None) | Q(user_id=user.id) | Q(is_public=True))
-
-    return queryset
+    if writable:
+        return queryset.filter(user_id=user.id)
+    return queryset.filter(Q(user_id=None) | Q(user_id=user.id) | Q(is_public=True))
 
 
 @router.post("", summary="创建Collection")
 async def create_collection(request: Request, schema: CollectionCreate) -> Resp[CollectionList]:
+    user: CurrentUser = request.scope["user"]
     schema_dict = schema.model_dump(exclude_unset=True)
+    schema_dict["user_id"] = user.id
 
     obj: Collection = await create_obj(Collection, schema_dict)  # type: ignore
 
@@ -85,8 +89,8 @@ async def create_collection(request: Request, schema: CollectionCreate) -> Resp[
 
 @router.put("/{pk}", summary="更新Collection")
 async def update_collection(request: Request, pk: int, schema: CollectionUpdate) -> Resp:
-    user: Account = request.scope["user"]
-    queryset = get_collection_queryset(request, user)
+    user: CurrentUser = request.scope["user"]
+    queryset = get_collection_queryset(request, user, writable=True)
 
     obj = await queryset.get_or_none(pk=pk)
     if not obj:
@@ -133,22 +137,22 @@ async def list_collections(
         max_limit=100,
     ),
 ) -> Resp[PageData[CollectionList]]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_collection_queryset(request, user)
     return await list_view(queryset, filter_, pager, post_process=_enrich_collections_with_doc_count)
 
 
 @router.get("/{pk}", summary="Collection详情")
 async def get_collection_detail(request: Request, pk: int) -> Resp[CollectionDetail]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_collection_queryset(request, user)
     return await detail_view(queryset, pk, CollectionDetail)
 
 
 @router.delete("/{pk}", summary="删除Collection")
 async def delete_collection(request: Request, pk: int) -> Resp[DeleteResp]:
-    user: Account = request.scope["user"]
-    queryset = get_collection_queryset(request, user)
+    user: CurrentUser = request.scope["user"]
+    queryset = get_collection_queryset(request, user, writable=True)
 
     obj = await queryset.prefetch_related("embedding_model_config").get_or_none(pk=pk)
     if not obj:

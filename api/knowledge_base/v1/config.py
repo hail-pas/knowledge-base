@@ -7,7 +7,7 @@ from tortoise.expressions import Q
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import api_permission_check
+from service.depend import CurrentUser, require_user
 from ext.ext_tortoise.curd import (
     list_view,
     create_obj,
@@ -41,7 +41,6 @@ from service.indexing_backend.schema import (
     IndexingBackendConfigDetail,
     IndexingBackendConfigFilterSchema,
 )
-from ext.ext_tortoise.models.user_center import Account
 from ext.ext_tortoise.models.knowledge_base import (
     FileSource,
     LLMModelConfig,
@@ -49,7 +48,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     IndexingBackendConfig,
 )
 
-router = APIRouter(dependencies=[Depends(api_permission_check)])
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
 # =============================================================================
@@ -57,24 +56,24 @@ router = APIRouter(dependencies=[Depends(api_permission_check)])
 # =============================================================================
 
 
-def get_file_source_queryset(request: Request) -> QuerySet[FileSource]:
-    user: Account = request.scope["user"]
+def get_file_source_queryset(request: Request, *, writable: bool = False) -> QuerySet[FileSource]:
+    user: CurrentUser = request.scope["user"]
     queryset = FileSource.filter(deleted_at=0)
-
-    if not user.is_staff:
-        queryset = queryset.filter(Q(user_id=None) | Q(user_id=user.id))
-
-    return queryset
+    if writable:
+        return queryset.filter(user_id=user.id)
+    return queryset.filter(Q(user_id=None) | Q(user_id=user.id))
 
 
 @router.post("/file-source", summary="创建文件源")
 async def create_file_source(request: Request, schema: FileSourceCreate) -> Resp[FileSourceList]:
-    # user: Account = request.state.user
+    user: CurrentUser = request.scope["user"]
 
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
+    data = schema.model_dump(exclude_unset=True)
+    data["user_id"] = user.id
 
-    obj: FileSource = await create_obj(FileSource, schema.model_dump(exclude_unset=True))  # type: ignore
+    obj: FileSource = await create_obj(FileSource, data)  # type: ignore
 
     if schema.is_default:  # type: ignore
         await (
@@ -88,7 +87,7 @@ async def create_file_source(request: Request, schema: FileSourceCreate) -> Resp
 
 @router.put("/file-source/{pk}", summary="更新文件源")
 async def update_file_source(request: Request, pk: int, schema: FileSourceUpdate) -> Resp:
-    queryset = get_file_source_queryset(request)
+    queryset = get_file_source_queryset(request, writable=True)
 
     obj = await queryset.get_or_none(pk=pk)
     if not obj:

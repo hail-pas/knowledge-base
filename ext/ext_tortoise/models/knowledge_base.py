@@ -28,8 +28,6 @@ class Collection(BaseModel):
     name = fields.CharField(max_length=100, description="集合名称")
     description = fields.TextField(description="描述", null=True)
     user_id = fields.UUIDField(description="用户ID", null=True)
-    tenant_id = fields.UUIDField(description="租户ID", null=True)
-    role_id = fields.UUIDField(description="角色ID", null=True)
     is_public = fields.BooleanField(default=False, description="是否公开")
     is_temp = fields.BooleanField(default=False, description="是否临时")
     is_external = fields.BooleanField(default=False, description="是否外部")

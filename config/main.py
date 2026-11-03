@@ -8,7 +8,7 @@ from pydantic_settings import (
 )
 
 from ext.register import ExtensionRegistry
-from config.default import BASE_DIR, ENVIRONMENT, ServerConfig, ProjectConfig
+from config.default import BASE_DIR, ENVIRONMENT, ServerConfig, ProjectConfig, UserCenterIntegrationConfig
 
 
 class LocalConfig(BaseSettings):
@@ -17,6 +17,7 @@ class LocalConfig(BaseSettings):
     server: ServerConfig
     project: ProjectConfig
     extensions: ExtensionRegistry
+    user_center: UserCenterIntegrationConfig = UserCenterIntegrationConfig()
     service: dict[str, Any] = {}
 
     @classmethod

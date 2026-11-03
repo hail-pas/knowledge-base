@@ -14,7 +14,6 @@ class ExtensionRegistry(BaseModel):
 
     redis: RedisConfig
     # relation: TortoiseConfig
-    rdb_user_center: TortoiseConfig
     rdb_knowledge_base: TortoiseConfig
     celery: CeleryConfig
     httpx: HttpxConfig = HttpxConfig()

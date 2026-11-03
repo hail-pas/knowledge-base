@@ -11,7 +11,7 @@ from tortoise.transactions import in_transaction
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import api_permission_check
+from service.depend import CurrentUser, require_user
 from ext.file_source import FileSourceFactory
 from ext.ext_tortoise.curd import (
     DeleteResp,
@@ -38,7 +38,6 @@ from service.document.schema import (
 )
 from service.collection.helper import WorkflowTemplateValidator
 from service.workflow.document import process_document
-from ext.ext_tortoise.models.user_center import Account
 from ext.ext_tortoise.models.knowledge_base import (
     Activity,
     Document,
@@ -50,10 +49,10 @@ from ext.ext_tortoise.models.knowledge_base import (
     DocumentGeneratedFaq,
 )
 
-router = APIRouter(dependencies=[Depends(api_permission_check)])
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
-def get_document_queryset(request: Request, user: Account) -> QuerySet[Document]:
+def get_document_queryset(request: Request, user: CurrentUser) -> QuerySet[Document]:
     """
     Permission-based queryset:
     - Staff: see all
@@ -61,14 +60,13 @@ def get_document_queryset(request: Request, user: Account) -> QuerySet[Document]
     """
     queryset = Document.filter(deleted_at=0)
 
-    if not user.is_staff:
-        queryset = queryset.filter(collection__user_id=user.id)
+    queryset = queryset.filter(collection__user_id=user.id)
 
     return queryset
 
 
 async def get_document_or_raise(request: Request, pk: int) -> Document:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
     obj = await queryset.prefetch_related("file_source").get_or_none(pk=pk)
     if not obj:
@@ -97,7 +95,7 @@ async def create_document(
     - HTTP URI 跳过 metadata 获取
     - 创建后状态为 pending，不自动触发 workflow
     """
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
 
     # 1. 验证 collection
     collection = await Collection.get_or_none(id=collection_id, deleted_at=0).prefetch_related(
@@ -107,7 +105,7 @@ async def create_document(
         raise ApiException("Collection不存在")
 
     # 权限检查
-    if not user.is_staff and collection.user_id != user.id:
+    if collection.user_id != user.id:
         raise ApiException("无权访问该Collection")
 
     # 2. 验证 file_source
@@ -165,7 +163,7 @@ async def delete_document(request: Request, pk: int) -> Resp[DeleteResp]:
     删除文档
     仅允许删除状态为 success/failed 的文档
     """
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
 
     obj = await queryset.prefetch_related("collection__embedding_model_config").get_or_none(pk=pk)
@@ -190,7 +188,7 @@ async def update_document(
     pk: int,
     schema: DocumentUpdate,
 ) -> Resp:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
 
     obj = await queryset.get_or_none(pk=pk)
@@ -224,7 +222,7 @@ async def list_documents(
         max_limit=100,
     ),
 ) -> Resp[PageData[DocumentList]]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
 
     # 应用过滤
@@ -244,14 +242,14 @@ async def list_documents(
 
 @router.get("/{pk}", summary="Document详情")
 async def get_document_detail(request: Request, pk: int) -> Resp[DocumentDetail]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
     return await detail_view(queryset, pk, DocumentDetail)
 
 
 @router.post("/{pk}/re-process", summary="Document 重新处理")
 async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
     async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
         obj = await queryset.filter(pk=pk).select_for_update().first()
@@ -283,7 +281,7 @@ async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["w
 
 @router.post("/{pk}/re-chunk", summary="Document 重新切块")
 async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
     async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
         obj = await queryset.filter(id=pk).select_for_update().first()

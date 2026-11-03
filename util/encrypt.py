@@ -1,14 +1,10 @@
 import hmac
 import base64
 import secrets
-from typing import Any
-from collections.abc import Mapping
 
 import orjson
-from jose import jwt, constants
 from Cryptodome import Random
 from Cryptodome.Hash import MD5, SHA1, SHA256
-from passlib.context import CryptContext  # type: ignore
 from Cryptodome.Cipher import AES, PKCS1_v1_5
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Signature import pkcs1_15 as SIGN_PKCS1_15
@@ -206,48 +202,3 @@ class SignAuth:
         """生成sign."""
         data_str = self.gen_data_str(data)
         return HashUtilB64.hmac_sha256_encode_b64(self.private_key, data_str)
-
-
-class PasswordUtil:
-    """密码工具."""
-
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-    @classmethod
-    def verify_password(
-        cls,
-        plain_password: str,
-        hashed_password: str,
-    ) -> bool:
-        return cls.pwd_context.verify(plain_password, hashed_password)  # type: ignore
-
-    @classmethod
-    def get_password_hash(cls, plain_password: str) -> str:
-        return cls.pwd_context.hash(plain_password)  # type: ignore
-
-
-class JwtUtil:
-    """jwt 工具."""
-
-    default_algorithm = constants.ALGORITHMS.RS256
-
-    @classmethod
-    def decode(
-        cls,
-        token: str | bytes,
-        key: str | bytes | Mapping[str, Any],
-        algorithms: str = "",
-        options: dict | None = None,
-        audience: str | None = None,
-        issuer: str | None = None,
-        subject: str | None = None,
-    ) -> dict:
-        return jwt.decode(
-            token=token,
-            key=key,
-            algorithms=algorithms if algorithms else cls.default_algorithm,
-            options=options,
-            audience=audience,
-            issuer=issuer,
-            subject=subject,
-        )

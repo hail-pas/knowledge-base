@@ -24,7 +24,7 @@ class CollectionCreate(
         Collection,
         name="CollectionCreateBase",
         exclude_readonly=True,
-        exclude=("user_id", "tenant_id", "role_id"),
+        exclude=("user_id",),
     ),
 ):
     workflow_template: dict = Field(default_factory=dict, description="工作流DAG配置，非外部知识库时必需")
@@ -96,8 +96,6 @@ class CollectionList(
         name="CollectionList",
         exclude=(
             "user_id",
-            "tenant_id",
-            "role_id",
             "documents",
         ),
     ),

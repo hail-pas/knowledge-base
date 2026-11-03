@@ -1,6 +1,6 @@
 [project]
-name = "fastapi-starter"
-description = "FastApi Start Kit"
+name = "knowledge-base-service"
+description = "Knowledge Base lifecycle management and RAG service"
 authors = [
     { name = "phoenix", email = "hypofiasco@gmail.co" },
 ]
@@ -13,16 +13,12 @@ dependencies = [
     "pydantic-settings==2.13.1",
     "orjson==3.11.7",
     "pycryptodomex==3.23.0",
-    "passlib==1.7.4",
-    "bcrypt==3.2.2", # pin
     "gunicorn==25.1.0",
     "uvicorn[standard]==0.41.0",
     "uvloop==0.22.1; sys_platform == 'linux'",  # uvicorn
     "httptools==0.7.1",    # uvicorn
     # >>>>>>>
-    "python-jose[cryptography]==3.5.0",
     "cachetools==7.0.4",
-    "captcha==0.7.1",
     # ext workspace members
     "document-parser[all]",
     "embedding",
