@@ -5,6 +5,7 @@ permission and resource definitions plus UUID-to-role assignments.
 """
 
 from dataclasses import dataclass
+import hmac
 import time
 from typing import Annotated, Any
 from uuid import UUID
@@ -182,7 +183,7 @@ class ApiKeyPermissionCheck:
             k=secret_key,
             s=f"{x_api_key}&{x_timestamp}",
         )
-        if expected_sign != x_sign:
+        if not hmac.compare_digest(expected_sign, x_sign):
             raise ApiException("签名错误", code=401)
         if not any(allowed):
             raise ApiException("禁止访问", code=403)
