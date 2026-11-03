@@ -109,11 +109,12 @@ async def create_document(
         raise ApiException("无权访问该Collection")
 
     # 2. 验证 file_source
-    file_source = await FileSource.get_or_none(
+    file_source = await FileSource.filter(
         id=file_source_id,
         is_enabled=True,
         deleted_at=0,
-    ).filter(user_id__in=[None, user.id])
+        user_id__in=[None, user.id],
+    ).get_or_none()
     if not file_source:
         raise ApiException("文件源不存在或未启用")
 
