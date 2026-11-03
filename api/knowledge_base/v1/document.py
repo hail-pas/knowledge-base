@@ -279,7 +279,7 @@ async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["w
     )
 
     obj.current_workflow_uid = workflow_id  # type: ignore
-    await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
+    await obj.save(update_fields=["current_workflow_uid"])
 
     return Resp(data={"workflow_id": workflow_id})
 
@@ -327,7 +327,7 @@ async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["wor
     )
     if not obj.current_workflow_uid or str(obj.current_workflow_uid) != workflow_id:
         obj.current_workflow_uid = workflow_id  # type: ignore
-        await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
+        await obj.save(update_fields=["current_workflow_uid"])
 
     return Resp(data={"workflow_id": workflow_id})
 
