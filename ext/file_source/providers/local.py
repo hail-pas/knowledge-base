@@ -71,8 +71,10 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
                 continue
 
             current_path = file_path
-            if self.extra_config.follow_symlinks and file_path.is_symlink():
-                current_path = file_path.resolve()
+            if file_path.is_symlink():
+                if not self.extra_config.follow_symlinks:
+                    continue
+                current_path = self._resolve_path(str(file_path))
 
             if self.extra_config.allowed_extensions and current_path.suffix not in self.extra_config.allowed_extensions:
                 continue
