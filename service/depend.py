@@ -188,8 +188,6 @@ class ApiKeyPermissionCheck:
             raise ApiException("禁止访问", code=403)
 
         request.scope["scene"] = "ApiCall"
-        request.scope["is_staff"] = False
-        request.scope["is_super_admin"] = False
         return True
 
 
