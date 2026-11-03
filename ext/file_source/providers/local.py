@@ -29,6 +29,17 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
         if not path.is_dir():
             raise ValueError(f"Root path is not a directory: {self.storage_location}")
 
+    def _resolve_path(self, uri: str) -> Path:
+        """Resolve a file URI and prevent access outside the configured root."""
+        root = Path(self.storage_location or "").resolve()
+        path = Path(uri)
+        if not path.is_absolute():
+            path = root / path
+        resolved = path.resolve()
+        if not resolved.is_relative_to(root):
+            raise ValueError("File path is outside the configured storage root")
+        return resolved
+
     async def validate_connection(self) -> bool:
         """验证根路径是否存在且可访问"""
         try:
@@ -46,7 +57,7 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
     ) -> list[FileMetadata]:
         """列出文件"""
         base_path = Path(self.storage_location or "")
-        search_path = base_path / prefix if prefix else base_path
+        search_path = self._resolve_path(str(base_path / prefix)) if prefix else base_path.resolve()
 
         files = []
         pattern = "**/*" if recursive else "*"
@@ -91,12 +102,14 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
 
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
-        async with aiofiles.open(uri, "rb") as f:
+        path = self._resolve_path(uri)
+        async with aiofiles.open(path, "rb") as f:
             return cast(bytes, await f.read())
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
-        async with aiofiles.open(uri, "rb") as f:
+        path = self._resolve_path(uri)
+        async with aiofiles.open(path, "rb") as f:
             while True:
                 chunk = await f.read(chunk_size)
                 if not chunk:
@@ -105,7 +118,7 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""
-        path = Path(uri)
+        path = self._resolve_path(uri)
         stat = path.stat()
         return FileMetadata(  # type: ignore[call-arg]
             uri=uri,
@@ -117,11 +130,14 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
 
     async def file_exists(self, uri: str) -> bool:
         """检查文件是否存在"""
-        return Path(uri).exists() and Path(uri).is_file()
+        path = self._resolve_path(uri)
+        return path.exists() and path.is_file()
 
     async def upload_file(self, uri: str, content: bytes, content_type: str | None = None) -> FileMetadata:
         """上传（写入）文件"""
-        async with aiofiles.open(uri, "wb") as f:
+        path = self._resolve_path(uri)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(path, "wb") as f:
             await f.write(content)
 
         return await self.get_file_metadata(uri)
@@ -129,7 +145,7 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
     async def delete_file(self, uri: str) -> bool:
         """删除文件"""
         try:
-            Path(uri).unlink()
+            self._resolve_path(uri).unlink()
             return True
         except FileNotFoundError:
             return False
