@@ -2,7 +2,7 @@
 
 ## 1. Service responsibility
 
-Knowledge Base owns the complete knowledge-base lifecycle:
+Knowledge Base owns the complete knowledge-base lifecycle and its own authorization policy:
 
 - Collection and file-source management.
 - Document ingestion from uploads and external URIs.
@@ -10,54 +10,118 @@ Knowledge Base owns the complete knowledge-base lifecycle:
 - Embedding generation and sparse/dense/hybrid indexing.
 - Workflow execution, retries, status tracking and document maintenance.
 - LLM, embedding, index backend and storage provider configuration.
+- Local Role / Permission / Resource RBAC.
 - Future retrieval-augmented chat (RAG Chat, TODO).
 
-Identity lifecycle is explicitly outside this service. Pero is the only user center.
+Pero is the only user center. Knowledge Base must not duplicate user account lifecycle or user profile data.
 
-## 2. External identity contract
+## 2. Authentication and identity boundary
 
 1. A client sends `Authorization: Bearer <access_token>`.
-2. The Knowledge Base authentication dependency calls Pero:
-   `GET {user_center.base_url}/api/oauth2/userinfo`.
-3. Pero validates the access token and returns OIDC claims. The `openid` scope is required.
-4. Knowledge Base reads only `sub`, validates it as a UUID, and creates a minimal `CurrentUser(id)`.
-5. The UUID is used as the owner key for collection and file-source queries and writes.
+2. Knowledge Base calls Pero: `GET {user_center.base_url}/api/oauth2/userinfo`.
+3. Pero validates the token and returns OIDC claims; the `openid` scope is required.
+4. Knowledge Base reads only `sub`, validates it as a UUID, and creates `CurrentUser(id)`.
+5. The UUID is used for collection/file-source ownership and local role assignment.
 
 Knowledge Base must not:
 
-- Create local account, role, permission, password, login, session or token tables.
-- Issue, decode, cache, refresh or revoke user tokens.
-- Trust a user ID supplied in request body, query parameters or headers other than the verified Pero response.
-- Persist profile claims such as email, phone or display name.
+- Create or maintain User/Account models or user CRUD APIs.
+- Store username, phone, email, password, user status, login history or profile claims.
+- Issue, decode, cache, refresh or revoke user access tokens.
+- Trust a user ID supplied by request body, query parameters or client-controlled headers.
+- Create foreign keys to Pero's database.
 
 A timeout or 5xx from Pero is a 503 dependency failure; an invalid token is 401; a valid token without the required scope is 403. Tokens and Authorization headers must never be logged.
 
-## 3. Data ownership
+## 3. Local RBAC boundary
+
+User identity and authorization policy are intentionally separated:
+
+- **Pero** answers: who is the caller? It owns accounts and token lifecycle.
+- **Knowledge Base** answers: what can this caller do? It owns Role, Permission, Resource, menu definitions, permission assignments and authorization decisions.
+
+### 3.1 Data model
+
+| Model | Responsibility |
+|---|---|
+| `Role` | Local role definition, including `is_super_admin`; a role can own many resources |
+| `Permission` | API permission code, label, type and deprecation state |
+| `Resource` | Hierarchical menu/button/API resource; links to roles and permissions |
+| `UserRole` | External identity mapping only: `user_id(UUID)` + `role_id`; no user profile fields |
+
+The data relationship is:
+
+```text
+Pero OIDC sub (UUID)
+        |
+        v
+UserRole(user_id, role_id)
+        |
+        v
+Role
+        |
+        v
+Resource (menu / button / API)
+        |
+        v
+Permission (API permission code)
+```
+
+No User or Account table is created. The `user_role` table does not have a foreign key to Pero; it stores only the external UUID and a local Role foreign key.
+
+### 3.2 Authorization decision
+
+For each protected route:
+
+1. Validate Bearer Token through Pero and resolve the UUID subject.
+2. Load the local role assignments from `UserRole`.
+3. If any assigned role is marked `is_super_admin`, grant the super-admin wildcard.
+4. Otherwise, resolve enabled/assignable resources assigned to those roles.
+5. Resolve non-deprecated permission codes attached to those resources.
+6. Match the required code: `{app_code}:{HTTP_METHOD}:{root_path}{route_path}`, `{app_code}:*` or `*`.
+7. Deny with 403 if no matching permission exists.
+
+All Knowledge Base business routers and RBAC management routers use `api_permission_check`. Health checks remain public.
+
+### 3.3 Role assignment
+
+- `PUT /v1/user-role/{user_id}/roles` replaces the role assignment for a Pero UUID.
+- `GET /v1/user-role/{user_id}/roles` reads its local role assignments.
+- These endpoints do not list, create, edit or delete Pero users.
+- The first local super-admin is bootstrapped from a known Pero UUID by `deploy/bin/authorization/bootstrap_super_admin.py`.
+
+### 3.4 API permission and menu management
+
+- `Permission` rows are synchronized from protected API routes by `deploy/bin/permission/menu_perm.py`.
+- `Resource` manages menu/resource trees and binds API permission codes.
+- `Role` binds one or more resources.
+- `UserRole` maps an external Pero UUID to one or more local roles.
+- Deprecated permission codes remain visible for audit but are not granted during authorization.
+
+## 4. Knowledge-base data ownership
 
 - `Collection.user_id`: UUID subject from Pero.
 - `FileSource.user_id`: UUID subject from Pero; null means a shared/public file source.
-- No foreign key is created to Pero's database. Both services retain independent databases and deployability.
 - Collection reads may include the caller's own collections, explicitly public collections and legacy ownerless collections.
 - Collection updates/deletes are owner-only.
 - Document management is scoped to collections owned by the current subject.
 - File-source reads may include the caller's own and shared file sources; mutations are owner-only.
 - The client cannot assign or overwrite `user_id`.
+- The former `tenant_id` and collection-level `role_id` fields are removed. Authorization is centralized in local RBAC rather than duplicated as collection columns.
 
-The old `tenant_id` and `role_id` collection columns are removed. Tenant and role semantics belong to an upstream identity/authorization service and are not duplicated here.
-
-## 4. Application layers
+## 5. Application layers
 
 | Layer | Responsibility |
 |---|---|
-| `api/` | HTTP endpoints, request validation, API versioning and response mapping |
-| `service/` | Knowledge-base domain services and workflow orchestration |
-| `ext/` | Pluggable parser, chunker, embedding, index, file-source, workflow and infrastructure adapters |
+| `api/` | HTTP routes, request validation, API versioning and response mapping |
+| `service/` | Knowledge-base domain services, RBAC schemas and workflow orchestration |
+| `ext/` | Pluggable parser, chunker, embedding, index, file-source, workflow and infrastructure adapters; ORM models |
 | `core/` | Application lifecycle, middleware, exception mapping, logging and shared response types |
 | `config/` | Typed configuration and extension registry |
 
-Dependencies point inward: API routes call services; services depend on extension interfaces/factories; extension providers do not own HTTP identity or user lifecycle.
+Dependencies point inward: API routes call services; services depend on extension interfaces/factories; extension providers do not own HTTP identity or token lifecycle.
 
-## 5. Extension design
+## 6. Extension design
 
 Keep the existing extension registry and provider factories. New implementations should register through the existing factory/registry patterns rather than adding provider-specific conditionals to API routes.
 
@@ -71,7 +135,7 @@ Supported extension points include:
 - Workflow tasks and schedulers.
 - Redis, HTTPX, Tortoise ORM and Celery infrastructure.
 
-## 6. Knowledge-base chat (TODO)
+## 7. Knowledge-base chat (TODO)
 
 The reserved endpoint is `POST /v1/chat/completions` and currently returns HTTP 501. Before implementation, define:
 
@@ -82,17 +146,23 @@ The reserved endpoint is `POST /v1/chat/completions` and currently returns HTTP 
 - Streaming and non-streaming response contracts.
 - LLM routing, timeout, retry and usage telemetry.
 
-The chat service must reuse the same verified `CurrentUser.id` boundary and must not introduce a second user or authorization subsystem.
+Chat must reuse the same Pero UUID and local RBAC boundary; it must not introduce a second user or authorization subsystem.
 
-## 7. Configuration and deployment
+## 8. Configuration and deployment
 
-Configure the knowledge-base database and infrastructure under `extensions`, and configure the external identity endpoint under `user_center`:
+Configure the Knowledge Base database and infrastructure under `extensions`, and configure the external identity endpoint under `user_center`. For upgrades, point `rdb_authorization` to the existing local RBAC database previously configured as `rdb_user_center`; this preserves the existing Role, Permission, Resource and junction-table records:
 
 ```yaml
+extensions:
+  rdb_authorization:
+    url: "mysql+aiomysql://.../existing_local_rbac_db?charset=utf8mb4"
+  rdb_knowledge_base:
+    url: "mysql+aiomysql://.../knowledge_base?charset=utf8mb4"
+
 user_center:
   base_url: "https://pero.example.com"
   userinfo_path: "/api/oauth2/userinfo"
   timeout_seconds: 5
 ```
 
-Use HTTPS in production. The HTTPX client is managed by the existing extension lifecycle. The ORM is configured with only the `knowledge_base` connection.
+Use HTTPS in production. The HTTPX client is managed by the existing extension lifecycle. The authorization migrations preserve existing RBAC tables with `CREATE TABLE IF NOT EXISTS`, add `Role.is_super_admin`, and create the new `user_role` UUID mapping table. Existing Account rows are not loaded or queried; their old role assignments must be remapped to verified Pero UUIDs. The ORM uses two local database connections: `knowledge_base` for knowledge-base domain tables and `authorization` for Role/Permission/Resource/UserRole. Configure `rdb_authorization` to point to the existing local RBAC database (formerly `rdb_user_center`) when preserving existing role/menu data. It never connects to Pero's database.

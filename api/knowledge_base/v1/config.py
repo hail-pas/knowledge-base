@@ -7,7 +7,7 @@ from tortoise.expressions import Q
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import CurrentUser, require_user
+from service.depend import CurrentUser, api_permission_check
 from ext.ext_tortoise.curd import (
     list_view,
     create_obj,
@@ -48,7 +48,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     IndexingBackendConfig,
 )
 
-router = APIRouter(dependencies=[Depends(require_user)])
+router = APIRouter(dependencies=[Depends(api_permission_check)])
 
 
 # =============================================================================

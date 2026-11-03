@@ -1,4 +1,7 @@
 extensions:
+  rdb_authorization:
+    url: "mysql+aiomysql://username:pwd@host:port/legacy_authorization?charset=utf8mb4" # 使用原 rdb_user_center 的 RBAC 数据库
+
   rdb_knowledge_base:
     url: "mysql+aiomysql://username:pwd@host:port/knowledge_base?charset=utf8mb4"
 

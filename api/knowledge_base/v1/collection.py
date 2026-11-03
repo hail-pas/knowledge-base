@@ -8,7 +8,7 @@ from tortoise.functions import Count
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import CurrentUser, require_user
+from service.depend import CurrentUser, api_permission_check
 from ext.ext_tortoise.curd import (
     DeleteResp,
     list_view,
@@ -32,7 +32,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     EmbeddingModelConfig,
 )
 
-router = APIRouter(dependencies=[Depends(require_user)])
+router = APIRouter(dependencies=[Depends(api_permission_check)])
 
 
 async def _enrich_collections_with_doc_count(data: list[CollectionList]) -> list[CollectionList]:

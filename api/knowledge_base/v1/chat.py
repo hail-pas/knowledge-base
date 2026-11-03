@@ -6,9 +6,9 @@ streaming response, citation format, and LLM orchestration are specified.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from service.depend import require_user
+from service.depend import api_permission_check
 
-router = APIRouter(dependencies=[Depends(require_user)])
+router = APIRouter(dependencies=[Depends(api_permission_check)])
 
 
 @router.post("/completions", summary="基于知识库的聊天（规划中）")

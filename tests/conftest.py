@@ -6,11 +6,15 @@ from config.main import local_configs
 
 @pytest.fixture(scope="session", autouse=True)
 async def setup_context():
-    """Initialize only the Knowledge Base database and shared extensions."""
+    """Initialize Knowledge Base domain and authorization models."""
 
     config = {
         "connections": {
             "knowledge_base": {
+                "engine": "tortoise.backends.sqlite",
+                "credentials": {"file_path": ":memory:"},
+            },
+            "authorization": {
                 "engine": "tortoise.backends.sqlite",
                 "credentials": {"file_path": ":memory:"},
             },
@@ -19,6 +23,10 @@ async def setup_context():
             "knowledge_base": {
                 "models": ["ext.ext_tortoise.models.knowledge_base"],
                 "default_connection": "knowledge_base",
+            },
+            "authorization": {
+                "models": ["ext.ext_tortoise.models.authorization"],
+                "default_connection": "authorization",
             },
         },
         "use_tz": False,

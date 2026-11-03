@@ -11,7 +11,7 @@ from tortoise.transactions import in_transaction
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import CurrentUser, require_user
+from service.depend import CurrentUser, api_permission_check
 from ext.file_source import FileSourceFactory
 from ext.ext_tortoise.curd import (
     DeleteResp,
@@ -49,7 +49,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     DocumentGeneratedFaq,
 )
 
-router = APIRouter(dependencies=[Depends(require_user)])
+router = APIRouter(dependencies=[Depends(api_permission_check)])
 
 
 def get_document_queryset(request: Request, user: CurrentUser) -> QuerySet[Document]:

@@ -14,39 +14,37 @@ from config.default import RegisterExtensionConfig
 class ConnectionNameEnum(str, enum.Enum):
     """数据库连接名称"""
 
-    # default = "default"  # "默认连接"
     knowledge_base = "knowledge_base"
+    authorization = "authorization"
+
+
+def _model_modules(connection: ConnectionNameEnum) -> list[str]:
+    return [f"ext.ext_tortoise.models.{connection.value}"]
 
 
 class TortoiseConfig(RegisterExtensionConfig):
     url: MySQLDsn
     echo: bool = False
 
-    # model_config = ConfigDict(arbitrary_types_allowed=True)
-
     @property
     def datetime_now(self) -> datetime.datetime:
         from config.main import local_configs
 
-        return datetime.datetime.now(
-            tz=ZoneInfo(local_configs.server.timezone),
-        )
+        return datetime.datetime.now(tz=ZoneInfo(local_configs.server.timezone))
 
     def config_dict(self) -> dict:
         return {
-            # "engine": "tortoise.backends.sqlite",
-            # "credentials": {"file_path": ":memory:"},
             "engine": "tortoise.backends.mysql",
             "credentials": {
                 "host": self.url.host,
                 "port": self.url.port,
                 "user": self.url.username,
                 "password": unquote(self.url.password) if self.url.password else "",
-                "database": self.url.path.strip("/"),  # type: ignore
+                "database": self.url.path.strip("/"),
                 "echo": self.echo,
-                "minsize": 1,  # 连接池的最小连接数
-                "maxsize": 10,  # 连接池的最大连接数
-                "pool_recycle": 3600,  # 连接的最大存活时间（秒）
+                "minsize": 1,
+                "maxsize": 10,
+                "pool_recycle": 3600,
             },
         }
 
@@ -54,18 +52,13 @@ class TortoiseConfig(RegisterExtensionConfig):
     async def register(self) -> None:
         from ext.ext_tortoise.migrate.env import VERSION_FILE_PATH
 
-        for c in ConnectionNameEnum:
-            Tortoise.init_models(
-                [
-                    f"ext.ext_tortoise.models.{c.value}",
-                ],
-                c.value,
-            )
+        for connection in ConnectionNameEnum:
+            Tortoise.init_models(_model_modules(connection), connection.value)
 
-        for c in ConnectionNameEnum:
+        for connection in ConnectionNameEnum:
             command = Command(
                 tortoise_config=gen_tortoise_config_dict(),
-                app=c.value,
+                app=connection.value,
                 location=VERSION_FILE_PATH,
             )
             await command.init()
@@ -82,21 +75,15 @@ def gen_tortoise_config_dict() -> dict:
 
     return {
         "connections": {
-            k.value: getattr(local_configs.extensions, f"rdb_{k.value}").config_dict() for k in ConnectionNameEnum
+            connection.value: getattr(local_configs.extensions, f"rdb_{connection.value}").config_dict()
+            for connection in ConnectionNameEnum
         },
         "apps": {
-            k.value: {
-                "models": (
-                    [
-                        f"ext.ext_tortoise.models.{k.value}",
-                        "aerich.models",
-                    ]
-                ),
-                "default_connection": k.value,
+            connection.value: {
+                "models": [*_model_modules(connection), "aerich.models"],
+                "default_connection": connection.value,
             }
-            for k in ConnectionNameEnum
+            for connection in ConnectionNameEnum
         },
-        # "use_tz": True,   # Will Always Use UTC as Default Timezone
         "timezone": local_configs.server.timezone,
-        # 'routers': ['path.router1', 'path.router2'],
     }
