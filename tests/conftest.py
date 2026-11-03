@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from tortoise import Tortoise
 
@@ -8,16 +10,14 @@ from config.main import local_configs
 async def setup_context():
     """Initialize Knowledge Base domain and authorization models."""
 
+    database_url = os.getenv(
+        "TEST_DATABASE_URL",
+        "postgres://postgres:postgres@127.0.0.1:5432/knowledge_base_test",
+    )
     config = {
         "connections": {
-            "knowledge_base": {
-                "engine": "tortoise.backends.sqlite",
-                "credentials": {"file_path": ":memory:"},
-            },
-            "authorization": {
-                "engine": "tortoise.backends.sqlite",
-                "credentials": {"file_path": ":memory:"},
-            },
+            "knowledge_base": database_url,
+            "authorization": database_url,
         },
         "apps": {
             "knowledge_base": {

@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from urllib.parse import unquote
 
 from aerich import Command
-from pydantic import MySQLDsn
+from pydantic import PostgresDsn
 from tortoise import Tortoise
 
 from config.default import RegisterExtensionConfig
@@ -23,8 +23,7 @@ def _model_modules(connection: ConnectionNameEnum) -> list[str]:
 
 
 class TortoiseConfig(RegisterExtensionConfig):
-    url: MySQLDsn
-    echo: bool = False
+    url: PostgresDsn
 
     @property
     def datetime_now(self) -> datetime.datetime:
@@ -33,18 +32,22 @@ class TortoiseConfig(RegisterExtensionConfig):
         return datetime.datetime.now(tz=ZoneInfo(local_configs.server.timezone))
 
     def config_dict(self) -> dict:
+        # PostgresDsn is a MultiHostUrl in Pydantic v2; read connection details
+        # from its first host entry rather than using single-host URL properties.
+        from config.main import local_configs
+
+        host = self.url.hosts()[0]
         return {
-            "engine": "tortoise.backends.mysql",
+            "engine": "tortoise.backends.asyncpg",
             "credentials": {
-                "host": self.url.host,
-                "port": self.url.port,
-                "user": self.url.username,
-                "password": unquote(self.url.password) if self.url.password else "",
-                "database": self.url.path.strip("/"),
-                "echo": self.echo,
+                "host": host.get("host"),
+                "port": host.get("port") or 5432,
+                "user": unquote(host.get("username") or ""),
+                "password": unquote(host.get("password") or ""),
+                "database": unquote(self.url.path.lstrip("/")),
                 "minsize": 1,
                 "maxsize": 10,
-                "pool_recycle": 3600,
+                "server_settings": {"timezone": local_configs.server.timezone},
             },
         }
 
@@ -86,4 +89,5 @@ def gen_tortoise_config_dict() -> dict:
             for connection in ConnectionNameEnum
         },
         "timezone": local_configs.server.timezone,
+        "use_tz": False,
     }

@@ -11,7 +11,6 @@ from tortoise import fields, timezone, validators
 from tortoise.models import Model
 from tortoise.timezone import get_use_tz, get_default_timezone
 from tortoise.exceptions import ConfigurationError
-from tortoise.expressions import RawSQL
 
 
 class StorageMixin(Protocol):
@@ -87,17 +86,8 @@ class TimestampField(fields.DatetimeField):
 
     SQL_TYPE = "BIGINT"
 
-    class _db_mysql(fields.DatetimeField._db_mysql):
-        SQL_TYPE = "BIGINT"
-
     class _db_postgres(fields.DatetimeField._db_postgres):
         SQL_TYPE = "BIGINT"
-
-    class _db_mssql(fields.DatetimeField._db_mssql):
-        SQL_TYPE = "BIGINT"
-
-    class _db_oracle(fields.DatetimeField._db_oracle):
-        SQL_TYPE = "INT"
 
     def __init__(
         self,
@@ -119,13 +109,13 @@ class TimestampField(fields.DatetimeField):
         self.read_only = read_only
         self.timezone = timezone
 
-    def to_db_value(self, value: int | datetime.datetime, instance: "TimestampField") -> str:  # type: ignore
+    def to_db_value(self, value: int | datetime.datetime, instance: "TimestampField") -> int:
         if value is None:
-            return "0"
+            return 0
         if isinstance(value, datetime.datetime):
             value = int(value.timestamp())
         self.validate(value)
-        return str(value)
+        return int(value)
 
     @property
     def constraints(self) -> dict:
@@ -197,36 +187,5 @@ class TimeField(fields.TimeField):
         return value
 
 
-class BinaryUUIDField(fields.Field[uuid.UUID], uuid.UUID):
-    SQL_TYPE = "BINARY(16)"
-
-    class _db_postgres:
-        SQL_TYPE = "UUID"
-
-    def to_db_value(self, value: uuid.UUID | str | bytes | None, instance: type[Model] | Model) -> RawSQL | None:
-        match value:
-            case RawSQL():
-                return value
-            case uuid.UUID():
-                return RawSQL(f"UUID_TO_BIN('{value}')")
-            case str():
-                return RawSQL(f"UUID_TO_BIN('{uuid.UUID(value)}')")
-            case bytes():
-                return RawSQL(f"UUID_TO_BIN('{uuid.UUID(bytes=value)}')")
-            case None:
-                return None
-            case _:
-                raise ConfigurationError("This field only accepts UUID values")
-
-    def to_python_value(self, value: str | None) -> uuid.UUID | None:
-        match value:
-            case uuid.UUID():
-                return value
-            case str():
-                return uuid.UUID(value)
-            case bytes():
-                return uuid.UUID(bytes=value)
-            case None:
-                return None
-            case _:
-                raise ConfigurationError("This field only accepts UUID values")
+class BinaryUUIDField(fields.UUIDField):
+    """Backward-compatible field name; PostgreSQL stores UUID values natively."""

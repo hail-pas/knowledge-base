@@ -150,14 +150,14 @@ Chat must reuse the same Pero UUID and local RBAC boundary; it must not introduc
 
 ## 8. Configuration and deployment
 
-Configure the Knowledge Base database and infrastructure under `extensions`, and configure the external identity endpoint under `user_center`. For upgrades, point `rdb_authorization` to the existing local RBAC database previously configured as `rdb_user_center`; this preserves the existing Role, Permission, Resource and junction-table records:
+Configure the Knowledge Base database and infrastructure under `extensions`, and configure the external identity endpoint under `user_center`. For a new PostgreSQL deployment, create both databases in the same PostgreSQL instance:
 
 ```yaml
 extensions:
   rdb_authorization:
-    url: "mysql+aiomysql://.../existing_local_rbac_db?charset=utf8mb4"
+    url: "postgresql://username:password@127.0.0.1:5432/knowledge_base_authorization"
   rdb_knowledge_base:
-    url: "mysql+aiomysql://.../knowledge_base?charset=utf8mb4"
+    url: "postgresql://username:password@127.0.0.1:5432/knowledge_base"
 
 user_center:
   base_url: "https://pero.example.com"
@@ -165,4 +165,4 @@ user_center:
   timeout_seconds: 5
 ```
 
-Use HTTPS in production. The HTTPX client is managed by the existing extension lifecycle. The authorization migrations preserve existing RBAC tables with `CREATE TABLE IF NOT EXISTS`, add `Role.is_super_admin`, and create the new `user_role` UUID mapping table. Existing Account rows are not loaded or queried; their old role assignments must be remapped to verified Pero UUIDs. The ORM uses two local database connections: `knowledge_base` for knowledge-base domain tables and `authorization` for Role/Permission/Resource/UserRole. Configure `rdb_authorization` to point to the existing local RBAC database (formerly `rdb_user_center`) when preserving existing role/menu data. It never connects to Pero's database.
+Use HTTPS in production. The HTTPX client is managed by the existing extension lifecycle. The migrations create PostgreSQL-native RBAC tables, add `Role.is_super_admin`, and create the `user_role` UUID mapping table. `CREATE TABLE IF NOT EXISTS` only preserves tables already present in PostgreSQL; it does not migrate MySQL data. If the old RBAC data remains in MySQL, export/import the Role, Permission, Resource and junction-table data into PostgreSQL, then remap the old Account role assignments to verified Pero UUIDs. Existing Account rows are not loaded or queried. The ORM uses two PostgreSQL database connections on the same PostgreSQL instance: `knowledge_base` for knowledge-base domain tables and `authorization` for Role/Permission/Resource/UserRole. Both use the asyncpg driver. It never connects to Pero's database.

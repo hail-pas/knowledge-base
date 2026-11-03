@@ -101,7 +101,7 @@ tests/                       单元与集成测试
 
 - Python 3.13+
 - uv
-- MySQL
+- PostgreSQL 16+
 - Redis
 - Celery Broker / Result Backend（异步任务需要）
 - Pero 用户中心（OIDC UserInfo）
@@ -113,9 +113,9 @@ tests/                       单元与集成测试
 ```yaml
 extensions:
   rdb_authorization:
-    url: "mysql+aiomysql://.../旧版用户中心RBAC数据库?charset=utf8mb4"
+    url: "postgresql://username:password@127.0.0.1:5432/knowledge_base_authorization"
   rdb_knowledge_base:
-    url: "mysql+aiomysql://.../knowledge_base?charset=utf8mb4"
+    url: "postgresql://username:password@127.0.0.1:5432/knowledge_base"
 
 user_center:
   base_url: "https://pero.example.com"
@@ -131,6 +131,11 @@ user_center:
 make setup
 make server
 make check
+```
+
+首次运行测试前，请在 PostgreSQL 中创建 `knowledge_base_test` 数据库，并将 `tests/.env.template` 复制为 `tests/.env`，配置 `TEST_DATABASE_URL`。
+
+```bash
 source tests/.env && uv run pytest
 ```
 
@@ -150,7 +155,7 @@ uv run python deploy/bin/authorization/bootstrap_super_admin.py --user-id <PERO_
 
 该脚本只创建本地 Role 和 UserRole 关联，不创建、修改或查询 Pero 用户账户。后续角色分配由本地 `/user-role` 管理接口维护。
 
-升级时，将 `rdb_authorization` 指向原来 `rdb_user_center` 使用的 RBAC 数据库。迁移采用 `CREATE TABLE IF NOT EXISTS` 保留已有 Role、Permission、Resource 及其关联数据；新增 `is_super_admin` 和 `user_role`。原 Account 表不会被 Knowledge Base 加载或读写。旧 Account 到 Pero UUID 的角色映射需要按真实用户 UUID 重新分配。
+首次部署时，需要在同一个 PostgreSQL 实例中创建 `knowledge_base` 和 `knowledge_base_authorization` 两个数据库。迁移脚本会在 PostgreSQL 中创建对应业务表和本地 RBAC 表。若原系统数据仍在 MySQL 中，不能直接将 MySQL 数据库地址配置为 PostgreSQL；需要先将 Role、Permission、Resource 及关联表导入 PostgreSQL，再根据 Pero 的真实 UUID 重建 UserRole 关联。该过程不会迁移或读取旧 Account 用户表。
 
 ## 数据归属约定
 
