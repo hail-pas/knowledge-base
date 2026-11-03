@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-import tempfile
+import asyncio
 import contextlib
+import ipaddress
+import socket
+import tempfile
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
 from config.main import local_configs
 from ext.document_parser.core.engine_base import BaseEngine
@@ -59,12 +63,51 @@ class URLEngine(BaseEngine):
     def can_parse(self, file_path: str) -> bool:
         return file_path.startswith(("http://", "https://"))
 
+    async def _validate_public_url(self, url: str) -> None:
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("Only absolute HTTP(S) URLs are supported")
+        if parsed.username or parsed.password:
+            raise ValueError("URLs containing credentials are not allowed")
+
+        host = parsed.hostname
+        try:
+            addresses = {ipaddress.ip_address(host)}
+        except ValueError:
+            loop = asyncio.get_running_loop()
+            records = await loop.getaddrinfo(
+                host,
+                parsed.port or (443 if parsed.scheme == "https" else 80),
+                type=socket.SOCK_STREAM,
+            )
+            addresses = {ipaddress.ip_address(record[4][0]) for record in records}
+
+        if not addresses or any(not address.is_global for address in addresses):
+            raise ValueError("URL host must resolve exclusively to public IP addresses")
+
+    async def _download_url(self, url: str):
+        client = local_configs.extensions.httpx.instance
+        current_url = url
+        for redirect_count in range(6):
+            await self._validate_public_url(current_url)
+            response = await client.get(
+                current_url,
+                follow_redirects=False,
+                timeout=30.0,
+            )
+            if response.status_code not in {301, 302, 303, 307, 308}:
+                response.raise_for_status()
+                return response
+            location = response.headers.get("location")
+            if not location or redirect_count == 5:
+                raise ValueError("URL redirect limit exceeded or Location header missing")
+            current_url = urljoin(current_url, location)
+        raise ValueError("URL redirect limit exceeded")
+
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
         tmp_path = None
         try:
-            client = local_configs.extensions.httpx.instance
-            response = await client.get(file_path, follow_redirects=True, timeout=30.0)
-            response.raise_for_status()
+            response = await self._download_url(file_path)
 
             content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
             content = response.content
