@@ -122,6 +122,7 @@ class DocumentParseTask(DocumentWorkflowTask):
             # Upload parsed content
             parsed_uri = await upload_parsed_content(
                 document.file_source,
+                document.collection,
                 task_input.document_id,
                 parse_result.content,
                 parse_result.format.value,
@@ -184,7 +185,7 @@ class DocumentParseTask(DocumentWorkflowTask):
 
         # Delete uploaded content
         if document.parsed_uri:
-            await delete_parsed_content(document.file_source, document.parsed_uri)
+            await delete_parsed_content(document.file_source, document.collection, document.parsed_uri)
             document.parsed_uri = None  # type: ignore
             await document.save()
 
