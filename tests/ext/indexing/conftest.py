@@ -11,6 +11,7 @@ from pydantic import Field
 from ext.indexing.base import BaseIndexModel
 from ext.ext_tortoise.enums import IndexingBackendTypeEnum
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
+from tests.helpers import create_indexing_backend_config
 from ext.indexing.types import DenseSearchClause, SparseSearchClause, HybridSearchClause, FilterClause
 
 
@@ -58,7 +59,7 @@ def elasticsearch_config_dict():
 async def elasticsearch_config(elasticsearch_config_dict):
     """创建并保存 Elasticsearch 配置到数据库"""
     await IndexingBackendConfig.filter(name=elasticsearch_config_dict["name"]).delete()
-    config = await IndexingBackendConfig.create(**elasticsearch_config_dict)
+    config = await create_indexing_backend_config(**elasticsearch_config_dict)
     return config
 
 
@@ -93,7 +94,7 @@ def milvus_config_dict():
 async def milvus_config(milvus_config_dict):
     """创建并保存 Milvus 配置到数据库"""
     await IndexingBackendConfig.filter(name=milvus_config_dict["name"]).delete()
-    config = await IndexingBackendConfig.create(**milvus_config_dict)
+    config = await create_indexing_backend_config(**milvus_config_dict)
     return config
 
 
