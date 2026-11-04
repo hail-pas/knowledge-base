@@ -1,6 +1,7 @@
 """Authenticated encryption for credentials persisted by Knowledge Base."""
 
 import base64
+import copy
 import os
 import secrets
 
@@ -70,3 +71,29 @@ def decrypt_secret(value: str | None, *, purpose: str) -> str | None:
         return cipher.decrypt_and_verify(ciphertext, tag).decode("utf-8")
     except (ValueError, UnicodeDecodeError):
         raise ValueError("Unable to decrypt stored secret; verify the encryption key and purpose") from None
+
+
+def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, decrypt: bool = False) -> dict:
+    """Encrypt custom HTTP headers and credential-like query parameters."""
+    result = copy.deepcopy(extra_config or {})
+    transform = decrypt_secret if decrypt else encrypt_secret
+
+    headers = result.get("headers")
+    if isinstance(headers, dict):
+        result["headers"] = {
+            name: (
+                transform(value, purpose=f"{purpose}.headers.{name.lower()}")
+                if value
+                else value
+            )
+            for name, value in headers.items()
+        }
+
+    query_params = result.get("query_params")
+    if isinstance(query_params, dict):
+        sensitive_names = ("key", "token", "secret", "auth", "password", "credential")
+        for name, value in query_params.items():
+            if value and any(part in name.lower() for part in sensitive_names):
+                query_params[name] = transform(value, purpose=f"{purpose}.query_params.{name.lower()}")
+
+    return result
