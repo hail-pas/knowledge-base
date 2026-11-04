@@ -86,6 +86,8 @@ def validate_public_source_uri(file_source, collection, uri: str) -> None:
     source_type = getattr(file_source.type, "value", file_source.type)
     expected_scheme = _PUBLIC_SOURCE_SCHEMES[source_type]
     parsed = urlsplit(uri)
+    if parsed.query or parsed.fragment:
+        raise ApiException("公共文件源 URI 不允许携带 query 或 fragment")
 
     if parsed.scheme:
         if (
