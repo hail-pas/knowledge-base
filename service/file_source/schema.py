@@ -19,6 +19,8 @@ from service.file_source.security import validate_allowed_prefix_template
 class FileSourceCreate(
     pydantic_model_creator(FileSource, name="FileSourceCreate", exclude_readonly=True, exclude=("user_id",)),
 ):
+    access_key: str | None = Field(None, max_length=1024, description="访问密钥")
+    secret_key: str | None = Field(None, max_length=1024, description="密钥")
     allowed_prefix_template: str | None = Field(None, description="公共文件源对象路径隔离模板")
 
     @field_validator("allowed_prefix_template")
