@@ -76,8 +76,12 @@ class DocumentParser:
                 return result
 
             except Exception as e:
-                last_error = e
-                logger.warning(f"引擎 {engine_name} 失败: {e}")
+                if engine_name == "url":
+                    logger.warning(f"远程 URL 解析失败: {type(e).__name__}")
+                    last_error = RuntimeError(f"Remote URL parsing failed: {type(e).__name__}")
+                else:
+                    last_error = e
+                    logger.warning(f"引擎 {engine_name} 失败: {e}")
                 continue
 
         raise Exception(f"所有解析引擎都失败了: {last_error}")

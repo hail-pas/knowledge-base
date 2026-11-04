@@ -260,6 +260,11 @@ async def test_url_engine_downloads_and_delegates_to_real_engine(monkeypatch: py
     )
     monkeypatch.setattr(local_configs.extensions.httpx, "_client", FakeClient())
 
+    async def allow_public_url(self, url: str) -> None:
+        assert url == "https://example.test/test.pdf"
+
+    monkeypatch.setattr(URLEngine, "_validate_public_url", allow_public_url)
+
     result = await URLEngine().parse("https://example.test/test.pdf")
 
     assert result.page_count == 2
