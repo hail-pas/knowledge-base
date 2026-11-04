@@ -462,3 +462,16 @@ def test_create_public_collection_owned_by_authenticated_user(client):
     data = response.json()
     assert data["code"] == 0
     assert data["data"]["is_public"] is True
+
+
+@pytest.mark.asyncio
+async def test_external_collection_authorization_is_encrypted_at_rest():
+    from ext.ext_tortoise.models.knowledge_base import Collection
+
+    collection_id = STATE["external_collection_id"]
+    if not collection_id:
+        pytest.skip("未创建外部 Collection")
+
+    collection = await Collection.get(id=collection_id)
+    authorization = collection.external_config["authorization"]
+    assert authorization.startswith("enc:v1:")
