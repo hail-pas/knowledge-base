@@ -9,11 +9,12 @@ from starlette.middleware.cors import CORSMiddleware
 from api.knowledge_base.factory import knowledge_api
 from config.main import local_configs
 from core.api import ApiApplication, lifespan
+from util.secret import validate_encryption_key
 
 
 class RootApi(ApiApplication):
     async def before_server_start(self) -> None:
-        return
+        validate_encryption_key()
 
 
 description = """
