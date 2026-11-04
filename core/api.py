@@ -13,6 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from config.main import LocalConfig, local_configs
 from core.context import init_ctx, clear_ctx
 from core.response import AesResponse
+from util.secret import validate_encryption_key
 
 
 class ApiApplication(FastAPI):
@@ -98,6 +99,7 @@ async def lifespan(api: ApiApplication) -> AsyncGenerator:
     api.state.initialization_complete = initialization_complete
 
     await set_threadpool_tokens()
+    validate_encryption_key()
 
     try:
         await init_ctx()
