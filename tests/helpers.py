@@ -28,4 +28,8 @@ async def create_embedding_model_config(**data) -> EmbeddingModelConfig:
 
 async def create_indexing_backend_config(**data) -> IndexingBackendConfig:
     data["password"] = encrypt_secret(data.get("password"), purpose="indexing_backend.password")
+    data["extra_config"] = transform_extra_config_secrets(
+        data.get("extra_config"),
+        purpose="indexing_backend.extra_config",
+    )
     return await IndexingBackendConfig.create(**data)
