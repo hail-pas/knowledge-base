@@ -1,11 +1,11 @@
 import os
 
-os.environ.setdefault("KB_SECRET_ENCRYPTION_KEY", "00" * 32)
-
 import pytest
 from tortoise import Tortoise
 
 from config.main import local_configs
+
+os.environ.setdefault("KB_SECRET_ENCRYPTION_KEY", "00" * 32)
 
 
 @pytest.fixture(scope="session", autouse=True)
