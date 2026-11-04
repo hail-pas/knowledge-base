@@ -41,6 +41,8 @@ from service.indexing_backend.schema import (
     IndexingBackendConfigDetail,
     IndexingBackendConfigFilterSchema,
 )
+from util.secret import encrypt_secret
+from service.file_source.security import encrypt_file_source_extra_config
 from ext.ext_tortoise.models.knowledge_base import (
     FileSource,
     LLMModelConfig,
@@ -87,6 +89,9 @@ async def create_file_source(request: Request, schema: FileSourceCreate) -> Resp
 
     data = schema.model_dump(exclude_unset=True)
     data["user_id"] = user.id
+    data["access_key"] = encrypt_secret(data.get("access_key"), purpose="file_source.access_key")
+    data["secret_key"] = encrypt_secret(data.get("secret_key"), purpose="file_source.secret_key")
+    data["extra_config"] = encrypt_file_source_extra_config(source_type, data.get("extra_config"))
 
     obj: FileSource = await create_obj(FileSource, data)  # type: ignore
 
@@ -157,7 +162,9 @@ async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Re
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
-    obj = await create_obj(LLMModelConfig, schema.model_dump(exclude_unset=True))
+    data = schema.model_dump(exclude_unset=True)
+    data["api_key"] = encrypt_secret(data.get("api_key"), purpose="llm_model.api_key")
+    obj = await create_obj(LLMModelConfig, data)
 
     if schema.is_default:  # type: ignore
         await LLMModelConfig.filter(is_default=True, deleted_at=0).exclude(pk=obj.id).update(is_default=False)  # type: ignore
@@ -223,7 +230,9 @@ async def create_indexing_backend(
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
-    obj = await create_obj(IndexingBackendConfig, schema.model_dump(exclude_unset=True))
+    data = schema.model_dump(exclude_unset=True)
+    data["password"] = encrypt_secret(data.get("password"), purpose="indexing_backend.password")
+    obj = await create_obj(IndexingBackendConfig, data)
 
     if obj.is_default:  # type: ignore
         await (
@@ -275,7 +284,9 @@ async def create_embedding_model(
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
-    obj = await create_obj(EmbeddingModelConfig, schema.model_dump(exclude_unset=True))
+    data = schema.model_dump(exclude_unset=True)
+    data["api_key"] = encrypt_secret(data.get("api_key"), purpose="embedding_model.api_key")
+    obj = await create_obj(EmbeddingModelConfig, data)
 
     if obj.is_default:  # type: ignore
         await (
