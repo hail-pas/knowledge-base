@@ -13,7 +13,7 @@ from ext.indexing.types import FilterClause
 from ext.document_parser import DocumentParser
 from ext.indexing.models import CollectionIndexModelHelper
 from ext.workflow.manager import WorkflowManager
-from ext.ext_tortoise.enums import DocumentStatusEnum, WorkflowStatusEnum
+from ext.ext_tortoise.enums import ActivityStatusEnum, DocumentStatusEnum, WorkflowStatusEnum
 from service.workflow.document.utils import (
     delete_parsed_content,
     upload_parsed_content,
@@ -61,13 +61,20 @@ class DocumentWorkflowTask(ActivityTaskTemplate):
     async def _sync_document_status_with_workflow(self) -> None:
         workflow = await WorkflowManager.get_workflow_by_uid(self.activity.workflow_uid)
         workflow_status = WorkflowStatusEnum(workflow.status)
+        activities = await WorkflowManager.get_activities_by_workflow(self.activity.workflow_uid)
+        activity_statuses = [ActivityStatusEnum(activity.status) for activity in activities]
 
         target_status: DocumentStatusEnum
-        if workflow_status == WorkflowStatusEnum.completed:
-            target_status = DocumentStatusEnum.success
-        elif workflow_status in [WorkflowStatusEnum.failed, WorkflowStatusEnum.canceled]:
+        if workflow_status in {WorkflowStatusEnum.failed, WorkflowStatusEnum.canceled} or any(
+            status in {ActivityStatusEnum.failed, ActivityStatusEnum.canceled}
+            for status in activity_statuses
+        ):
             target_status = DocumentStatusEnum.failure
+        elif activity_statuses and all(status == ActivityStatusEnum.completed for status in activity_statuses):
+            target_status = DocumentStatusEnum.success
         else:
+            # In Celery mode, workflow status is updated by the asynchronous handoff
+            # after the activity returns. Activity states are authoritative here.
             target_status = DocumentStatusEnum.processing
 
         await update_document_status(self._get_document_id(), target_status)
