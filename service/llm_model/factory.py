@@ -19,6 +19,7 @@ from service.llm_model.types import (
     AzureOpenAIExtraConfig,
 )
 from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
+from util.secret import decrypt_secret
 
 
 class LLMModelFactory:
@@ -107,9 +108,14 @@ class LLMModelFactory:
     @classmethod
     def _create_instance(cls, config: LLMModelConfig) -> Model:
         settings = cls._build_settings(config)
+        api_key = (
+            decrypt_secret(config.api_key, purpose="llm_model.api_key")
+            if config._saved_in_db
+            else config.api_key
+        )
 
         if config.type == LLMModelTypeEnum.openai:
-            provider = OpenAIProvider(base_url=config.base_url, api_key=config.api_key)
+            provider = OpenAIProvider(base_url=config.base_url, api_key=api_key)
             extra = OpenAIExtraConfig.from_dict(config.extra_config or {})
             return OpenAIChatModel(
                 config.model_name,
