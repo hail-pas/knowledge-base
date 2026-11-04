@@ -28,6 +28,11 @@ def _encryption_key() -> bytes:
     return key
 
 
+def validate_encryption_key() -> None:
+    """Fail fast when the service encryption key is missing or malformed."""
+    _encryption_key()
+
+
 def encrypt_secret(value: str | None, *, purpose: str) -> str | None:
     """Encrypt a secret with AES-256-GCM and bind it to its storage purpose."""
     if value is None or value == "":
