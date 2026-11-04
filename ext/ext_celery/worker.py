@@ -12,7 +12,6 @@ from ext.workflow import demo_tasks  # Import demo tasks
 from ext.workflow import WorkflowScheduler
 from ext.ext_celery.app import celery_app
 from service.workflow.document import tasks
-from util.secret import validate_encryption_key
 
 """
 uv run celery -A ext.ext_celery.worker worker -Q workflow_entry -c 4
@@ -24,9 +23,6 @@ uv run celery -A ext.ext_celery.worker worker -c 8
 _ = WorkflowScheduler
 _ = demo_tasks
 _ = tasks
-
-# Fail at worker startup instead of waiting for the first provider request.
-validate_encryption_key()
 
 
 __all__ = ["celery_app"]
