@@ -1,7 +1,6 @@
 from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
 
-from enhance.epydantic import optional
 from service.collection.schema import CollectionList
 from service.file_source.schema import FileSourceList
 from ext.ext_tortoise.models.knowledge_base import (
@@ -27,14 +26,10 @@ class DocumentDetail(DocumentList):
     file_source: FileSourceList | None = None
 
 
-@optional()
-class DocumentUpdate(
-    pydantic_model_creator(
-        Document,
-        name="DocumentList",
-        include=("display_name", "config_flag", "workflow_template"),
-    ),
-): ...
+class DocumentUpdate(BaseModel):
+    display_name: str | None = None
+    config_flag: int | None = None
+    workflow_template: dict | None = None
 
 
 class DocumentPageList(
@@ -75,16 +70,15 @@ class DocumentChunkCreate(BaseModel):
     manual_add: bool = Field(default=True, description="是否手动添加")
 
 
-@optional()
 class DocumentChunkUpdate(BaseModel):
-    content: str
-    pages: list[int]
-    start: dict
-    end: dict
-    overlap_start: dict | None
-    overlap_end: dict | None
-    metadata: dict
-    manual_add: bool
+    content: str | None = None
+    pages: list[int] | None = None
+    start: dict | None = None
+    end: dict | None = None
+    overlap_start: dict | None = None
+    overlap_end: dict | None = None
+    metadata: dict | None = None
+    manual_add: bool | None = None
 
 
 class DocumentGeneratedFaqCreate(BaseModel):
@@ -95,10 +89,9 @@ class DocumentGeneratedFaqCreate(BaseModel):
     enabled: bool = Field(default=True, description="是否启用")
 
 
-@optional()
 class DocumentGeneratedFaqUpdate(BaseModel):
-    content: str | None
-    question: str
-    answer: str
-    manual_add: bool
-    enabled: bool
+    content: str | None = None
+    question: str | None = None
+    answer: str | None = None
+    manual_add: bool | None = None
+    enabled: bool | None = None

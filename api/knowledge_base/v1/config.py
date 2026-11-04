@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, Request, APIRouter
+from fastapi import Depends, Query, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
 
@@ -123,7 +123,7 @@ async def update_file_source(request: Request, pk: int, schema: FileSourceUpdate
 @router.get("/file-source", summary="文件源列表")
 async def list_file_sources(
     request: Request,
-    filter_: Annotated[FileSourceFilterSchema, Depends(FileSourceFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[FileSourceFilterSchema, Query()]
     pager: CRUDPager = pagination_factory(
         db_model=FileSource,
         search_fields={"name"},
@@ -186,7 +186,7 @@ async def update_llm_model(request: Request, pk: int, schema: LLMModelConfigUpda
 @router.get("/llm-model", summary="LLM模型配置列表")
 async def list_llm_models(
     request: Request,
-    filter_: Annotated[LLMModelConfigFilterSchema, Depends(LLMModelConfigFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[LLMModelConfigFilterSchema, Query()]
     pager: CRUDPager = pagination_factory(
         db_model=LLMModelConfig,
         search_fields={"name"},
@@ -238,7 +238,7 @@ async def create_indexing_backend(
 @router.get("/indexing-backend", summary="索引后端配置列表")
 async def list_indexing_backends(
     request: Request,
-    filter_: Annotated[IndexingBackendConfigFilterSchema, Depends(IndexingBackendConfigFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[IndexingBackendConfigFilterSchema, Query()]
     pager: CRUDPager = pagination_factory(
         db_model=IndexingBackendConfig,
         search_fields={"name"},
@@ -290,7 +290,7 @@ async def create_embedding_model(
 @router.get("/embedding-model", summary="Embedding模型配置列表")
 async def list_embedding_models(
     request: Request,
-    filter_: Annotated[EmbeddingModelConfigFilterSchema, Depends(EmbeddingModelConfigFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[EmbeddingModelConfigFilterSchema, Query()]
     pager: CRUDPager = pagination_factory(
         db_model=EmbeddingModelConfig,
         search_fields={"name"},

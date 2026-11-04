@@ -13,9 +13,7 @@ class ExtensionRegistry(BaseModel):
     """
 
     redis: RedisConfig
-    # relation: TortoiseConfig
-    rdb_authorization: TortoiseConfig
-    rdb_knowledge_base: TortoiseConfig
+    tortoise: TortoiseConfig
     celery: CeleryConfig
     httpx: HttpxConfig = HttpxConfig()
     register_model_provider: ModelProviderConfig = ModelProviderConfig()

@@ -5,7 +5,6 @@ from pydantic import Field, BaseModel, ValidationError as PydanticValidationErro
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
-from enhance.epydantic import as_query, optional
 from ext.ext_tortoise.enums import LLMModelTypeEnum
 from service.llm_model.types import (
     OpenAIExtraConfig,
@@ -53,7 +52,6 @@ class LLMModelConfigCreate(
             raise ApiException("LLM 模型扩展配置格式错误", code=422) from None
 
 
-@optional()
 class LLMModelConfigUpdate(BaseModel):
     is_enabled: bool | None = None
     is_default: bool | None = None
@@ -80,7 +78,6 @@ class LLMModelConfigDetail(LLMModelConfigList):
     pass
 
 
-@as_query
 class LLMModelConfigFilterSchema(BaseModel):
     type: LLMModelTypeEnum | None = Field(None, description="模型类型")
     is_enabled: bool | None = Field(None, description="是否启用")

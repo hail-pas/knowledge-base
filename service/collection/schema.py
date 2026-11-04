@@ -4,7 +4,6 @@ from pydantic import Field, BaseModel, field_validator, model_validator
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
-from enhance.epydantic import as_query, optional
 from service.collection.helper import WorkflowTemplateValidator
 from service.embedding_model.schema import EmbeddingModelConfigList
 from ext.ext_tortoise.models.knowledge_base import Collection
@@ -61,7 +60,6 @@ class CollectionCreate(
         return self
 
 
-@optional()
 class CollectionUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
@@ -153,7 +151,6 @@ class CollectionDetail(CollectionList):
     summary: str = ""
 
 
-@as_query
 class CollectionFilterSchema(BaseModel):
     name__icontains: str | None = Field(None, description="名称包含")
     is_public: bool | None = Field(None, description="是否公开")

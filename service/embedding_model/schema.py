@@ -5,7 +5,6 @@ from pydantic import Field, BaseModel, field_validator
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
-from enhance.epydantic import as_query
 from ext.ext_tortoise.enums import EmbeddingModelTypeEnum
 from ext.embedding.providers.types import OpenAIExtraConfig, AzureOpenAIExtraConfig
 from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
@@ -54,7 +53,6 @@ class EmbeddingModelConfigDetail(EmbeddingModelConfigList):
     pass
 
 
-@as_query
 class EmbeddingModelConfigFilterSchema(BaseModel):
     type: EmbeddingModelTypeEnum | None = Field(None, description="模型类型")
     is_enabled: bool | None = Field(None, description="是否启用")

@@ -5,7 +5,6 @@ from tortoise.expressions import Q
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
-from enhance.epydantic import as_query, optional
 from ext.file_source.types import (
     S3ExtraConfig,
     MinIOExtraConfig,
@@ -60,7 +59,6 @@ class FileSourceCreate(
             raise ApiException("文件源扩展配置格式错误", code=422) from None
 
 
-@optional()
 class FileSourceUpdate(BaseModel):
     # name: str | None = None
     # access_key: str | None = None
@@ -104,7 +102,6 @@ class FileSourceDetail(FileSourceList):
     pass
 
 
-@as_query
 class FileSourceFilterSchema(BaseModel):
     type: FileSourceTypeEnum | None = Field(None, description="文件源类型")
     is_enabled: bool | None = Field(None, description="是否启用")

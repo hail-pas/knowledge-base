@@ -1,11 +1,9 @@
 import enum
-import datetime
 from typing import override
-from zoneinfo import ZoneInfo
 from urllib.parse import unquote
 
 from aerich import Command
-from pydantic import PostgresDsn
+from pydantic import BaseModel, PostgresDsn
 from tortoise import Tortoise
 
 from config.default import RegisterExtensionConfig
@@ -22,20 +20,12 @@ def _model_modules(connection: ConnectionNameEnum) -> list[str]:
     return [f"ext.ext_tortoise.models.{connection.value}"]
 
 
-class TortoiseConfig(RegisterExtensionConfig):
+class DatabaseConnectionConfig(BaseModel):
+    """PostgreSQL connection settings for one Tortoise app."""
+
     url: PostgresDsn
 
-    @property
-    def datetime_now(self) -> datetime.datetime:
-        from config.main import local_configs
-
-        return datetime.datetime.now(tz=ZoneInfo(local_configs.server.timezone))
-
-    def config_dict(self) -> dict:
-        # PostgresDsn is a MultiHostUrl in Pydantic v2; read connection details
-        # from its first host entry rather than using single-host URL properties.
-        from config.main import local_configs
-
+    def config_dict(self, timezone: str) -> dict:
         host = self.url.hosts()[0]
         return {
             "engine": "tortoise.backends.asyncpg",
@@ -47,9 +37,16 @@ class TortoiseConfig(RegisterExtensionConfig):
                 "database": unquote(self.url.path.lstrip("/")),
                 "minsize": 1,
                 "maxsize": 10,
-                "server_settings": {"timezone": local_configs.server.timezone},
+                "server_settings": {"timezone": timezone},
             },
         }
+
+
+class TortoiseConfig(RegisterExtensionConfig):
+    """Initialize both PostgreSQL apps through one extension lifecycle."""
+
+    knowledge_base: DatabaseConnectionConfig
+    authorization: DatabaseConnectionConfig
 
     @override
     async def register(self) -> None:
@@ -66,6 +63,7 @@ class TortoiseConfig(RegisterExtensionConfig):
             )
             await command.init()
             await command.upgrade(run_in_transaction=True)
+
         await Tortoise.init(config=gen_tortoise_config_dict())
 
     @override
@@ -76,9 +74,10 @@ class TortoiseConfig(RegisterExtensionConfig):
 def gen_tortoise_config_dict() -> dict:
     from config.main import local_configs
 
+    tortoise_config = local_configs.extensions.tortoise
     return {
         "connections": {
-            connection.value: getattr(local_configs.extensions, f"rdb_{connection.value}").config_dict()
+            connection.value: getattr(tortoise_config, connection.value).config_dict(local_configs.server.timezone)
             for connection in ConnectionNameEnum
         },
         "apps": {

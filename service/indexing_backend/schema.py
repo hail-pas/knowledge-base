@@ -5,7 +5,6 @@ from pydantic import Field, BaseModel, field_validator
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
-from enhance.epydantic import as_query
 from ext.ext_tortoise.enums import IndexingBackendTypeEnum
 from ext.indexing.providers.types import MilvusConfig, ElasticsearchConfig
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
@@ -60,7 +59,6 @@ class IndexingBackendConfigDetail(IndexingBackendConfigList):
     pass
 
 
-@as_query
 class IndexingBackendConfigFilterSchema(BaseModel):
     type: IndexingBackendTypeEnum | None = Field(None, description="后端类型")
     is_enabled: bool | None = Field(None, description="是否启用")

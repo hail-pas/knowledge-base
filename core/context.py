@@ -4,12 +4,9 @@ from collections.abc import AsyncGenerator
 from config.main import local_configs
 from core.logger import LogLevelEnum, setup_loguru
 from config.default import RegisterExtensionConfig
-from enhance.monkey_patch import patch
 
 
 async def init_ctx() -> None:
-    # patch
-    patch()
     # logger
     setup_loguru(LogLevelEnum.DEBUG if local_configs.project.debug else LogLevelEnum.INFO)
     # extensions

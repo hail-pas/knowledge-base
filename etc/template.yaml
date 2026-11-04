@@ -1,9 +1,9 @@
 extensions:
-  rdb_authorization:
-    url: "postgresql://username:pwd@host:5432/knowledge_base_authorization" # 本地 RBAC 数据库，与 knowledge_base 位于同一 PostgreSQL 实例
-
-  rdb_knowledge_base:
-    url: "postgres://username:pwd@host:5432/knowledge_base"
+  tortoise:
+    authorization:
+      url: "postgresql://username:pwd@host:5432/knowledge_base_authorization" # 本地 RBAC 数据库
+    knowledge_base:
+      url: "postgresql://username:pwd@host:5432/knowledge_base"
 
   redis:
     url: "rediss://username:pwd@host:port/db?ssl_cert_reqs=required&ssl_ca_certs=path/to/file.pem"

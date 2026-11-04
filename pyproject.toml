@@ -49,7 +49,6 @@ members = [
     "ext/indexing",
     "ext/text_chunker",
     "ext/workflow",
-    "agents/chat",
 ]
 
 [tool.uv.sources]

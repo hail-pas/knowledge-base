@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from tortoise.queryset import QuerySet
 from tortoise.transactions import in_transaction
 
@@ -33,7 +33,7 @@ async def _set_role_resources(role: Role, resource_ids: list[int]) -> None:
 @router.get("", summary="角色列表")
 async def get_role_list(
     request: Request,
-    filter_: Annotated[RoleFilterSchema, Depends(RoleFilterSchema.as_query)],
+    filter_: Annotated[RoleFilterSchema, Query()],
     pager: CRUDPager = pagination_factory(
         db_model=Role,
         list_schema=RoleList,

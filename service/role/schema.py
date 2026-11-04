@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field
 from tortoise.contrib.pydantic import pydantic_model_creator
 
-from enhance.epydantic import as_query
 from ext.ext_tortoise.models.authorization import Role
 
 
@@ -44,6 +43,5 @@ class RoleUpdate(BaseModel):
     resources: list[int] | None = None
 
 
-@as_query
 class RoleFilterSchema(BaseModel):
     label: str | None = Field(default=None, description="角色名称")

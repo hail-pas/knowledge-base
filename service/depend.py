@@ -128,6 +128,18 @@ async def ensure_super_admin(user_id: UUID) -> None:
         raise ApiException("只有系统超级管理员可以管理 RBAC 配置", code=403)
 
 
+def required_permission_code(request: Request) -> str:
+    """Build the permission code from the mounted application's local route path.
+
+    Permission synchronization walks each mounted application independently,
+    so runtime checks must use the same route path without the ASGI root_path.
+    """
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", request.url.path)
+    method = "GET" if request.method == "HEAD" else request.method
+    return f"{request.app.code}:{method}:{route_path}"
+
+
 class ApiPermissionCheck:
     """Require a valid Pero identity and a matching locally assigned permission."""
 
@@ -140,10 +152,7 @@ class ApiPermissionCheck:
         if not isinstance(user, CurrentUser):
             user = await require_user(request, credentials)
 
-        route = request.scope.get("route")
-        route_path = getattr(route, "path", request.url.path)
-        root_path = request.scope.get("root_path", "")
-        required_code = f"{request.app.code}:{request.method}:{root_path}{route_path}"
+        required_code = required_permission_code(request)
 
         permissions = await _get_user_permission_codes(user.id)
         if "*" in permissions or f"{request.app.code}:*" in permissions or required_code in permissions:
