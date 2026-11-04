@@ -38,7 +38,10 @@ def test_extra_config_header_and_auth_query_secrets_round_trip(monkeypatch):
         "headers": {"Authorization": "Bearer header-secret", "X-Trace": "trace-id"},
         "query_params": {"api_key": "query-secret", "page": "2"},
         "config": {
-            "proxies": {"https": "http://proxy-user:proxy-pass@proxy.example:8080"},
+            "proxies": {
+                "https": "http://proxy-user:proxy-pass@proxy.example:8080",
+                "http": "http://proxy.example:8080?access_token=proxy-token",
+            },
             "credentials": ["first-secret", "second-secret"],
         },
     }
@@ -49,6 +52,7 @@ def test_extra_config_header_and_auth_query_secrets_round_trip(monkeypatch):
     assert encrypted["query_params"]["api_key"].startswith("enc:v1:")
     assert encrypted["query_params"]["page"] == "2"
     assert encrypted["config"]["proxies"]["https"].startswith("enc:v1:")
+    assert encrypted["config"]["proxies"]["http"].startswith("enc:v1:")
     assert encrypted["config"]["credentials"][0].startswith("enc:v1:")
 
     decrypted = transform_extra_config_secrets(
