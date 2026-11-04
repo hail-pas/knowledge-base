@@ -25,6 +25,7 @@ from ext.ext_tortoise.curd import (
 from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import ActivityStatusEnum, DocumentStatusEnum, WorkflowStatusEnum
 from service.document.helper import DocumentService
+from service.file_source.security import validate_public_source_uri
 from service.document.schema import (
     DocumentList,
     DocumentDetail,
@@ -72,9 +73,12 @@ def get_document_queryset(request: Request, user: CurrentUser) -> QuerySet[Docum
 async def get_document_or_raise(request: Request, pk: int) -> Document:
     user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
-    obj = await queryset.prefetch_related("file_source").get_or_none(pk=pk)
+    obj = await queryset.prefetch_related("file_source", "collection").get_or_none(pk=pk)
     if not obj:
         raise ApiException("Document不存在")
+    validate_public_source_uri(obj.file_source, obj.collection, obj.uri)
+    if obj.parsed_uri:
+        validate_public_source_uri(obj.file_source, obj.collection, obj.parsed_uri)
     return obj
 
 
