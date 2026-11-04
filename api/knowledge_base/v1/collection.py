@@ -143,7 +143,14 @@ async def list_collections(
 async def get_collection_detail(request: Request, pk: int) -> Resp[CollectionDetail]:
     user: CurrentUser = request.scope["user"]
     queryset = get_collection_queryset(request, user)
-    return await detail_view(queryset, pk, CollectionDetail)
+    obj = await queryset.prefetch_related("embedding_model_config").get_or_none(pk=pk)
+    if not obj:
+        raise ApiException("Collection不存在")
+
+    data = CollectionDetail.model_validate(obj)
+    if obj.user_id != user.id:
+        data.workflow_template = {}
+    return Resp(data=data)
 
 
 @router.delete("/{pk}", summary="删除Collection")
