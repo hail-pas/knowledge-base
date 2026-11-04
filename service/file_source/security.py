@@ -49,6 +49,8 @@ def validate_allowed_prefix_template(value: str | None) -> str | None:
 def resolve_public_source_prefix(file_source, collection) -> str | None:
     """Resolve the tenant/collection prefix required for a shared file source."""
     if file_source.user_id is not None:
+        if collection.user_id is None or str(file_source.user_id) != str(collection.user_id):
+            raise ApiException("私有文件源只能用于同一所有者的知识库集合")
         return None
 
     source_type = getattr(file_source.type, "value", file_source.type)
@@ -82,12 +84,12 @@ def build_file_upload_uri(file_source, collection, filename: str) -> str:
 
 def validate_public_source_uri(file_source, collection, uri: str) -> None:
     """Reject shared-source URIs outside the caller's user/collection namespace."""
-    if file_source.user_id is not None:
+    prefix = resolve_public_source_prefix(file_source, collection)
+    if prefix is None:
         return
     if not isinstance(uri, str) or not uri:
         raise ApiException("公共文件源 URI 格式无效")
 
-    prefix = resolve_public_source_prefix(file_source, collection)
     source_type = getattr(file_source.type, "value", file_source.type)
     expected_scheme = _PUBLIC_SOURCE_SCHEMES[source_type]
     try:
