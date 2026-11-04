@@ -8,6 +8,7 @@ import os
 import pytest
 from ext.ext_tortoise.enums import EmbeddingModelTypeEnum
 from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
+from tests.helpers import create_embedding_model_config
 
 
 # 获取环境变量配置
@@ -62,7 +63,7 @@ async def openai_embedding_config(openai_embedding_config_dict):
     await EmbeddingModelConfig.filter(name=openai_embedding_config_dict["name"]).delete()
 
     # 创建新配置
-    config = await EmbeddingModelConfig.create(**openai_embedding_config_dict)
+    config = await create_embedding_model_config(**openai_embedding_config_dict)
     return config
 
 
@@ -80,7 +81,7 @@ async def openai_embedding_config_with_extra(openai_embedding_config_dict):
     await EmbeddingModelConfig.filter(name=extra_dict["name"]).delete()
 
     # 创建新配置
-    config = await EmbeddingModelConfig.create(**extra_dict)
+    config = await create_embedding_model_config(**extra_dict)
     return config
 
 
