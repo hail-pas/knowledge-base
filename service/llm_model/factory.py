@@ -134,8 +134,8 @@ class LLMModelFactory:
             )
 
         if config.type == LLMModelTypeEnum.deepseek:
-            provider = OpenAIProvider(base_url=config.base_url, api_key=config.api_key)
-            extra = DeepSeekExtraConfig.from_dict(config.extra_config or {})
+            provider = OpenAIProvider(base_url=config.base_url, api_key=api_key)
+            extra = DeepSeekExtraConfig.from_dict(extra_config)
             return OpenAIChatModel(
                 config.model_name,
                 provider=provider,
@@ -144,11 +144,11 @@ class LLMModelFactory:
             )
 
         if config.type == LLMModelTypeEnum.azure_openai:
-            extra = AzureOpenAIExtraConfig.from_dict(config.extra_config or {})
+            extra = AzureOpenAIExtraConfig.from_dict(extra_config)
             provider = AzureProvider(
                 azure_endpoint=config.base_url,
                 api_version=extra.api_version,  # type: ignore
-                api_key=config.api_key,
+                api_key=api_key,
             )
             return OpenAIChatModel(
                 extra.deployment_name or config.model_name,  # type: ignore
@@ -158,8 +158,8 @@ class LLMModelFactory:
             )
 
         if config.type == LLMModelTypeEnum.anthropic:
-            extra = AnthropicExtraConfig.from_dict(config.extra_config or {})
-            provider = AnthropicProvider(base_url=config.base_url, api_key=config.api_key)
+            extra = AnthropicExtraConfig.from_dict(extra_config)
+            provider = AnthropicProvider(base_url=config.base_url, api_key=api_key)
             return AnthropicModel(
                 config.model_name,
                 provider=provider,
