@@ -80,3 +80,9 @@ def test_malformed_ciphertext_fails_with_generic_error(monkeypatch):
     for malformed in ("enc:v1:!!!", "enc:v1:💥"):
         with pytest.raises(ValueError, match="Unable to decrypt stored secret"):
             decrypt_secret(malformed, purpose="llm_model.api_key")
+
+
+def test_encryption_key_must_be_exactly_64_hex_characters(monkeypatch):
+    monkeypatch.setenv("KB_SECRET_ENCRYPTION_KEY", "ab" * 32 + " ")
+    with pytest.raises(RuntimeError, match="64 hexadecimal characters"):
+        encrypt_secret("credential", purpose="llm_model.api_key")
