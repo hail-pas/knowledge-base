@@ -126,6 +126,12 @@ async def is_super_admin_user(user_id: UUID) -> bool:
     return await Role.filter(id__in=role_ids, deleted_at=0, is_super_admin=True).exists()
 
 
+async def ensure_super_admin(user_id: UUID) -> None:
+    """Require the root RBAC role for authorization-model mutations."""
+    if not await is_super_admin_user(user_id):
+        raise ApiException("只有系统超级管理员可以管理 RBAC 配置", code=403)
+
+
 class ApiPermissionCheck:
     """Require a valid Pero identity and a matching locally assigned permission."""
 
