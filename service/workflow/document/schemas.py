@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import Field, BaseModel
 
@@ -37,7 +37,7 @@ class DocumentParseTaskInput(DocumentTaskBaseInput):
 
 
 class DocumentSummarizeTaskInput(DocumentTaskBaseInput):
-    """Input parameters for GenerateTagsTask (placeholder)"""
+    """Input parameters for DocumentSummarizeTask (placeholder)"""
 
 
 class DocumentChunkTaskInput(DocumentTaskBaseInput):
