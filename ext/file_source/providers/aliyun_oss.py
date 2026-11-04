@@ -173,12 +173,14 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
         loop = asyncio.get_event_loop()
 
         result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
-
-        while True:
-            chunk = result.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+        try:
+            while True:
+                chunk = await asyncio.to_thread(result.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(result.close)
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""

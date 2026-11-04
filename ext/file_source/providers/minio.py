@@ -109,12 +109,19 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
             return self.client.get_object(self.storage_location or "", key)  # type: ignore[arg-type]
 
         response = await loop.run_in_executor(None, get_object)
-
-        while True:
-            chunk = response.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+        try:
+            while True:
+                chunk = await asyncio.to_thread(response.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            close = getattr(response, "close", None)
+            if close:
+                await asyncio.to_thread(close)
+            release_conn = getattr(response, "release_conn", None)
+            if release_conn:
+                await asyncio.to_thread(release_conn)
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""

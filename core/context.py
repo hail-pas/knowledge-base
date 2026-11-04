@@ -19,6 +19,9 @@ async def init_ctx() -> None:
 
 
 async def clear_ctx() -> None:
+    from ext.file_source.factory import FileSourceFactory
+
+    await FileSourceFactory.close_all()
     for _, ext_conf in local_configs.extensions:  # type: ignore
         if isinstance(ext_conf, RegisterExtensionConfig):
             await ext_conf.unregister()
@@ -27,7 +30,7 @@ async def clear_ctx() -> None:
 @asynccontextmanager
 async def ctx() -> AsyncGenerator:
     await init_ctx()
-
-    yield
-
-    await clear_ctx()
+    try:
+        yield
+    finally:
+        await clear_ctx()

@@ -5,6 +5,7 @@ File Source Factory
 """
 
 import asyncio
+import inspect
 from typing import Any
 
 from loguru import logger
@@ -82,6 +83,24 @@ class FileSourceFactory:
             max_connections=config.max_connections,
             extra_config=config.extra_config or {},
         )
+
+    @classmethod
+    async def close_all(cls) -> None:
+        """Close cached providers and release their network connections."""
+        providers = list(cls._instances.values())
+        cls._instances.clear()
+        cls._locks.clear()
+
+        for provider in providers:
+            close = getattr(provider, "close", None)
+            if close is None:
+                continue
+            try:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                logger.exception("Failed to close cached file source provider")
 
     @classmethod
     def clear_cache(cls, config_id: int | None = None) -> None:

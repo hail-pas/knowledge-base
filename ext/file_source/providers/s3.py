@@ -139,12 +139,15 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
         key = self._extract_key(uri)
         client = await self.client
         response = await client.get_object(Bucket=self.storage_location, Key=key)
-
-        while True:
-            chunk = await response["Body"].read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+        body = response["Body"]
+        try:
+            while True:
+                chunk = await body.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await body.close()
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""
