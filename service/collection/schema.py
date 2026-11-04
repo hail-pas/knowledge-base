@@ -99,6 +99,18 @@ class ExternalConfigPublicSchema(BaseModel):
     endpoint: str
     collection_id: str
 
+    @field_validator("endpoint", mode="before")
+    @classmethod
+    def sanitize_endpoint(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.netloc:
+            return parsed._replace(
+                netloc=parsed.netloc.rsplit("@", 1)[-1],
+                query="",
+                fragment="",
+            ).geturl()
+        return value.split("?", 1)[0].split("#", 1)[0]
+
 
 class CollectionList(
     pydantic_model_creator(
