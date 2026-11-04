@@ -146,6 +146,20 @@ source tests/.env && uv run pytest
 - 知识库 API：`/knowledge/v1/`
 - 健康检查：`/knowledge/health`
 
+### 敏感凭证加密
+
+启动服务前必须配置 `KB_SECRET_ENCRYPTION_KEY`。生成 32 字节密钥：
+
+```bash
+openssl rand -hex 32
+```
+
+将生成的 64 位十六进制字符串注入运行环境（不要提交到 Git），所有 API/Worker 实例必须使用同一密钥。LLM、Embedding、文件源、索引后端凭证以及外部知识库 authorization 使用 AES-256-GCM 加密后写入 PostgreSQL；密文使用字段用途作为认证附加数据。密钥丢失或更换后，已有密文将无法解密。
+
+### 公共文件源隔离
+
+`FileSource.user_id IS NULL` 表示公共文件源。公共文件源仅支持 S3、MinIO 和 OSS，并且必须配置 `allowed_prefix_template`，模板至少包含 `{user_id}` 或 `{collection_id}`，例如 `users/{user_id}/collections/{collection_id}/`。导入 URI、上传、读取和删除都会校验对象键是否处于当前用户/集合的隔离前缀；未配置模板或越权 URI 一律拒绝。用户私有文件源仍由 `FileSource.user_id` 限定所有者。
+
 ## 首个管理员初始化
 
 首次部署时，使用 Pero 中已存在的用户 UUID（OIDC `sub`）初始化 Knowledge Base 本地超级管理员角色：
@@ -156,7 +170,7 @@ uv run python deploy/bin/authorization/bootstrap_super_admin.py --user-id <PERO_
 
 该脚本只创建本地 Role 和 UserRole 关联，不创建、修改或查询 Pero 用户账户。后续角色分配由本地 `/user-role` 管理接口维护。
 
-首次部署时，需要在同一个 PostgreSQL 实例中创建 `knowledge_base` 和 `knowledge_base_authorization` 两个数据库。迁移脚本会在 PostgreSQL 中创建对应业务表和本地 RBAC 表。若原系统数据仍在 MySQL 中，不能直接将 MySQL 数据库地址配置为 PostgreSQL；需要先将 Role、Permission、Resource 及关联表导入 PostgreSQL，再根据 Pero 的真实 UUID 重建 UserRole 关联。该过程不会迁移或读取旧 Account 用户表。
+首次部署时，需要在同一个 PostgreSQL 实例中创建 `knowledge_base` 和 `knowledge_base_authorization` 两个数据库，并分别执行仓库中的 Aerich 迁移。
 
 ## 数据归属约定
 
