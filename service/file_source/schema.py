@@ -21,6 +21,7 @@ class FileSourceCreate(
 ):
     access_key: str | None = Field(None, max_length=1024, description="访问密钥")
     secret_key: str | None = Field(None, max_length=1024, description="密钥")
+
     allowed_prefix_template: str | None = Field(None, description="公共文件源对象路径隔离模板")
 
     @field_validator("allowed_prefix_template")
@@ -82,7 +83,7 @@ class FileSourceCreate(
 
 
 class FileSourceUpdate(BaseModel):
-    allowed_prefix_template: str | None = None
+    allowed_prefix_template: str | None = Field(None, max_length=500)
 
     @field_validator("allowed_prefix_template")
     @classmethod
