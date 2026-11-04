@@ -40,7 +40,7 @@ class IndexingBackendConfigCreate(
 
 
 class IndexingBackendConfigList(
-    pydantic_model_creator(IndexingBackendConfig, name="IndexingBackendConfigList", exclude=("password",)),
+    pydantic_model_creator(IndexingBackendConfig, name="IndexingBackendConfigList", exclude=("password", "extra_config")),
 ):
     pass
 
