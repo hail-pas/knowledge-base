@@ -13,6 +13,18 @@ from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 class IndexingBackendConfigCreate(
     pydantic_model_creator(IndexingBackendConfig, name="IndexingBackendConfigCreate", exclude_readonly=True),
 ):
+    @field_validator("host")
+    @classmethod
+    def reject_embedded_host_credentials(cls, value: str | None) -> str | None:
+        if value:
+            try:
+                parsed = urlsplit(value)
+            except ValueError:
+                raise ApiException("索引后端 host 格式无效") from None
+            if parsed.username or parsed.password or parsed.query or parsed.fragment or "@" in value:
+                raise ApiException("索引后端 host 不允许嵌入凭证、query 或 fragment")
+        return value
+
     @classmethod
     def validate_extra_config_by_type(cls, type_: IndexingBackendTypeEnum, extra_config: dict) -> None:
         if type_ == IndexingBackendTypeEnum.elasticsearch:
