@@ -98,7 +98,7 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
         "private_key",
         "privatekey",
     )
-    sensitive_exact = {"auth", "signature", "sig", "x_api_key"}
+    sensitive_exact = {"auth", "key", "signature", "sig", "x_api_key"}
 
     def visit(value, path: str, *, in_headers: bool = False, sensitive_context: bool = False):
         if isinstance(value, dict):
