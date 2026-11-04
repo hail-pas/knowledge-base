@@ -13,7 +13,7 @@ from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from pydantic import BaseModel
 
 from ext.ext_tortoise.enums import LLMModelTypeEnum
-from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
+from tests.helpers import create_llm_model_config
 from service.llm_model_langchain.model import CapabilityAwareChatModel
 from service.llm_model_langchain.factory import LangChainLLMModelFactory
 
@@ -98,7 +98,7 @@ def _remove_fake_module(name: str) -> None:
 async def test_create_openai_langchain_model(monkeypatch):
     _install_fake_module("langchain_openai", ChatOpenAI=FakeChatModel, AzureChatOpenAI=FakeChatModel)
 
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="langchain-openai",
         type=LLMModelTypeEnum.openai,
         model_name="gpt-4o-mini",
@@ -134,7 +134,7 @@ async def test_create_openai_langchain_model(monkeypatch):
 async def test_create_azure_langchain_model():
     _install_fake_module("langchain_openai", ChatOpenAI=FakeChatModel, AzureChatOpenAI=FakeChatModel)
 
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="langchain-azure",
         type=LLMModelTypeEnum.azure_openai,
         model_name="gpt-4o-mini",
@@ -158,7 +158,7 @@ async def test_create_azure_langchain_model():
 async def test_create_anthropic_langchain_model():
     _install_fake_module("langchain_anthropic", ChatAnthropic=FakeChatModel)
 
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="langchain-anthropic",
         type=LLMModelTypeEnum.anthropic,
         model_name="claude-3-5-haiku-latest",
@@ -180,7 +180,7 @@ async def test_create_anthropic_langchain_model():
 
 async def test_missing_langchain_dependency_raises_clear_error(monkeypatch: pytest.MonkeyPatch):
 
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="langchain-missing",
         type=LLMModelTypeEnum.openai,
         model_name="gpt-4o-mini",
@@ -203,7 +203,7 @@ async def test_missing_langchain_dependency_raises_clear_error(monkeypatch: pyte
 
 
 async def test_reuses_declared_settings_and_capabilities():
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="langchain-capabilities",
         type=LLMModelTypeEnum.openai,
         model_name="gpt-4o-mini",
@@ -240,7 +240,7 @@ async def test_reuses_declared_settings_and_capabilities():
 
 
 async def test_create_langchain_models_with_real_provider_classes():
-    openai_config = await LLMModelConfig.create(
+    openai_config = await create_llm_model_config(
         name="langchain-openai-real",
         type=LLMModelTypeEnum.openai,
         model_name="gpt-4o-mini",
@@ -251,7 +251,7 @@ async def test_create_langchain_models_with_real_provider_classes():
         extra_config={"headers": {"x-test": "1"}},
         is_enabled=True,
     )
-    azure_config = await LLMModelConfig.create(
+    azure_config = await create_llm_model_config(
         name="langchain-azure-real",
         type=LLMModelTypeEnum.azure_openai,
         model_name="gpt-4o-mini",
@@ -260,7 +260,7 @@ async def test_create_langchain_models_with_real_provider_classes():
         extra_config={"deployment_name": "chat-deployment", "api_version": "2024-10-21"},
         is_enabled=True,
     )
-    anthropic_config = await LLMModelConfig.create(
+    anthropic_config = await create_llm_model_config(
         name="langchain-anthropic-real",
         type=LLMModelTypeEnum.anthropic,
         model_name="claude-3-5-haiku-latest",
@@ -286,7 +286,7 @@ async def test_create_langchain_models_with_real_provider_classes():
 async def test_capability_aware_chat_model_proxies_calls_and_capabilities():
     _install_fake_module("langchain_openai", ChatOpenAI=FakeChatModel, AzureChatOpenAI=FakeChatModel)
 
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="langchain-capability-aware",
         type=LLMModelTypeEnum.openai,
         model_name="gpt-4o-mini",
