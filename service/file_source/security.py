@@ -97,7 +97,8 @@ def validate_public_source_uri(file_source, collection, uri: str) -> None:
             or parsed.fragment
         ):
             raise ApiException("公共文件源 URI 与存储桶配置不匹配")
-        key = unquote(parsed.path.lstrip("/"))
+        raw_path = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
+        key = unquote(raw_path)
     else:
         if "://" in uri:
             raise ApiException("公共文件源 URI 格式无效")
