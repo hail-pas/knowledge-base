@@ -115,7 +115,7 @@ class FileSourceFactory:
     @classmethod
     async def create_by_name(cls, name: str, use_cache: bool = True) -> BaseFileSourceProvider:
         """根据配置名称创建实例"""
-        config = await FileSource.filter(name=name, is_enabled=True).first()
+        config = await FileSource.filter(name=name, is_enabled=True, deleted_at=0).first()
         if not config:
             raise ValueError(f"未找到名称为 '{name}' 的已启用 file source 配置")
 
@@ -124,10 +124,10 @@ class FileSourceFactory:
     @classmethod
     async def create_default(cls, use_cache: bool = True) -> BaseFileSourceProvider:
         """创建默认的 file source 实例"""
-        config = await FileSource.filter(is_enabled=True, is_default=True).first()
+        config = await FileSource.filter(is_enabled=True, is_default=True, deleted_at=0).first()
 
         if not config:
-            config = await FileSource.filter(is_enabled=True).first()
+            config = await FileSource.filter(is_enabled=True, deleted_at=0).first()
 
         if not config:
             raise ValueError("未找到可用的 file source 配置")
