@@ -1,7 +1,7 @@
 from typing import Any, cast
 from urllib.parse import urlsplit
 
-from pydantic import Field, BaseModel, field_validator
+from pydantic import Field, BaseModel, ValidationError as PydanticValidationError, field_validator
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
@@ -27,10 +27,13 @@ class EmbeddingModelConfigCreate(
 
     def validate_extra_config(self) -> None:
         config = cast(Any, self)
-        self.validate_extra_config_by_type(
-            cast(EmbeddingModelTypeEnum, config.type),
-            cast(dict[str, Any], config.extra_config),
-        )
+        try:
+            self.validate_extra_config_by_type(
+                cast(EmbeddingModelTypeEnum, config.type),
+                cast(dict[str, Any], config.extra_config),
+            )
+        except PydanticValidationError:
+            raise ApiException("Embedding 模型扩展配置格式错误", code=422) from None
 
 
 class EmbeddingModelConfigList(
