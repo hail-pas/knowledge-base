@@ -114,6 +114,9 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
         if isinstance(value, list):
             return [visit(item, f"{path}.{index}", in_headers=in_headers) for index, item in enumerate(value)]
 
+        if isinstance(value, str) and value.startswith(_PREFIX):
+            return decrypt_secret(value, purpose=path) if decrypt else encrypt_secret(value, purpose=path)
+
         if isinstance(value, str) and value and "://" in value:
             from urllib.parse import urlsplit
 
