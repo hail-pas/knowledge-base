@@ -10,6 +10,7 @@ from loguru import logger
 from core.exception import ApiException
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.file_source.factory import FileSourceFactory
+from service.file_source.security import build_file_upload_uri, validate_public_source_uri
 from service.collection.helper import CollectionService
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
@@ -49,7 +50,14 @@ class DocumentService(CollectionService):
             if not document.parsed_uri and not managed_upload and not image_uris:
                 continue
 
-            provider = await FileSourceFactory.create(await document.file_source)
+            file_source = await document.file_source
+            validate_public_source_uri(file_source, self.collection, document.uri)
+            if document.parsed_uri:
+                validate_public_source_uri(file_source, self.collection, document.parsed_uri)
+            for image_uri in image_uris:
+                validate_public_source_uri(file_source, self.collection, image_uri)
+
+            provider = await FileSourceFactory.create(file_source)
             if document.parsed_uri:
                 await provider.delete_file(document.parsed_uri)
             if managed_upload:
@@ -90,7 +98,7 @@ class DocumentService(CollectionService):
 
         # 2. 生成唯一 URI
         unique_filename = f"{uuid.uuid4()}_{file_name}"
-        uri = f"{self.collection.id}/{unique_filename}"
+        uri = build_file_upload_uri(file_source, self.collection, unique_filename)
 
         # 3. Use a collision-resistant fingerprint for source version tracking.
         content_hash = hashlib.sha256(file_content).hexdigest()
@@ -145,6 +153,7 @@ class DocumentService(CollectionService):
         Returns:
             创建的 Document 实例
         """
+        validate_public_source_uri(file_source, self.collection, uri)
         is_http_url = uri.lower().startswith(("http://", "https://"))
 
         if is_http_url:
