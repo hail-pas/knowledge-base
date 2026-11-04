@@ -353,10 +353,8 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             bulk_data.append(op)
             bulk_data.append({"doc": doc_to_update})
         response = await self._client.bulk(operations=bulk_data, refresh=self.extra_config.auto_flush)
-        return []
-
         self._log_bulk_errors(response, "update")
-        return None
+        return []
 
     async def bulk_upsert(
         self,
