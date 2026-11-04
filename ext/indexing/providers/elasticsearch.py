@@ -432,7 +432,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         query = self._convert_filter(model_class, filter_clause)
 
         if not model_class.Meta.partition_key:
-            await self._client.delete_by_query(index=index_name, query=query)
+            await self._client.delete_by_query(
+                index=index_name,
+                query=query,
+                ignore_unavailable=True,
+                allow_no_indices=True,
+            )
             return
 
         # 如果有 partition_key，必须从 filter_clause 中获取 routing 值
@@ -448,6 +453,8 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             query=query,
             routing=routing_value,
             refresh=self.extra_config.auto_flush,
+            ignore_unavailable=True,
+            allow_no_indices=True,
         )
 
     async def count(self, model_class: type[BaseIndexModel], filter_clause: FilterClause | None) -> int:
