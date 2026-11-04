@@ -287,10 +287,9 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 if routing_value:
                     op["index"]["routing"] = routing_value  # type: ignore
 
-            # 如果 auto_generate_id=True，从文档中移除空的 id 字段
+            # The ID is stored in Elasticsearch _id, not as a document field.
             doc_to_insert = doc.copy()
-            if model_class.Meta.auto_generate_id:
-                doc_to_insert.pop("id", None)
+            doc_to_insert.pop("id", None)
 
             bulk_data.append(op)
             bulk_data.append(doc_to_insert)
@@ -348,8 +347,8 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 if routing_value:
                     op["update"]["routing"] = routing_value
 
-            # 移除 doc 中的空 id 字段，避免覆盖 ES 的 _id
-            doc_to_update = {k: v for k, v in doc.items() if k != "id" or v}
+            # The ID is stored in Elasticsearch _id, not in the document body.
+            doc_to_update = {k: v for k, v in doc.items() if k != "id"}
             bulk_data.append(op)
             bulk_data.append({"doc": doc_to_update})
         response = await self._client.bulk(operations=bulk_data, refresh=self.extra_config.auto_flush)
@@ -381,11 +380,13 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 if routing_value:
                     op["index"]["routing"] = routing_value
 
+            doc_to_upsert = doc.copy()
+            doc_to_upsert.pop("id", None)
             bulk_data.append(op)
-            bulk_data.append(doc)
+            bulk_data.append(doc_to_upsert)
 
         response = await self._client.bulk(operations=bulk_data, refresh=self.extra_config.auto_flush)
-
+        self._log_bulk_errors(response, "upsert")
         return self._extract_bulk_results(response, documents, "index")
 
     async def delete(self, model_class: type[BaseIndexModel], ids: list[str]) -> None:  # type: ignore
