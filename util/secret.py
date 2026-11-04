@@ -136,11 +136,16 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
             return transform(value, purpose=path)
 
         if isinstance(value, str) and value and "://" in value:
-            from urllib.parse import urlsplit
+            from urllib.parse import parse_qsl, urlsplit
 
             try:
                 parsed = urlsplit(value)
-                if parsed.username or parsed.password:
+                query_has_secret = any(
+                    key.lower().replace("-", "_") in sensitive_exact
+                    or any(part in key.lower().replace("-", "_") for part in sensitive_parts)
+                    for key, _ in parse_qsl(parsed.query, keep_blank_values=True)
+                )
+                if parsed.username or parsed.password or query_has_secret:
                     return transform(value, purpose=path)
             except ValueError:
                 pass
