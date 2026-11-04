@@ -14,7 +14,6 @@ from ext.ext_tortoise.curd import (
     list_view,
     create_obj,
     update_obj,
-    detail_view,
     pagination_factory,
 )
 from service.document.helper import DocumentService
