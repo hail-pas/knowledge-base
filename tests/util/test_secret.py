@@ -61,3 +61,12 @@ def test_extra_config_header_and_auth_query_secrets_round_trip(monkeypatch):
         decrypt=True,
     )
     assert decrypted == original
+
+
+def test_maximum_plaintext_credential_fits_encrypted_database_column(monkeypatch):
+    monkeypatch.setenv("KB_SECRET_ENCRYPTION_KEY", "ef" * 32)
+    encrypted = encrypt_secret("x" * 1024, purpose="llm_model.api_key")
+
+    assert encrypted is not None
+    assert len(encrypted) < 2048
+    assert decrypt_secret(encrypted, purpose="llm_model.api_key") == "x" * 1024
