@@ -15,6 +15,9 @@ router = APIRouter(dependencies=[Depends(api_permission_check)])
 
 @router.get("/{user_id}/roles", summary="查询用户角色分配")
 async def get_user_roles(request: Request, user_id: UUID) -> Resp[dict]:
+    current_user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(current_user.id)
+
     assignments = await UserRole.filter(user_id=user_id, deleted_at=0).prefetch_related("role")
     roles = [
         RoleList.model_validate(item.role).model_dump()
