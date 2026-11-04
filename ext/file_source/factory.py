@@ -13,6 +13,8 @@ from loguru import logger
 from ext.file_source.base import BaseFileSourceProvider
 from ext.ext_tortoise.enums import FileSourceTypeEnum
 from ext.ext_tortoise.models.knowledge_base import FileSource
+from service.file_source.security import decrypt_file_source_extra_config
+from util.secret import decrypt_secret
 
 
 class FileSourceFactory:
@@ -69,9 +71,19 @@ class FileSourceFactory:
         config: FileSource,
     ) -> BaseFileSourceProvider:
         """创建 provider 实例的内部方法"""
+        is_persisted = config._saved_in_db
+        source_type = getattr(config.type, "value", config.type)
         return provider_cls(
-            access_key=config.access_key,
-            secret_key=config.secret_key,
+            access_key=(
+                decrypt_secret(config.access_key, purpose="file_source.access_key")
+                if is_persisted
+                else config.access_key
+            ),
+            secret_key=(
+                decrypt_secret(config.secret_key, purpose="file_source.secret_key")
+                if is_persisted
+                else config.secret_key
+            ),
             endpoint=config.endpoint,
             region=config.region,
             storage_location=config.storage_location,
@@ -81,7 +93,11 @@ class FileSourceFactory:
             max_retries=config.max_retries,
             concurrent_limit=config.concurrent_limit,
             max_connections=config.max_connections,
-            extra_config=config.extra_config or {},
+            extra_config=(
+                decrypt_file_source_extra_config(source_type, config.extra_config)
+                if is_persisted
+                else config.extra_config or {}
+            ),
         )
 
     @classmethod
