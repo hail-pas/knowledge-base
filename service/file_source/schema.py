@@ -13,11 +13,19 @@ from ext.file_source.types import (
 )
 from ext.ext_tortoise.enums import FileSourceTypeEnum
 from ext.ext_tortoise.models.knowledge_base import FileSource
+from service.file_source.security import validate_allowed_prefix_template
 
 
 class FileSourceCreate(
     pydantic_model_creator(FileSource, name="FileSourceCreate", exclude_readonly=True, exclude=("user_id",)),
 ):
+    allowed_prefix_template: str | None = Field(None, description="公共文件源对象路径隔离模板")
+
+    @field_validator("allowed_prefix_template")
+    @classmethod
+    def validate_allowed_prefix(cls, value: str | None) -> str | None:
+        return validate_allowed_prefix_template(value)
+
     @classmethod
     def validate_extra_config_by_type(cls, type_: FileSourceTypeEnum, extra_config: dict) -> None:
         if type_ == FileSourceTypeEnum.local_file:
@@ -60,6 +68,13 @@ class FileSourceCreate(
 
 
 class FileSourceUpdate(BaseModel):
+    allowed_prefix_template: str | None = None
+
+    @field_validator("allowed_prefix_template")
+    @classmethod
+    def validate_allowed_prefix(cls, value: str | None) -> str | None:
+        return validate_allowed_prefix_template(value)
+
     # name: str | None = None
     # access_key: str | None = None
     # secret_key: str | None = None
