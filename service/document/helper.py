@@ -92,15 +92,15 @@ class DocumentService(CollectionService):
         unique_filename = f"{uuid.uuid4()}_{file_name}"
         uri = f"{self.collection.id}/{unique_filename}"
 
-        # 3. 计算 MD5 作为 source_version_key
-        md5_hash = hashlib.md5(file_content).hexdigest()
+        # 3. Use a collision-resistant fingerprint for source version tracking.
+        content_hash = hashlib.sha256(file_content).hexdigest()
 
         # 4. 上传文件到 file_source
         provider = await FileSourceFactory.create(file_source)
         content_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
         metadata = await provider.upload_file(uri, file_content, content_type)
-        logger.info(f"Uploaded file to {metadata.uri}, size={file_size}, md5={md5_hash}")
+        logger.info(f"Uploaded file to {metadata.uri}, size={file_size}, sha256={content_hash}")
 
         # 5. 创建 Document 记录
         document = await Document.create(
@@ -113,7 +113,7 @@ class DocumentService(CollectionService):
             extension=extension,
             file_size=file_size,
             source_last_modified=None,
-            source_version_key=md5_hash,
+            source_version_key=content_hash,
             is_deleted_in_source=False,
             source_meta={"_knowledge_base": {"managed_upload": True}},
             short_summary=None,
@@ -145,7 +145,7 @@ class DocumentService(CollectionService):
         Returns:
             创建的 Document 实例
         """
-        is_http_url = uri.startswith(("http://", "https://"))
+        is_http_url = uri.lower().startswith(("http://", "https://"))
 
         if is_http_url:
             # HTTP URL: 跳过 metadata 获取，使用默认值

@@ -90,7 +90,7 @@ class DocumentParseTask(DocumentWorkflowTask):
 
         temp_file_path: str | None = None
         try:
-            if document.uri.startswith(("http://", "https://")):
+            if document.uri.lower().startswith(("http://", "https://")):
                 file_path = document.uri
             else:
                 temp_fd, temp_file_path = tempfile.mkstemp(suffix=document.extension)

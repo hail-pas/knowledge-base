@@ -61,7 +61,7 @@ class URLEngine(BaseEngine):
     }
 
     def can_parse(self, file_path: str) -> bool:
-        return file_path.startswith(("http://", "https://"))
+        return file_path.lower().startswith(("http://", "https://"))
 
     async def _validate_public_url(self, url: str) -> None:
         parsed = urlsplit(url)
