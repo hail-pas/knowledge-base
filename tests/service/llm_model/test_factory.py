@@ -3,12 +3,12 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from ext.ext_tortoise.enums import LLMModelTypeEnum
-from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
+from tests.helpers import create_llm_model_config
 from service.llm_model.factory import LLMModelFactory
 
 
 async def test_create_openai_model_from_db_config():
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="factory-openai",
         type=LLMModelTypeEnum.openai,
         model_name="gpt-4o-mini",
@@ -45,7 +45,7 @@ async def test_create_openai_model_from_db_config():
 
 
 async def test_create_azure_model_uses_deployment_name():
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="factory-azure",
         type=LLMModelTypeEnum.azure_openai,
         model_name="gpt-4o-mini",
@@ -75,7 +75,7 @@ async def test_create_azure_model_uses_deployment_name():
 
 
 async def test_create_anthropic_model_from_db_config():
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="factory-anthropic",
         type=LLMModelTypeEnum.anthropic,
         model_name="claude-3-5-haiku-latest",
@@ -101,7 +101,7 @@ async def test_create_anthropic_model_from_db_config():
 
 
 async def test_factory_uses_cache_for_same_saved_config():
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="factory-cache",
         type=LLMModelTypeEnum.deepseek,
         model_name="deepseek-chat",
@@ -120,7 +120,7 @@ async def test_factory_uses_cache_for_same_saved_config():
 
 
 async def test_factory_reuses_pydantic_ai_settings_and_profile():
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         name="factory-capabilities",
         type=LLMModelTypeEnum.openai,
         model_name="gpt-4o-mini",
