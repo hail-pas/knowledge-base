@@ -19,6 +19,7 @@ class LLMModelConfigCreate(
     pydantic_model_creator(LLMModelConfig, name="LLMModelConfigCreate", exclude_readonly=True),
 ):
     api_key: str | None = Field(None, max_length=1024, description="API 密钥")
+
     @field_validator("base_url")
     @classmethod
     def reject_embedded_base_url_credentials(cls, value: str | None) -> str | None:
