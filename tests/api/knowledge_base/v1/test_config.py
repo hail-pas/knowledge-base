@@ -48,6 +48,7 @@ def test_create_file_source_s3(client):
             "region": "us-east-1",
             "extra_config": {
                 "signature_version": "s3v4",
+                "session_token": "test-session-token",
             },
         },
     )
@@ -282,6 +283,7 @@ async def test_credentials_are_encrypted_at_rest():
     file_source = await FileSource.get(name="test-s3")
     assert file_source.access_key.startswith("enc:v1:")
     assert file_source.secret_key.startswith("enc:v1:")
+    assert file_source.extra_config["session_token"].startswith("enc:v1:")
 
     llm_config = await LLMModelConfig.get(name="test-openai")
     assert llm_config.api_key.startswith("enc:v1:")
