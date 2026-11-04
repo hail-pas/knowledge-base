@@ -529,8 +529,6 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         """批量插入或更新（upsert）"""
         if not documents:
             return None
-        import time
-
         for doc in documents:
             if not doc.get("id"):
                 doc["id"] = model_class._get_id_default()
