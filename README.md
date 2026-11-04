@@ -112,10 +112,11 @@ tests/                       单元与集成测试
 
 ```yaml
 extensions:
-  rdb_authorization:
-    url: "postgresql://username:password@127.0.0.1:5432/knowledge_base_authorization"
-  rdb_knowledge_base:
-    url: "postgresql://username:password@127.0.0.1:5432/knowledge_base"
+  tortoise:
+    authorization:
+      url: "postgresql://username:password@127.0.0.1:5432/knowledge_base_authorization"
+    knowledge_base:
+      url: "postgresql://username:password@127.0.0.1:5432/knowledge_base"
 
 user_center:
   base_url: "https://pero.example.com"
