@@ -7,7 +7,7 @@ from tortoise.expressions import Q
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import CurrentUser, api_permission_check, is_super_admin_user
+from service.depend import CurrentUser, api_permission_check, ensure_super_admin, is_super_admin_user
 from ext.ext_tortoise.curd import (
     list_view,
     create_obj,
@@ -151,6 +151,9 @@ def get_llm_config_queryset(request: Request) -> QuerySet[LLMModelConfig]:
 
 @router.post("/llm-model", summary="创建LLM模型配置")
 async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Resp[LLMModelConfigList]:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
@@ -164,6 +167,9 @@ async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Re
 
 @router.put("/llm-model/{pk}", summary="更新LLM模型配置")
 async def update_llm_model(request: Request, pk: int, schema: LLMModelConfigUpdate) -> Resp:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     queryset = get_llm_config_queryset(request)
 
     obj = await queryset.get_or_none(pk=pk)
@@ -211,6 +217,9 @@ async def create_indexing_backend(
     request: Request,
     schema: IndexingBackendConfigCreate,
 ) -> Resp[IndexingBackendConfigList]:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
@@ -260,6 +269,9 @@ async def create_embedding_model(
     request: Request,
     schema: EmbeddingModelConfigCreate,
 ) -> Resp[EmbeddingModelConfigList]:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
