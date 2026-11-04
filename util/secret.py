@@ -94,28 +94,46 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
     )
     sensitive_exact = {"auth", "signature", "sig", "x_api_key"}
 
-    def visit(value, path: str, *, in_headers: bool = False):
+    def visit(value, path: str, *, in_headers: bool = False, sensitive_context: bool = False):
         if isinstance(value, dict):
             result = {}
             for key, item in value.items():
                 normalized_key = str(key).lower().replace("-", "_")
                 child_path = f"{path}.{normalized_key}"
-                is_header_value = in_headers or path.rsplit(".", 1)[-1] == "headers"
                 is_sensitive = (
                     normalized_key in sensitive_exact
                     or any(part in normalized_key for part in sensitive_parts)
                 )
-                if isinstance(item, str) and item and (is_sensitive or is_header_value):
+                child_in_headers = in_headers or normalized_key == "headers"
+                child_sensitive = sensitive_context or in_headers or is_sensitive
+
+                if isinstance(item, str) and item and child_sensitive:
                     result[key] = transform(item, purpose=child_path)
                 else:
-                    result[key] = visit(item, child_path)
+                    result[key] = visit(
+                        item,
+                        child_path,
+                        in_headers=child_in_headers,
+                        sensitive_context=child_sensitive,
+                    )
             return result
 
         if isinstance(value, list):
-            return [visit(item, f"{path}.{index}", in_headers=in_headers) for index, item in enumerate(value)]
+            return [
+                visit(
+                    item,
+                    f"{path}.{index}",
+                    in_headers=in_headers,
+                    sensitive_context=sensitive_context,
+                )
+                for index, item in enumerate(value)
+            ]
 
         if isinstance(value, str) and value.startswith(_PREFIX):
             return decrypt_secret(value, purpose=path) if decrypt else encrypt_secret(value, purpose=path)
+
+        if isinstance(value, str) and value and sensitive_context:
+            return transform(value, purpose=path)
 
         if isinstance(value, str) and value and "://" in value:
             from urllib.parse import urlsplit
