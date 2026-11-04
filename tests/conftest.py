@@ -5,6 +5,8 @@ from tortoise import Tortoise
 
 from config.main import local_configs
 
+
+# Deterministic test-only key; production must provide its own secret.
 os.environ.setdefault("KB_SECRET_ENCRYPTION_KEY", "00" * 32)
 
 
