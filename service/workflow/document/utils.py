@@ -7,6 +7,7 @@ from ext.document_parser.core.parse_result import OutputFormat
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
     FileSource,
+    Collection,
     DocumentChunk,
     DocumentPages,
 )
