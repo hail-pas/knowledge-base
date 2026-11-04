@@ -78,3 +78,19 @@ def test_shared_source_rejects_query_fragment_and_malformed_uris():
     ):
         with pytest.raises(ApiException):
             validate_public_source_uri(source, collection, uri)
+
+
+def test_private_file_source_must_match_collection_owner():
+    collection = _collection()
+    source = SimpleNamespace(
+        user_id=collection.user_id,
+        type=SimpleNamespace(value="local_file"),
+        storage_location="/tmp/private",
+        allowed_prefix_template=None,
+    )
+    assert resolve_public_source_prefix(source, collection) is None
+    validate_public_source_uri(source, collection, "any-private-uri")
+
+    source.user_id = "00000000-0000-0000-0000-000000000002"
+    with pytest.raises(ApiException, match="同一所有者"):
+        validate_public_source_uri(source, collection, "any-private-uri")
