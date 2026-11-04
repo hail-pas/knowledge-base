@@ -1,4 +1,3 @@
-from typing import Self
 
 from pydantic import Field, BaseModel
 from tortoise.contrib.pydantic import pydantic_model_creator
@@ -57,7 +56,7 @@ class LLMModelConfigUpdate(BaseModel):
 
 
 class LLMModelConfigList(
-    pydantic_model_creator(LLMModelConfig, name="LLMModelConfigList", exclude=("api_key",)),
+    pydantic_model_creator(LLMModelConfig, name="LLMModelConfigList", exclude=("api_key", "extra_config")),
 ):
     pass
 

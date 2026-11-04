@@ -34,7 +34,7 @@ class EmbeddingModelConfigCreate(
 
 
 class EmbeddingModelConfigList(
-    pydantic_model_creator(EmbeddingModelConfig, name="EmbeddingModelConfigList", exclude=("api_key",)),
+    pydantic_model_creator(EmbeddingModelConfig, name="EmbeddingModelConfigList", exclude=("api_key", "extra_config")),
 ):
     pass
 

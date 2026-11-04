@@ -1,7 +1,4 @@
-from typing import Optional
-
 from pydantic import Field, BaseModel, field_validator, model_validator
-from _pytest.python_api import raises
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
@@ -33,7 +30,9 @@ class CollectionCreate(
 
     @field_validator("external_config", mode="before")
     @classmethod
-    def validate_external_config(cls, v: dict) -> dict:
+    def validate_external_config(cls, v: dict | None) -> dict | None:
+        if v is None:
+            return None
         try:
             ExternalConfigSchema(**v)
         except Exception as e:

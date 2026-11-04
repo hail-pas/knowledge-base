@@ -1,5 +1,3 @@
-from typing import Self
-
 from pydantic import Field, BaseModel
 from tortoise.expressions import Q
 from tortoise.contrib.pydantic import pydantic_model_creator
