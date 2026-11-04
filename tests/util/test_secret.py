@@ -1,6 +1,6 @@
 import pytest
 
-from util.secret import decrypt_secret, encrypt_secret
+from util.secret import decrypt_secret, encrypt_secret, transform_extra_config_secrets
 
 
 def test_secret_round_trip_and_idempotent_encryption(monkeypatch):
@@ -30,3 +30,24 @@ def test_plaintext_and_missing_encryption_key_are_rejected(monkeypatch):
     monkeypatch.delenv("KB_SECRET_ENCRYPTION_KEY", raising=False)
     with pytest.raises(RuntimeError, match="KB_SECRET_ENCRYPTION_KEY"):
         encrypt_secret("provider-api-key", purpose="llm_model.api_key")
+
+
+def test_extra_config_header_and_auth_query_secrets_round_trip(monkeypatch):
+    monkeypatch.setenv("KB_SECRET_ENCRYPTION_KEY", "cd" * 32)
+    original = {
+        "headers": {"Authorization": "Bearer header-secret", "X-Trace": "trace-id"},
+        "query_params": {"api_key": "query-secret", "page": "2"},
+    }
+
+    encrypted = transform_extra_config_secrets(original, purpose="embedding_model.extra_config")
+    assert encrypted["headers"]["Authorization"].startswith("enc:v1:")
+    assert encrypted["headers"]["X-Trace"].startswith("enc:v1:")
+    assert encrypted["query_params"]["api_key"].startswith("enc:v1:")
+    assert encrypted["query_params"]["page"] == "2"
+
+    decrypted = transform_extra_config_secrets(
+        encrypted,
+        purpose="embedding_model.extra_config",
+        decrypt=True,
+    )
+    assert decrypted == original
