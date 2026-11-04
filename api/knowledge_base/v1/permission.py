@@ -3,7 +3,7 @@ from tortoise.expressions import Q
 
 from core.types import ApiException
 from core.response import Resp
-from service.depend import api_permission_check
+from service.depend import api_permission_check, ensure_super_admin
 from service.permission.schema import PermissionList, PermissionDeprecationUpdate
 from ext.ext_tortoise.models.authorization import Permission
 
@@ -32,6 +32,9 @@ async def update_permission_deprecation(
     request: Request,
     schema: PermissionDeprecationUpdate,
 ) -> Resp:
+    user = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     permission = await Permission.get_or_none(code=schema.code)
     if not permission:
         raise ApiException("权限不存在", code=404)
