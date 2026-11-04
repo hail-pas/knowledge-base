@@ -5,19 +5,15 @@ permission and resource definitions plus UUID-to-role assignments.
 """
 
 from dataclasses import dataclass
-import hmac
-import time
 from typing import Annotated, Any
 from uuid import UUID
 
 import httpx
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config.main import local_configs
 from core.types import ApiException
-from util.encrypt import HashUtil
-from ext.ext_redis.keys import RedisCacheKey
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -157,48 +153,3 @@ class ApiPermissionCheck:
 
 
 api_permission_check = ApiPermissionCheck()
-
-
-
-class ApiKeyPermissionCheck:
-    """Authenticate an external API key and check its independent API allowlist."""
-
-    async def __call__(
-        self,
-        request: Request,
-        x_api_key: str = Header(description="ApiKey"),
-        x_timestamp: int = Header(description="请求时间戳，秒级，允许误差±30秒"),
-        x_sign: str = Header(description="签名：HMAC-SHA256(secret_key, api_key&timestamp)"),
-    ) -> bool:
-        if abs(int(time.time()) - int(x_timestamp)) > 30:
-            raise ApiException("请求时间戳过期", code=401)
-
-        secret_key_name = RedisCacheKey.ApiSecretKey.value.format(api_key=x_api_key)
-        permission_key_name = RedisCacheKey.ApiKeyPermissionSet.value.format(api_key=x_api_key)
-        async with local_configs.extensions.redis.instance as redis, redis.pipeline() as pipe:
-            pipe.get(secret_key_name)
-            pipe.smismember(
-                name=permission_key_name,
-                values=[
-                    f"{request.app.code}:*",
-                    f'{request.app.code}:{request.method}:{request.scope["root_path"]}{request.scope["route"].path}',
-                ],
-            )
-            secret_key, allowed = await pipe.execute()
-
-        if not secret_key:
-            raise ApiException("无效的 ApiKey", code=401)
-        expected_sign = HashUtil.hmac_sha256_encode(
-            k=secret_key,
-            s=f"{x_api_key}&{x_timestamp}",
-        )
-        if not hmac.compare_digest(expected_sign, x_sign):
-            raise ApiException("签名错误", code=401)
-        if not any(allowed):
-            raise ApiException("禁止访问", code=403)
-
-        request.scope["scene"] = "ApiCall"
-        return True
-
-
-external_api_key_permission_check = ApiKeyPermissionCheck()
