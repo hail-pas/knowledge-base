@@ -96,9 +96,32 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
 
     query_params = result.get("query_params")
     if isinstance(query_params, dict):
-        sensitive_names = ("key", "token", "secret", "auth", "password", "credential")
+        sensitive_names = {
+            "key",
+            "api_key",
+            "apikey",
+            "access_key",
+            "secret_key",
+            "token",
+            "access_token",
+            "refresh_token",
+            "authtoken",
+            "auth",
+            "authorization",
+            "proxy_authorization",
+            "password",
+            "client_secret",
+            "clientsecret",
+            "secret",
+            "credential",
+            "credentials",
+        }
         for name, value in query_params.items():
-            if value and any(part in name.lower() for part in sensitive_names):
-                query_params[name] = transform(value, purpose=f"{purpose}.query_params.{name.lower()}")
+            normalized_name = name.lower().replace("-", "_")
+            is_sensitive = normalized_name in sensitive_names or normalized_name.endswith(
+                ("_key", "_token", "_secret", "_auth", "_password", "_credential"),
+            )
+            if value and is_sensitive:
+                query_params[name] = transform(value, purpose=f"{purpose}.query_params.{normalized_name}")
 
     return result
