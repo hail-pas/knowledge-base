@@ -43,7 +43,12 @@ class DocumentService(CollectionService):
         images_by_document: dict[int, list[str]] = {}
         for page in pages:
             for image in page.images or []:
-                image_uri = image if isinstance(image, str) else image.get("uri") or image.get("key") if isinstance(image, dict) else None
+                if isinstance(image, str):
+                    image_uri = image
+                elif isinstance(image, dict):
+                    image_uri = image.get("uri") or image.get("key")
+                else:
+                    continue
                 if isinstance(image_uri, str) and image_uri:
                     images_by_document.setdefault(page.document_id, []).append(image_uri)
 
