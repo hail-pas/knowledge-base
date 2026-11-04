@@ -18,6 +18,18 @@ from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 class LLMModelConfigCreate(
     pydantic_model_creator(LLMModelConfig, name="LLMModelConfigCreate", exclude_readonly=True),
 ):
+    @field_validator("base_url")
+    @classmethod
+    def reject_embedded_base_url_credentials(cls, value: str | None) -> str | None:
+        if value:
+            try:
+                parsed = urlsplit(value)
+            except ValueError:
+                raise ApiException("LLM base_url 格式无效") from None
+            if parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise ApiException("LLM base_url 不允许嵌入凭证、query 或 fragment")
+        return value
+
     @classmethod
     def validate_extra_config_by_type(cls, type_: LLMModelTypeEnum, extra_config: dict) -> None:
         if type_ == LLMModelTypeEnum.openai:
