@@ -97,6 +97,14 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
 
     update_data = schema.model_dump(exclude_unset=True)
 
+    if obj.is_external:
+        if "workflow_template" in update_data:
+            raise ApiException("外部知识库不能配置 workflow_template")
+        if "external_config" in update_data and not update_data["external_config"]:
+            raise ApiException("外部知识库必须保留 external_config")
+    elif "external_config" in update_data and update_data["external_config"] is not None:
+        raise ApiException("普通知识库不能设置 external_config")
+
     if "embedding_model_config_id" in update_data:
         new_config_id = update_data["embedding_model_config_id"]
         new_config = await EmbeddingModelConfig.get_or_none(
