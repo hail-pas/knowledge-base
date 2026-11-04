@@ -86,7 +86,9 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
     transform = decrypt_secret if decrypt else encrypt_secret
     sensitive_parts = (
         "api_key",
+        "apikey",
         "access_key",
+        "accesskey",
         "client_secret",
         "credential",
         "authorization",
@@ -94,6 +96,7 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
         "secret",
         "token",
         "private_key",
+        "privatekey",
     )
     sensitive_exact = {"auth", "signature", "sig", "x_api_key"}
 
