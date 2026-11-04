@@ -129,10 +129,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
 
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
-        key = self._extract_key(uri)
-        client = await self.client
-        response = await client.get_object(Bucket=self.storage_location, Key=key)
-        return await response["Body"].read()  # type: ignore[no-any-return]
+        return b"".join([chunk async for chunk in self.get_file_stream(uri)])
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
@@ -170,7 +167,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             await self.get_file_metadata(uri)
             return True
         except ClientError as e:
-            if e.response["Error"]["Code"] == "404":
+            if e.response["Error"]["Code"] in {"404", "NoSuchKey"}:
                 return False
             raise
 

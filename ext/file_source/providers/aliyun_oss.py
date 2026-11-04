@@ -162,15 +162,12 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
 
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
-        key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
-        return result.read()  # type: ignore[no-any-return]
+        return b"".join([chunk async for chunk in self.get_file_stream(uri)])
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
         try:

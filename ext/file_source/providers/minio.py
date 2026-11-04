@@ -95,15 +95,12 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
 
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
-        key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, lambda: self.client.get_object(self.storage_location or "", key))  # type: ignore[arg-type]
-        return response.read()
+        return b"".join([chunk async for chunk in self.get_file_stream(uri)])
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def get_object() -> Any:  # noqa: ANN401
             return self.client.get_object(self.storage_location or "", key)  # type: ignore[arg-type]
@@ -143,8 +140,10 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
         try:
             await self.get_file_metadata(uri)
             return True
-        except Exception:
-            return False
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                return False
+            raise
 
     async def upload_file(self, uri: str, content: bytes, content_type: str | None = None) -> FileMetadata:
         """上传文件"""
