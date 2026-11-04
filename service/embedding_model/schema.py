@@ -13,6 +13,7 @@ from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
 class EmbeddingModelConfigCreate(
     pydantic_model_creator(EmbeddingModelConfig, name="EmbeddingModelConfigCreate", exclude_readonly=True),
 ):
+    api_key: str | None = Field(None, max_length=1024, description="API 密钥")
     @field_validator("base_url")
     @classmethod
     def reject_embedded_base_url_credentials(cls, value: str | None) -> str | None:
