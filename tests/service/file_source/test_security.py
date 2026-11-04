@@ -65,3 +65,16 @@ def test_shared_source_fails_closed_without_prefix_and_rejects_path_traversal():
             collection,
             "s3://shared-bucket/users/00000000-0000-0000-0000-000000000001/collections/42/../other/file.pdf",
         )
+
+
+def test_shared_source_rejects_query_fragment_and_malformed_uris():
+    source = _public_source("users/{user_id}/collections/{collection_id}/")
+    collection = _collection()
+
+    for uri in (
+        "s3://shared-bucket/users/00000000-0000-0000-0000-000000000001/collections/42/file.pdf?download=1",
+        "s3://shared-bucket/users/00000000-0000-0000-0000-000000000001/collections/42/file.pdf#fragment",
+        "s3://[malformed",
+    ):
+        with pytest.raises(ApiException):
+            validate_public_source_uri(source, collection, uri)
