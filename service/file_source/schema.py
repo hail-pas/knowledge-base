@@ -49,12 +49,8 @@ class FileSourceCreate(
                 if not getattr(self, field_name, None):
                     raise ApiException(f"{type_.value} 需要 {field_name}")
 
-        elif type_ == FileSourceTypeEnum.sharepoint:
-            if not self.endpoint:  # type: ignore
-                raise ApiException("SharePoint 需要 endpoint (site_url)")
-
-        elif type_ == FileSourceTypeEnum.api and not self.endpoint:  # type: ignore
-            raise ApiException("API 文件源需要 endpoint")
+        elif type_ in (FileSourceTypeEnum.sharepoint, FileSourceTypeEnum.api):
+            raise ApiException(f"{type_.value} 文件源尚未实现，当前版本不支持")
 
     def validate_extra_config(self) -> None:
         extra_config = self.extra_config or {}  # type: ignore
