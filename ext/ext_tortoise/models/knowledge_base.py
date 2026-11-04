@@ -66,10 +66,16 @@ class FileSource(BaseModel):
     type = fields.CharEnumField(FileSourceTypeEnum, description="文件源类型")
 
     # ========== 认证信息（S3 兼容 providers）==========
-    access_key = fields.CharField(max_length=500, null=True, description="访问密钥")
-    secret_key = fields.CharField(max_length=500, null=True, description="密钥（敏感信息，当前未启用字段级加密）")
+    access_key = fields.CharField(max_length=1024, null=True, description="访问密钥（AES-256-GCM 加密存储）")
+    secret_key = fields.CharField(max_length=1024, null=True, description="密钥（AES-256-GCM 加密存储）")
 
     # ========== 连接信息（合并字段）==========
+    allowed_prefix_template = fields.CharField(
+        max_length=500,
+        null=True,
+        description="公共文件源对象路径隔离模板，支持 {user_id} 和 {collection_id}",
+    )
+
     storage_location = fields.CharField(
         max_length=1000,
         null=True,
@@ -342,7 +348,7 @@ class EmbeddingModelConfig(BaseModel):
     model_name = fields.CharField(max_length=255, description="模型标识符")
 
     # API配置（必填）
-    api_key = fields.CharField(max_length=500, null=True, description="API密钥（敏感信息，当前未启用字段级加密）")
+    api_key = fields.CharField(max_length=1024, null=True, description="API密钥（AES-256-GCM 加密存储）")
     base_url = fields.CharField(max_length=500, null=True, description="API基础URL")
 
     # 模型配置（必填）
@@ -389,7 +395,7 @@ class IndexingBackendConfig(BaseModel):
     host = fields.CharField(max_length=255, null=True, description="主机地址")
     port = fields.IntField(null=True, description="端口号")
     username = fields.CharField(max_length=255, null=True, description="用户名")
-    password = fields.CharField(max_length=500, null=True, description="密码（敏感信息，当前未启用字段级加密）")
+    password = fields.CharField(max_length=1024, null=True, description="密码（AES-256-GCM 加密存储）")
 
     # 安全配置（公共）
     use_ssl = fields.BooleanField(default=True, description="是否使用SSL/TLS")
