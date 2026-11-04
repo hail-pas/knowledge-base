@@ -97,6 +97,9 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
 
     update_data = schema.model_dump(exclude_unset=True)
 
+    if "is_external" in update_data and update_data["is_external"] != obj.is_external:
+        raise ApiException("知识库类型创建后不可修改，请重新创建", code=409)
+
     if obj.is_external:
         if "workflow_template" in update_data:
             raise ApiException("外部知识库不能配置 workflow_template")
