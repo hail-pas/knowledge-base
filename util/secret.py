@@ -148,7 +148,8 @@ def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, d
                 if parsed.username or parsed.password or query_has_secret:
                     return transform(value, purpose=path)
             except ValueError:
-                pass
+                if "@" in value:
+                    return transform(value, purpose=path)
 
         return value
 
