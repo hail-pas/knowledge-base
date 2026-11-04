@@ -87,7 +87,7 @@ class WorkflowTemplateValidator:
                 validated_input = {key: value for key, value in input_data.items() if key != "document_id"}
                 input_schema_class(**validated_input, document_id=0)  # template创建时不需要 document_id
             except Exception as e:
-                raise ValueError(f"活动 '{activity_name}' 的 input 验证失败: {str(e)}") from e
+                raise ValueError(f"活动 '{activity_name}' 的 input 验证失败") from e
 
     @classmethod
     def _validate_depends_on(cls, activity_name: str, activity_config: dict, activity_names: list[str]) -> None:
