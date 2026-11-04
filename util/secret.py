@@ -18,6 +18,9 @@ def _encryption_key() -> bytes:
     if not value:
         raise RuntimeError(f"{_ENV_NAME} must be set to a 32-byte hex key")
 
+    if len(value) != 64 or any(char not in "0123456789abcdefABCDEF" for char in value):
+        raise RuntimeError(f"{_ENV_NAME} must contain exactly 64 hexadecimal characters")
+
     try:
         key = bytes.fromhex(value)
     except ValueError:
