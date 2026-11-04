@@ -52,6 +52,8 @@ class CollectionCreate(
             if not self.external_config or self.external_config == {}:  # type: ignore
                 raise ApiException("外部知识库必须提供 external_config")
         else:
+            if self.external_config is not None:
+                raise ApiException("普通知识库不能设置 external_config")
             try:
                 WorkflowTemplateValidator.validate(self.workflow_template)
             except ValueError as e:
@@ -65,7 +67,6 @@ class CollectionUpdate(BaseModel):
     description: str | None = None
     is_public: bool | None = None
     is_temp: bool | None = None
-    is_external: bool | None = None
     workflow_template: dict | None = None
     external_config: dict | None = None
     embedding_model_config_id: int | None = None
@@ -73,11 +74,12 @@ class CollectionUpdate(BaseModel):
     @field_validator("workflow_template", mode="before")
     @classmethod
     def validate_workflow_template(cls, v: dict | None) -> dict | None:
-        if v is not None:
-            try:
-                WorkflowTemplateValidator.validate(v)
-            except ValueError as e:
-                raise ApiException(str(e)) from e
+        if v is None:
+            raise ApiException("workflow_template 不能为空")
+        try:
+            WorkflowTemplateValidator.validate(v)
+        except ValueError as e:
+            raise ApiException(str(e)) from e
         return v
 
     @field_validator("external_config")
