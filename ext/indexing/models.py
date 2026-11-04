@@ -134,7 +134,7 @@ class CollectionIndexModelHelper:
     async def delete_by_documents(self, documents: list[Document]) -> None:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
-        equal_clause = FilterClause(in_list={"document_id": [doc.id for doc in documents]})
+        equal_clause = FilterClause(in_list={"file_id": [doc.id for doc in documents]})
         dense_model = await self.get_dense_model()
         faq_model = await self.get_faq_model()
 
