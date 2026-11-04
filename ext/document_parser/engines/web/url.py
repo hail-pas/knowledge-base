@@ -85,23 +85,61 @@ class URLEngine(BaseEngine):
         if not addresses or any(not address.is_global for address in addresses):
             raise ValueError("URL host must resolve exclusively to public IP addresses")
 
-    async def _download_url(self, url: str):
+    async def _download_url(self, url: str) -> tuple[str, str, str | None]:
+        """Download a public URL with redirect, peer-address and size checks."""
         client = local_configs.extensions.httpx.instance
         current_url = url
+        max_size = 100 * 1024 * 1024
+
         for redirect_count in range(6):
             await self._validate_public_url(current_url)
-            response = await client.get(
+            async with client.stream(
+                "GET",
                 current_url,
                 follow_redirects=False,
                 timeout=30.0,
-            )
-            if response.status_code not in {301, 302, 303, 307, 308}:
+            ) as response:
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("location")
+                    if not location or redirect_count == 5:
+                        raise ValueError("URL redirect limit exceeded or Location header missing")
+                    current_url = urljoin(current_url, location)
+                    continue
+
                 response.raise_for_status()
-                return response
-            location = response.headers.get("location")
-            if not location or redirect_count == 5:
-                raise ValueError("URL redirect limit exceeded or Location header missing")
-            current_url = urljoin(current_url, location)
+
+                # DNS checks alone are vulnerable to rebinding; validate the connected peer too.
+                network_stream = response.extensions.get("network_stream")
+                if network_stream is not None:
+                    server_addr = network_stream.get_extra_info("server_addr")
+                    if server_addr:
+                        peer = server_addr[0] if isinstance(server_addr, (tuple, list)) else server_addr
+                        if not ipaddress.ip_address(peer).is_global:
+                            raise ValueError("URL connected to a non-public IP address")
+
+                content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+                extension = self._get_extension_from_content_type(content_type) or self._get_extension_from_url(current_url)
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > max_size:
+                    raise ValueError("Remote document exceeds the 100 MiB download limit")
+
+                tmp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=extension or ".tmp") as tmp:
+                        tmp_path = tmp.name
+                        total_size = 0
+                        async for chunk in response.aiter_bytes():
+                            total_size += len(chunk)
+                            if total_size > max_size:
+                                raise ValueError("Remote document exceeds the 100 MiB download limit")
+                            tmp.write(chunk)
+                    return tmp_path, content_type, extension
+                except Exception:
+                    if tmp_path and Path(tmp_path).exists():
+                        with contextlib.suppress(OSError):
+                            Path(tmp_path).unlink()
+                    raise
+
         raise ValueError("URL redirect limit exceeded")
 
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
