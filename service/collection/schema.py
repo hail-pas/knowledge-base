@@ -16,6 +16,21 @@ class ExternalConfigSchema(BaseModel):
     authorization: str
     collection_id: str
 
+    @field_validator("endpoint")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("外部知识库 endpoint 不允许嵌入凭证、query 或 fragment")
+        return value
+
 
 class CollectionCreate(
     pydantic_model_creator(
