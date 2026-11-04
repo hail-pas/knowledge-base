@@ -1,6 +1,7 @@
 from typing import Any, cast
+from urllib.parse import urlsplit
 
-from pydantic import Field, BaseModel
+from pydantic import Field, BaseModel, field_validator
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
@@ -42,7 +43,17 @@ class IndexingBackendConfigCreate(
 class IndexingBackendConfigList(
     pydantic_model_creator(IndexingBackendConfig, name="IndexingBackendConfigList", exclude=("password", "extra_config")),
 ):
-    pass
+    @field_validator("host", mode="before")
+    @classmethod
+    def sanitize_host(cls, value: str | None) -> str | None:
+        if not value or "://" not in value:
+            return value
+        parsed = urlsplit(value)
+        return parsed._replace(
+            netloc=parsed.netloc.rsplit("@", 1)[-1],
+            query="",
+            fragment="",
+        ).geturl()
 
 
 class IndexingBackendConfigDetail(IndexingBackendConfigList):
