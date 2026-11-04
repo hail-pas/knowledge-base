@@ -72,3 +72,11 @@ def test_maximum_plaintext_credential_fits_encrypted_database_column(monkeypatch
     assert encrypted is not None
     assert len(encrypted) < 2048
     assert decrypt_secret(encrypted, purpose="llm_model.api_key") == "x" * 1024
+
+
+def test_malformed_ciphertext_fails_with_generic_error(monkeypatch):
+    monkeypatch.setenv("KB_SECRET_ENCRYPTION_KEY", "ab" * 32)
+
+    for malformed in ("enc:v1:!!!", "enc:v1:💥"):
+        with pytest.raises(ValueError, match="Unable to decrypt stored secret"):
+            decrypt_secret(malformed, purpose="llm_model.api_key")
