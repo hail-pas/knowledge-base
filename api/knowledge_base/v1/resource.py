@@ -88,12 +88,18 @@ async def update_resource(request: Request, pk: int, schema: ResourceUpdateSchem
     permission_codes = data.pop("permission_codes", None)
     if "parent_id" in data and data["parent_id"] is not None:
         parent_id = data["parent_id"]
+        visited_parent_ids: set[int] = set()
         while parent_id is not None:
             if parent_id == pk:
                 raise ApiException("不能将资源移动到自身或其子级下", code=422)
-            parent_id = await Resource.filter(id=parent_id).values_list("parent_id", flat=True).first()
-            if parent_id is None and not await Resource.filter(id=data["parent_id"]).exists():
+            if parent_id in visited_parent_ids:
+                raise ApiException("当前资源树存在循环引用，请先修复资源关系", code=409)
+            visited_parent_ids.add(parent_id)
+
+            parent = await Resource.get_or_none(id=parent_id)
+            if not parent:
                 raise ApiException("父级资源不存在", code=422)
+            parent_id = parent.parent_id
     async with in_transaction(connection_name=Resource.Meta.app):
         if data:
             await Resource.filter(id=pk).update(**data)
