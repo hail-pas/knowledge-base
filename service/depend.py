@@ -94,11 +94,14 @@ async def _get_user_permission_codes(user_id: UUID) -> set[str]:
         return set()
 
     roles = await Role.filter(id__in=role_ids, deleted_at=0)
+    active_role_ids = [role.id for role in roles]
+    if not active_role_ids:
+        return set()
     if any(role.is_super_admin for role in roles):
         return {"*"}
 
     resource_ids = await Resource.filter(
-        roles__id__in=role_ids,
+        roles__id__in=active_role_ids,
         enabled=True,
         assignable=True,
     ).values_list("id", flat=True)

@@ -39,24 +39,19 @@ class ServerConfig(BaseModel):
         expose_headers: list[str] = []
 
         @property
-        def headers(self) -> dict:
+        def headers(self) -> dict[str, str]:
             header = {
                 "Access-Control-Allow-Origin": ",".join(self.allow_origins) if "*" not in self.allow_origins else "*",
-                "Access-Control-Allow-Credentials": str(
-                    self.allow_credentials,
-                ).lower(),
-                "Access-Control-Expose-Headers": (
-                    ",".join(self.allow_headers) if "*" not in self.allow_headers else "*"
-                ),
+                "Access-Control-Allow-Credentials": str(self.allow_credentials).lower(),
                 "Access-Control-Allow-Methods": (
                     ",".join(self.allow_methods) if "*" not in self.allow_methods else "*"
                 ),
+                "Access-Control-Allow-Headers": (
+                    ",".join(self.allow_headers) if "*" not in self.allow_headers else "*"
+                ),
             }
             if self.expose_headers:
-                header["Access-Control-Expose-Headers"] = ", ".join(
-                    self.expose_headers,
-                )
-
+                header["Access-Control-Expose-Headers"] = ", ".join(self.expose_headers)
             return header
 
     address: HttpUrl = HttpUrl("http://0.0.0.0:8000")
@@ -64,7 +59,7 @@ class ServerConfig(BaseModel):
     cors: CorsConfig = CorsConfig()
     worker_number: int = multiprocessing.cpu_count() * int(os.getenv("WORKERS_PER_CORE", "2")) + 1
     profiling: ProfilingConfig | None = None
-    allow_hosts: list = ["*"]
+    allow_hosts: list[str] = ["*"]
     static_path: str = "/static"
     docs_uri: str = "/docs"
     redoc_uri: str = "/redoc"
@@ -101,9 +96,8 @@ class ProjectConfig(BaseModel):
 
     @model_validator(mode="after")
     def check_debug_options(self) -> Self:
-        assert not (
-            self.debug and self.environment == EnvironmentEnum.production
-        ), "Production cannot set with debug enabled"
+        if self.debug and self.environment == EnvironmentEnum.production:
+            raise ValueError("Production cannot set with debug enabled")
         return self
 
     @property

@@ -64,11 +64,15 @@ async def my_resource_trees(request: Request) -> Resp[list[ResourceLevelTreeNode
         return Resp(data=[])
 
     roles = await Role.filter(id__in=role_ids, deleted_at=0)
+    active_role_ids = [role.id for role in roles]
+    if not active_role_ids:
+        return Resp(data=[])
+
     if any(role.is_super_admin for role in roles):
         nodes = await Resource.filter(enabled=True).order_by("parent_id", "order_num")
     else:
         nodes = await Resource.filter(
-            roles__id__in=role_ids,
+            roles__id__in=active_role_ids,
             enabled=True,
             assignable=True,
         ).distinct().order_by("parent_id", "order_num")

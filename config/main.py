@@ -1,6 +1,7 @@
 from typing import Any
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import (
     BaseSettings,
     YamlConfigSettingsSource,
@@ -8,7 +9,14 @@ from pydantic_settings import (
 )
 
 from ext.register import ExtensionRegistry
-from config.default import BASE_DIR, ENVIRONMENT, ServerConfig, ProjectConfig, UserCenterIntegrationConfig
+from config.default import (
+    BASE_DIR,
+    ENVIRONMENT,
+    EnvironmentEnum,
+    ServerConfig,
+    ProjectConfig,
+    UserCenterIntegrationConfig,
+)
 
 
 class LocalConfig(BaseSettings):
@@ -19,6 +27,17 @@ class LocalConfig(BaseSettings):
     extensions: ExtensionRegistry
     user_center: UserCenterIntegrationConfig = UserCenterIntegrationConfig()
     service: dict[str, Any] = {}
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "LocalConfig":
+        if self.project.environment == EnvironmentEnum.production:
+            if self.user_center.base_url.scheme != "https":
+                raise ValueError("Production user-center URL must use HTTPS")
+            if "*" in self.server.allow_hosts:
+                raise ValueError("Production must configure explicit allowed hosts")
+            if self.server.cors.allow_credentials and "*" in self.server.cors.allow_origins:
+                raise ValueError("Production credentialed CORS must use explicit allowed origins")
+        return self
 
     @classmethod
     def settings_customise_sources(

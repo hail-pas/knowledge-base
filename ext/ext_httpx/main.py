@@ -40,6 +40,7 @@ class HttpxConfig(RegisterExtensionConfig, InstanceExtensionConfig):
                 max_keepalive_connections=self.max_keepalive_connections,
             ),
             http2=False,
+            trust_env=False,
             headers=headers,
         )
         logger.info("Httpx client initialized")

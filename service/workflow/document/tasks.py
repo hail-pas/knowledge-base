@@ -89,15 +89,15 @@ class DocumentParseTask(DocumentWorkflowTask):
         # 当uri为 http 地址时，则不需要下载，直接使用 document.uri 进行下一步解析，否则使用本地临时文件路径
 
         temp_file_path: str | None = None
-        if document.uri.startswith("http"):
-            file_path = document.uri
-        else:
-            temp_fd, temp_file_path = tempfile.mkstemp(suffix=document.extension)
-            os.close(temp_fd)
-            file_path = temp_file_path
-            await provider.download_to_local(document.uri, file_path)
-
         try:
+            if document.uri.startswith(("http://", "https://")):
+                file_path = document.uri
+            else:
+                temp_fd, temp_file_path = tempfile.mkstemp(suffix=document.extension)
+                os.close(temp_fd)
+                file_path = temp_file_path
+                await provider.download_to_local(document.uri, file_path)
+
             # Parse document with configured parameters
             parser = DocumentParser()
             parse_result = await parser.parse(
@@ -336,12 +336,12 @@ class IndexChunkTask(DocumentWorkflowTask):
             batch_embeddings = await embedding_model.embed_batch(batch_texts)
             embeddings.extend(batch_embeddings)
 
-        assert len(embeddings[0]) == embedding_config.dimension
-
         if len(embeddings) != len(chunks):
             raise ValueError(
                 f"Embedding count mismatch: expected {len(chunks)}, got {len(embeddings)}",
             )
+        if any(len(embedding) != embedding_config.dimension for embedding in embeddings):
+            raise ValueError(f"Embedding dimension mismatch: expected {embedding_config.dimension}")
 
         # Create index helper
         helper = CollectionIndexModelHelper(document.collection)
@@ -374,7 +374,7 @@ class IndexChunkTask(DocumentWorkflowTask):
 
         # Prepare dense index documents
         dense_docs = []
-        for chunk, emb in zip(chunks, embeddings, strict=False):
+        for chunk, emb in zip(chunks, embeddings, strict=True):
             dense_docs.append(
                 dense_model(
                     db_chunk_id=chunk.id,
