@@ -36,8 +36,8 @@ class CollectionCreate(
             return None
         try:
             ExternalConfigSchema(**v)
-        except Exception as e:
-            raise ApiException(f"external_config 格式错误: {str(e)}") from e
+        except Exception:
+            raise ApiException("external_config 格式错误") from None
         return v
 
     @model_validator(mode="after")
@@ -85,9 +85,9 @@ class CollectionUpdate(BaseModel):
     def validate_external_config(cls, v: dict | None) -> dict | None:
         if v is not None:
             try:
-                ExternalConfigSchema(**v)
-            except Exception as e:
-                raise ApiException(f"external_config 格式错误: {str(e)}") from e
+                return ExternalConfigSchema(**v).model_dump()
+            except Exception:
+                raise ApiException("external_config 格式错误") from None
         return v
 
 
