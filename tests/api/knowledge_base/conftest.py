@@ -18,6 +18,11 @@ def mock_pero_userinfo(monkeypatch):
     monkeypatch.setattr("service.depend._fetch_userinfo", fake_userinfo)
     monkeypatch.setattr("service.depend._get_user_permission_codes", allow_all_permissions)
 
+    async def allow_super_admin(user_id):
+        return True
+
+    monkeypatch.setattr("api.knowledge_base.v1.config.is_super_admin_user", allow_super_admin)
+
 
 @pytest.fixture
 def client():

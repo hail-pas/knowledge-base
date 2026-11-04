@@ -100,26 +100,24 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
 
     if "embedding_model_config_id" in update_data:
         new_config_id = update_data["embedding_model_config_id"]
-        new_config = await EmbeddingModelConfig.get_or_none(id=new_config_id, deleted_at=0)
+        new_config = await EmbeddingModelConfig.get_or_none(
+            id=new_config_id,
+            deleted_at=0,
+            is_enabled=True,
+        )
         if not new_config:
-            raise ApiException("Embedding模型配置不存在")
+            raise ApiException("Embedding模型配置不存在或已停用")
 
-        del update_data["embedding_model_config_id"]
-        old_config_id = obj.embedding_model_config_id  # type: ignore
+        if new_config_id != obj.embedding_model_config_id and await Document.filter(
+            collection_id=pk,
+            deleted_at=0,
+        ).exists():
+            raise ApiException(
+                "非空集合暂不支持切换 Embedding 模型，请新建集合并重新导入文档",
+                code=409,
+            )
 
-        if update_data:
-            await update_obj(obj, queryset, update_data)
-
-        await obj.fetch_related("embedding_model_config")
-
-        service = CollectionService(obj)
-        try:
-            await service.switch_embedding_model(new_config)
-        except Exception:
-            await queryset.filter(pk=pk).update(embedding_model_config_id=old_config_id)
-            raise
-    else:
-        await update_obj(obj, queryset, update_data)
+    await update_obj(obj, queryset, update_data)
 
     return Resp()
 

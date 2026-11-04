@@ -128,4 +128,4 @@ class UserRole(BaseModel):
         table = "user_role"
         table_description = "外部用户角色关联"
         app = _AUTH_CONNECTION
-        unique_together = (("user_id", "role"),)
+        unique_together = (("user_id", "role", "deleted_at"),)

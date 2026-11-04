@@ -7,7 +7,7 @@ from tortoise.expressions import Q
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import CurrentUser, api_permission_check
+from service.depend import CurrentUser, api_permission_check, is_super_admin_user
 from ext.ext_tortoise.curd import (
     list_view,
     create_obj,
@@ -70,6 +70,9 @@ async def create_file_source(request: Request, schema: FileSourceCreate) -> Resp
 
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
+    if getattr(schema.type, "value", schema.type) == "local_file" and not await is_super_admin_user(user.id):
+        raise ApiException("本地文件源仅允许系统超级管理员配置", code=403)
+
     data = schema.model_dump(exclude_unset=True)
     data["user_id"] = user.id
 
@@ -92,9 +95,6 @@ async def update_file_source(request: Request, pk: int, schema: FileSourceUpdate
     obj = await queryset.get_or_none(pk=pk)
     if not obj:
         raise ApiException("文件源不存在")
-
-    if schema.extra_config is not None:  # type: ignore
-        FileSourceCreate.validate_extra_config_by_type(obj.type, schema.extra_config)  # type: ignore
 
     await update_obj(obj, queryset, schema.model_dump(exclude_unset=True))
 
@@ -157,9 +157,6 @@ async def update_llm_model(request: Request, pk: int, schema: LLMModelConfigUpda
     obj = await queryset.get_or_none(pk=pk)
     if not obj:
         raise ApiException("LLM模型配置不存在")
-
-    if schema.extra_config is not None:  # type: ignore
-        LLMModelConfigCreate.validate_extra_config_by_type(obj.type, schema.extra_config)  # type: ignore
 
     await update_obj(obj, queryset, schema.model_dump(exclude_unset=True))
     if schema.is_default:  # type: ignore

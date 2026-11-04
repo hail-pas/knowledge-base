@@ -13,7 +13,6 @@ from service.workflow.document.schemas import (
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
-    EmbeddingModelConfig,
 )
 
 
@@ -145,28 +144,6 @@ class CollectionService:
     def __init__(self, collection: Collection) -> None:
         self.collection = collection
         self.collection_index_helper = CollectionIndexModelHelper(collection)
-
-    async def switch_embedding_model(self, new_embedding_model_config: EmbeddingModelConfig) -> None:
-        """
-        Switch embedding model for collection with rollback support.
-
-        This method performs:
-        1. Rebuild all indexes for documents in this collection
-        2. Atomic transaction with rollback on failure
-        3. Handle partial failures gracefully
-
-        # TODO: Implement full logic:
-        - Get all documents in collection
-        - For each document, rebuild chunks with new embedding model
-        - Update dense_model and faq_model indexes
-        - If any failure, rollback to old embedding model
-        """
-        self.collection.embedding_model_config_id = new_embedding_model_config.id
-
-        # NOTE: Embedding migration side effects are not implemented yet; this method currently updates the config only.
-
-        await self.collection.save(update_fields=["embedding_model_config_id"])
-
 
     async def can_delete_collection(self) -> bool:
         """
