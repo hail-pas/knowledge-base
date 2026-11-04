@@ -79,49 +79,51 @@ def decrypt_secret(value: str | None, *, purpose: str) -> str | None:
 
 
 def transform_extra_config_secrets(extra_config: dict | None, *, purpose: str, decrypt: bool = False) -> dict:
-    """Encrypt custom HTTP headers and credential-like query parameters."""
-    result = copy.deepcopy(extra_config or {})
+    """Transform secret-like values recursively without changing the config shape."""
     transform = decrypt_secret if decrypt else encrypt_secret
+    sensitive_parts = (
+        "api_key",
+        "access_key",
+        "client_secret",
+        "credential",
+        "authorization",
+        "password",
+        "secret",
+        "token",
+        "private_key",
+    )
+    sensitive_exact = {"auth", "signature", "sig", "x_api_key"}
 
-    headers = result.get("headers")
-    if isinstance(headers, dict):
-        result["headers"] = {
-            name: (
-                transform(value, purpose=f"{purpose}.headers.{name.lower()}")
-                if value
-                else value
-            )
-            for name, value in headers.items()
-        }
+    def visit(value, path: str, *, in_headers: bool = False):
+        if isinstance(value, dict):
+            result = {}
+            for key, item in value.items():
+                normalized_key = str(key).lower().replace("-", "_")
+                child_path = f"{path}.{normalized_key}"
+                is_header_value = in_headers or path.rsplit(".", 1)[-1] == "headers"
+                is_sensitive = (
+                    normalized_key in sensitive_exact
+                    or any(part in normalized_key for part in sensitive_parts)
+                )
+                if isinstance(item, str) and item and (is_sensitive or is_header_value):
+                    result[key] = transform(item, purpose=child_path)
+                else:
+                    result[key] = visit(item, child_path)
+            return result
 
-    query_params = result.get("query_params")
-    if isinstance(query_params, dict):
-        sensitive_names = {
-            "key",
-            "api_key",
-            "apikey",
-            "access_key",
-            "secret_key",
-            "token",
-            "access_token",
-            "refresh_token",
-            "authtoken",
-            "auth",
-            "authorization",
-            "proxy_authorization",
-            "password",
-            "client_secret",
-            "clientsecret",
-            "secret",
-            "credential",
-            "credentials",
-        }
-        for name, value in query_params.items():
-            normalized_name = name.lower().replace("-", "_")
-            is_sensitive = normalized_name in sensitive_names or normalized_name.endswith(
-                ("_key", "_token", "_secret", "_auth", "_password", "_credential"),
-            )
-            if value and is_sensitive:
-                query_params[name] = transform(value, purpose=f"{purpose}.query_params.{normalized_name}")
+        if isinstance(value, list):
+            return [visit(item, f"{path}.{index}", in_headers=in_headers) for index, item in enumerate(value)]
 
-    return result
+        if isinstance(value, str) and value and "://" in value:
+            from urllib.parse import urlsplit
+
+            try:
+                parsed = urlsplit(value)
+                if parsed.username or parsed.password:
+                    return transform(value, purpose=path)
+            except ValueError:
+                pass
+
+        return value
+
+    return visit(copy.deepcopy(extra_config or {}), purpose)
