@@ -1,4 +1,6 @@
-from pydantic import Field, BaseModel
+from urllib.parse import urlsplit
+
+from pydantic import Field, BaseModel, field_validator
 from tortoise.expressions import Q
 from tortoise.contrib.pydantic import pydantic_model_creator
 
@@ -84,7 +86,19 @@ class FileSourceList(
         exclude=("access_key", "secret_key", "extra_config", "storage_location", "user_id"),
     ),
 ):
-    pass
+    @field_validator("endpoint", mode="before")
+    @classmethod
+    def sanitize_endpoint(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if parsed.netloc:
+            return parsed._replace(
+                netloc=parsed.netloc.rsplit("@", 1)[-1],
+                query="",
+                fragment="",
+            ).geturl()
+        return value.split("?", 1)[0].split("#", 1)[0]
 
 
 class FileSourceDetail(FileSourceList):
