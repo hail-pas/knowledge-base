@@ -2,7 +2,7 @@
 
 import posixpath
 from string import Formatter
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 from core.types import ApiException
 
@@ -98,11 +98,11 @@ def validate_public_source_uri(file_source, collection, uri: str) -> None:
         ):
             raise ApiException("公共文件源 URI 与存储桶配置不匹配")
         raw_path = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
-        key = unquote(raw_path)
+        key = raw_path
     else:
         if "://" in uri:
             raise ApiException("公共文件源 URI 格式无效")
-        key = unquote(uri)
+        key = uri
 
     if not key or key.startswith("/") or "\\" in key or "\x00" in key:
         raise ApiException("公共文件源 URI 格式无效")
