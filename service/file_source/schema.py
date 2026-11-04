@@ -26,6 +26,18 @@ class FileSourceCreate(
     def validate_allowed_prefix(cls, value: str | None) -> str | None:
         return validate_allowed_prefix_template(value)
 
+    @field_validator("endpoint")
+    @classmethod
+    def reject_embedded_endpoint_credentials(cls, value: str | None) -> str | None:
+        if value:
+            try:
+                parsed = urlsplit(value)
+            except ValueError:
+                raise ApiException("文件源 endpoint 格式无效") from None
+            if parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise ApiException("文件源 endpoint 不允许嵌入凭证、query 或 fragment")
+        return value
+
     @classmethod
     def validate_extra_config_by_type(cls, type_: FileSourceTypeEnum, extra_config: dict) -> None:
         if type_ == FileSourceTypeEnum.local_file:
