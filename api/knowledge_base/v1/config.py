@@ -41,7 +41,7 @@ from service.indexing_backend.schema import (
     IndexingBackendConfigDetail,
     IndexingBackendConfigFilterSchema,
 )
-from util.secret import encrypt_secret
+from util.secret import encrypt_secret, transform_extra_config_secrets
 from ext.file_source.secrets import encrypt_file_source_extra_config
 from ext.ext_tortoise.models.knowledge_base import (
     FileSource,
@@ -164,6 +164,10 @@ async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Re
 
     data = schema.model_dump(exclude_unset=True)
     data["api_key"] = encrypt_secret(data.get("api_key"), purpose="llm_model.api_key")
+    data["extra_config"] = transform_extra_config_secrets(
+        data.get("extra_config"),
+        purpose="llm_model.extra_config",
+    )
     obj = await create_obj(LLMModelConfig, data)
 
     if schema.is_default:  # type: ignore
@@ -286,6 +290,10 @@ async def create_embedding_model(
 
     data = schema.model_dump(exclude_unset=True)
     data["api_key"] = encrypt_secret(data.get("api_key"), purpose="embedding_model.api_key")
+    data["extra_config"] = transform_extra_config_secrets(
+        data.get("extra_config"),
+        purpose="embedding_model.extra_config",
+    )
     obj = await create_obj(EmbeddingModelConfig, data)
 
     if obj.is_default:  # type: ignore
