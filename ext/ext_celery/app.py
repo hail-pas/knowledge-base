@@ -9,6 +9,7 @@ from config.main import local_configs
 
 # 初始化数据库连接
 from core.context import init_ctx, clear_ctx
+from util.secret import validate_encryption_key
 
 celery_app = local_configs.extensions.celery.instance
 
@@ -25,6 +26,7 @@ def get_celery_app():
 @worker_init.connect
 def worker_init_handler(**kwargs) -> None:
     """Worker 初始化时调用"""
+    validate_encryption_key()
     # 创建并持久化事件循环，不关闭它
     # 数据库连接池需要在整个 worker 生命周期中使用同一个事件循环
     loop = asyncio.get_event_loop()
