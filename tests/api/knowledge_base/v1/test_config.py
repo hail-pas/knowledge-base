@@ -100,6 +100,7 @@ def test_create_llm_model_openai(client):
             "top_p": 0.9,
             "extra_config": {
                 "organization": "test-org",
+                "headers": {"Authorization": "Bearer test-llm-header"},
             },
         },
     )
@@ -240,6 +241,8 @@ def test_create_embedding_model_openai(client):
             "max_chunk_length": 8192,
             "extra_config": {
                 "encoding_format": "float",
+                "headers": {"Authorization": "Bearer test-embedding-header"},
+                "query_params": {"api_key": "test-query-key", "page": "1"},
             },
         },
     )
@@ -287,9 +290,12 @@ async def test_credentials_are_encrypted_at_rest():
 
     llm_config = await LLMModelConfig.get(name="test-openai")
     assert llm_config.api_key.startswith("enc:v1:")
+    assert llm_config.extra_config["headers"]["Authorization"].startswith("enc:v1:")
 
     embedding_config = await EmbeddingModelConfig.get(name="test-openai-embedding")
     assert embedding_config.api_key.startswith("enc:v1:")
+    assert embedding_config.extra_config["headers"]["Authorization"].startswith("enc:v1:")
+    assert embedding_config.extra_config["query_params"]["api_key"].startswith("enc:v1:")
 
     indexing_config = await IndexingBackendConfig.get(name="test-es")
     assert indexing_config.password.startswith("enc:v1:")
