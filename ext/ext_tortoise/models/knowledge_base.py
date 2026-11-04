@@ -440,7 +440,7 @@ class LLMModelConfig(BaseModel):
     model_name = fields.CharField(max_length=255, description="模型标识符")
 
     # API配置
-    api_key = fields.CharField(max_length=500, null=True, description="API密钥（敏感信息，当前未启用字段级加密）")
+    api_key = fields.CharField(max_length=1024, null=True, description="API密钥（AES-256-GCM 加密存储）")
     base_url = fields.CharField(max_length=500, null=True, description="API基础URL")
 
     # ModelSettings 对齐字段
