@@ -151,6 +151,7 @@ def test_create_external_collection(client):
     data = response.json()
     assert data["code"] == 0
     assert data["data"]["is_external"] is True
+    assert "authorization" not in data["data"].get("external_config", {})
     STATE["external_collection_id"] = data.get("data", {}).get("id")
 
 
