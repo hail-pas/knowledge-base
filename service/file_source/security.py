@@ -1,4 +1,4 @@
-"""Security helpers for shared file-source credential handling and URI scoping."""
+"""URI access-control helpers for shared file sources."""
 
 import posixpath
 from string import Formatter
@@ -54,7 +54,10 @@ def resolve_public_source_prefix(file_source, collection) -> str | None:
     source_type = getattr(file_source.type, "value", file_source.type)
     if source_type not in _PUBLIC_SOURCE_SCHEMES:
         raise ApiException("公共文件源仅支持配置了隔离前缀的对象存储")
-    template = validate_allowed_prefix_template(file_source.allowed_prefix_template)
+    try:
+        template = validate_allowed_prefix_template(file_source.allowed_prefix_template)
+    except ValueError:
+        raise ApiException("公共文件源隔离前缀配置无效") from None
     if not template:
         raise ApiException("公共文件源必须配置 allowed_prefix_template")
     if collection.user_id is None:
@@ -93,8 +96,6 @@ def validate_public_source_uri(file_source, collection, uri: str) -> None:
         if (
             parsed.scheme != expected_scheme
             or parsed.netloc != file_source.storage_location
-            or parsed.query
-            or parsed.fragment
         ):
             raise ApiException("公共文件源 URI 与存储桶配置不匹配")
         raw_path = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
