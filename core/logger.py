@@ -6,7 +6,7 @@ import warnings
 import traceback
 from enum import Enum
 from types import FrameType
-from typing import Any, TextIO, cast
+from typing import Any, cast
 from itertools import chain
 from collections.abc import Callable
 
