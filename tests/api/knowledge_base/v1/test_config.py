@@ -54,6 +54,8 @@ def test_create_file_source_s3(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "access_key" not in data.get("data", {})
+    assert "secret_key" not in data.get("data", {})
 
 
 def test_list_file_sources(client):
@@ -103,6 +105,7 @@ def test_create_llm_model_openai(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
     STATE["llm_model_id"] = data.get("data", {}).get("id")
 
 
@@ -170,6 +173,7 @@ def test_create_indexing_backend_elasticsearch(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "password" not in data.get("data", {})
     STATE["indexing_backend_id"] = data.get("data", {}).get("id")
 
 
@@ -241,6 +245,7 @@ def test_create_embedding_model_openai(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
     STATE["embedding_model_id"] = data.get("data", {}).get("id")
 
 
@@ -263,3 +268,26 @@ def test_get_embedding_model_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+
+
+@pytest.mark.asyncio
+async def test_credentials_are_encrypted_at_rest():
+    from ext.ext_tortoise.models.knowledge_base import (
+        EmbeddingModelConfig,
+        FileSource,
+        IndexingBackendConfig,
+        LLMModelConfig,
+    )
+
+    file_source = await FileSource.get(name="test-s3")
+    assert file_source.access_key.startswith("enc:v1:")
+    assert file_source.secret_key.startswith("enc:v1:")
+
+    llm_config = await LLMModelConfig.get(name="test-openai")
+    assert llm_config.api_key.startswith("enc:v1:")
+
+    embedding_config = await EmbeddingModelConfig.get(name="test-openai-embedding")
+    assert embedding_config.api_key.startswith("enc:v1:")
+
+    indexing_config = await IndexingBackendConfig.get(name="test-es")
+    assert indexing_config.password.startswith("enc:v1:")
