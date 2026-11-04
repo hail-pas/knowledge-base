@@ -2,7 +2,6 @@ import time
 import uuid
 import hashlib
 import mimetypes
-from typing import List
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -45,16 +44,17 @@ class DocumentService(CollectionService):
             images_by_document.setdefault(page.document_id, []).extend(page.images or [])
 
         for document in documents:
-            provider = await FileSourceFactory.create(await document.file_source)
+            image_uris = images_by_document.get(document.id, [])
+            managed_upload = (document.source_meta or {}).get("_knowledge_base", {}).get("managed_upload", False)
+            if not document.parsed_uri and not managed_upload and not image_uris:
+                continue
 
+            provider = await FileSourceFactory.create(await document.file_source)
             if document.parsed_uri:
                 await provider.delete_file(document.parsed_uri)
-
-            managed_upload = (document.source_meta or {}).get("_knowledge_base", {}).get("managed_upload", False)
             if managed_upload:
                 await provider.delete_file(document.uri)
-
-            for image_uri in images_by_document.get(document.id, []):
+            for image_uri in image_uris:
                 await provider.delete_file(image_uri)
 
     async def create_from_upload(
@@ -150,7 +150,7 @@ class DocumentService(CollectionService):
         if is_http_url:
             # HTTP URL: 跳过 metadata 获取，使用默认值
             file_name = self._extract_filename_from_url(uri)
-            extension = "html"
+            extension = Path(file_name).suffix.lower() or ".html"
             file_size = None
             source_last_modified = None
             source_version_key = int(time.time())

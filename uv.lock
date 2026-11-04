@@ -1233,6 +1233,7 @@ dependencies = [
     { name = "pydantic-ai-slim", extra = ["anthropic", "openai"] },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
+    { name = "starlette" },
     { name = "starlette-context" },
     { name = "text-chunker" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1288,6 +1289,7 @@ requires-dist = [
     { name = "pydantic-ai-slim", extras = ["openai", "anthropic"], specifier = "==1.68.0" },
     { name = "pydantic-settings", specifier = "==2.13.1" },
     { name = "python-multipart", specifier = "==0.0.22" },
+    { name = "starlette", specifier = "==1.10.0" },
     { name = "starlette-context", specifier = "==0.5.1" },
     { name = "text-chunker", editable = "ext/text_chunker" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.41.0" },
@@ -3892,14 +3894,15 @@ wheels = [
 
 [[package]]
 name = "starlette"
-version = "0.46.2"
+version = "1.10.0"
 source = { registry = "http://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "anyio" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "http://mirrors.aliyun.com/pypi/packages/ce/20/08dfcd9c983f6a6f4a1000d934b9e6d626cff8d2eeb77a89a68eef20a2b7/starlette-0.46.2.tar.gz", hash = "sha256:7f7361f34eed179294600af672f565727419830b54b7b084efe44bb82d2fccd5" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
 wheels = [
-    { url = "http://mirrors.aliyun.com/pypi/packages/8b/0c/9d30a4ebeb6db2b25a841afbb80f6ef9a854fc3b41be131d249a977b4959/starlette-0.46.2-py3-none-any.whl", hash = "sha256:595633ce89f8ffa71a015caed34a5b2dc1c0cdb3f0f1fbd1e69339cf2abeec35" },
+    { url = "https://files.pythonhosted.org/packages/88/2e/947cfe02def9371c07cd5bf5b6b61c829e9aecb9904db02a66cfafbc1eec/starlette-1.10.0-py3-none-any.whl", hash = "sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4", size = 80571, upload-time = "2026-10-24T15:04:10.371Z" },
 ]
 
 [[package]]

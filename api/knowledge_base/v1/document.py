@@ -136,7 +136,7 @@ async def create_document(
         file_content = await file.read(MAX_UPLOAD_SIZE + 1)
         if len(file_content) > MAX_UPLOAD_SIZE:
             raise ApiException("上传文件不能超过 100 MiB", code=413)
-        file_name = file.filename
+        file_name = file.filename or ""
 
         document = await service.create_from_upload(
             file_content=file_content,
