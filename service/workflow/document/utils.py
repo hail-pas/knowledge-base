@@ -93,7 +93,7 @@ def get_parsed_uri_extension(content_format: str) -> str:
 
 async def upload_parsed_content(
     file_source: FileSource,
-    collection,
+    collection: Collection,
     document_id: int,
     content: str,
     content_format: str,
@@ -123,7 +123,7 @@ async def upload_parsed_content(
     return metadata.uri
 
 
-async def delete_parsed_content(file_source: FileSource, collection, uri: str) -> bool:
+async def delete_parsed_content(file_source: FileSource, collection: Collection, uri: str) -> bool:
     """
     Delete uploaded parsed content for rollback
 
