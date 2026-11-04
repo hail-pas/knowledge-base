@@ -18,6 +18,7 @@ from ext.ext_tortoise.curd import (
 )
 from service.document.helper import DocumentService
 from service.collection.helper import CollectionService
+from util.secret import encrypt_secret
 from service.collection.schema import (
     CollectionList,
     CollectionCreate,
@@ -78,6 +79,12 @@ async def create_collection(request: Request, schema: CollectionCreate) -> Resp[
     user: CurrentUser = request.scope["user"]
     schema_dict = schema.model_dump(exclude_unset=True)
     schema_dict["user_id"] = user.id
+    external_config = schema_dict.get("external_config")
+    if external_config and external_config.get("authorization"):
+        external_config["authorization"] = encrypt_secret(
+            external_config["authorization"],
+            purpose="collection.external_config.authorization",
+        )
 
     obj: Collection = await create_obj(Collection, schema_dict)  # type: ignore
 
@@ -96,6 +103,12 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
         raise ApiException("Collection不存在")
 
     update_data = schema.model_dump(exclude_unset=True)
+    external_config = update_data.get("external_config")
+    if external_config and external_config.get("authorization"):
+        external_config["authorization"] = encrypt_secret(
+            external_config["authorization"],
+            purpose="collection.external_config.authorization",
+        )
 
     if obj.is_external:
         if "workflow_template" in update_data:
