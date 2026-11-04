@@ -1,5 +1,7 @@
 import os
 
+os.environ.setdefault("KB_SECRET_ENCRYPTION_KEY", "00" * 32)
+
 import pytest
 from tortoise import Tortoise
 
