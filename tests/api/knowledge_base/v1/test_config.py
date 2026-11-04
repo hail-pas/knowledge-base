@@ -49,6 +49,7 @@ def test_create_file_source_s3(client):
             "extra_config": {
                 "signature_version": "s3v4",
                 "session_token": "test-session-token",
+                "config": {"proxies": {"https": "http://proxy-user:proxy-pass@proxy.example:8080"}},
             },
         },
     )
@@ -287,6 +288,7 @@ async def test_credentials_are_encrypted_at_rest():
     assert file_source.access_key.startswith("enc:v1:")
     assert file_source.secret_key.startswith("enc:v1:")
     assert file_source.extra_config["session_token"].startswith("enc:v1:")
+    assert file_source.extra_config["config"]["proxies"]["https"].startswith("enc:v1:")
 
     llm_config = await LLMModelConfig.get(name="test-openai")
     assert llm_config.api_key.startswith("enc:v1:")
