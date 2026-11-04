@@ -236,6 +236,10 @@ async def create_indexing_backend(
 
     data = schema.model_dump(exclude_unset=True)
     data["password"] = encrypt_secret(data.get("password"), purpose="indexing_backend.password")
+    data["extra_config"] = transform_extra_config_secrets(
+        data.get("extra_config"),
+        purpose="indexing_backend.extra_config",
+    )
     obj = await create_obj(IndexingBackendConfig, data)
 
     if obj.is_default:  # type: ignore
