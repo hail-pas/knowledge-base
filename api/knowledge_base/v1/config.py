@@ -42,7 +42,7 @@ from service.indexing_backend.schema import (
     IndexingBackendConfigFilterSchema,
 )
 from util.secret import encrypt_secret
-from service.file_source.security import encrypt_file_source_extra_config
+from ext.file_source.secrets import encrypt_file_source_extra_config
 from ext.ext_tortoise.models.knowledge_base import (
     FileSource,
     LLMModelConfig,
