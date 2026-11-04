@@ -53,6 +53,7 @@ async def test_super_admin_role_grants_wildcard_permission():
 
     assert await resolve_permission_codes(user_id) == {"*"}
 
+
 def test_required_permission_code_uses_mounted_app_route_path():
     request = SimpleNamespace(
         scope={

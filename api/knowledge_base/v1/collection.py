@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, Request, APIRouter
+from fastapi import Depends, Query, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
 from tortoise.functions import Count
@@ -132,7 +132,7 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
 @router.get("", summary="Collection列表")
 async def list_collections(
     request: Request,
-    filter_: Annotated[CollectionFilterSchema, Depends(CollectionFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[CollectionFilterSchema, Query()],
     pager: CRUDPager = pagination_factory(
         db_model=Collection,
         search_fields={"name"},
