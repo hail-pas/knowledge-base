@@ -106,6 +106,7 @@ All Knowledge Base business routers and RBAC management routers use `api_permiss
 - Collection updates/deletes are owner-only.
 - Document management is scoped to collections owned by the current subject.
 - File-source reads may include the caller's own and shared file sources; mutations are owner-only.
+- A shared file source (`user_id IS NULL`) must be an S3/MinIO/OSS source with an `allowed_prefix_template` containing `{user_id}` or `{collection_id}`. Upload, URI import, document access and cleanup all enforce the resolved prefix; missing prefixes fail closed.
 - The client cannot assign or overwrite `user_id`.
 - The former `tenant_id` and collection-level `role_id` fields are removed. Authorization is centralized in local RBAC rather than duplicated as collection columns.
 
@@ -165,4 +166,6 @@ user_center:
   timeout_seconds: 5
 ```
 
-Use HTTPS in production. The HTTPX client is managed by the existing extension lifecycle. The migrations create PostgreSQL-native RBAC tables, add `Role.is_super_admin`, and create the `user_role` UUID mapping table. `CREATE TABLE IF NOT EXISTS` only preserves tables already present in PostgreSQL; it does not migrate MySQL data. If the old RBAC data remains in MySQL, export/import the Role, Permission, Resource and junction-table data into PostgreSQL, then remap the old Account role assignments to verified Pero UUIDs. Existing Account rows are not loaded or queried. The ORM uses two PostgreSQL database connections on the same PostgreSQL instance: `knowledge_base` for knowledge-base domain tables and `authorization` for Role/Permission/Resource/UserRole. Both use the asyncpg driver. It never connects to Pero's database.
+Use HTTPS in production. The HTTPX client is managed by the existing extension lifecycle. The ORM uses two PostgreSQL database connections on the same PostgreSQL instance: `knowledge_base` for knowledge-base domain tables and `authorization` for Role/Permission/Resource/UserRole. Both use the asyncpg driver. It never connects to Pero's database.
+
+Set `KB_SECRET_ENCRYPTION_KEY` to a stable 32-byte hex key (generate with `openssl rand -hex 32`) in every API and Worker instance. Credential fields and external collection authorization are encrypted with AES-256-GCM before persistence; do not commit the key or rotate it without a dedicated re-encryption procedure. A shared file source must declare a user- or collection-scoped `allowed_prefix_template`; shared-source URI access fails closed when the prefix is absent or mismatched.
