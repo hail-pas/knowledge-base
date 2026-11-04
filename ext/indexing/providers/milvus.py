@@ -68,9 +68,9 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             "timeout": self.config.timeout or 30,
         }
 
-        if self.config.username and self.config.password:
+        if self.config.username and self.password:
             kwargs["user"] = self.config.username
-            kwargs["password"] = self.config.password
+            kwargs["password"] = self.password
 
         if self.extra_config.db_name:
             kwargs["db_name"] = self.extra_config.db_name
