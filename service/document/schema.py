@@ -27,8 +27,8 @@ class DocumentDetail(DocumentList):
 
 
 class DocumentUpdate(BaseModel):
-    display_name: str | None = None
-    config_flag: int | None = None
+    display_name: str | None = Field(default=None, max_length=255)
+    config_flag: int | None = Field(default=None, ge=0, le=32767)
     workflow_template: dict | None = None
 
 
