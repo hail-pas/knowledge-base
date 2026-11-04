@@ -13,7 +13,7 @@ from loguru import logger
 from ext.file_source.base import BaseFileSourceProvider
 from ext.ext_tortoise.enums import FileSourceTypeEnum
 from ext.ext_tortoise.models.knowledge_base import FileSource
-from service.file_source.security import decrypt_file_source_extra_config
+from ext.file_source.secrets import decrypt_file_source_extra_config
 from util.secret import decrypt_secret
 
 
