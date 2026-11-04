@@ -13,8 +13,8 @@ class ExternalConfigSchema(BaseModel):
     """External KB config - placeholder for future fields"""
 
     endpoint: str
-    authorization: str
-    collection_id: str
+    authorization: str = Field(min_length=1)
+    collection_id: str = Field(min_length=1)
 
     @field_validator("endpoint")
     @classmethod
