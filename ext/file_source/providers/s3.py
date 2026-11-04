@@ -20,6 +20,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
         self._session = None
+        self._client_context = None
         self._client = None
 
     @property
@@ -50,7 +51,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             session = AioSession()  # type: ignore[name-defined]
             self._session = session
 
-            client_creator = session.create_client(  # type: ignore[misc]
+            self._client_context = session.create_client(
                 "s3",
                 region_name=self.region or "us-east-1",
                 aws_secret_access_key=self.secret_key,
@@ -61,7 +62,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
                 use_ssl=self.use_ssl,
                 verify=self.verify_ssl,
             )
-            self._client = await client_creator.__aenter__()
+            self._client = await self._client_context.__aenter__()
         return self._client
 
     def _validate_config(self) -> None:
@@ -222,10 +223,11 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
 
     async def close(self) -> None:
         """关闭连接"""
-        if self._client:
-            await self._client.__aexit__(None, None, None)
-            self._client = None
-            self._session = None
+        if self._client_context:
+            await self._client_context.__aexit__(None, None, None)
+        self._client_context = None
+        self._client = None
+        self._session = None
 
     def _extract_key(self, uri: str) -> str:
         """从 URI 提取 object key"""
