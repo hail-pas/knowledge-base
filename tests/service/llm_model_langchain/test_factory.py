@@ -108,7 +108,7 @@ async def test_create_openai_langchain_model(monkeypatch):
         temperature=0.2,
         top_p=0.9,
         timeout=45,
-        extra_config={"organization": "test-org", "extra_body": {"reasoning": {"effort": "low"}}},
+        extra_config={"organization": "test-org", "headers": {"X-Provider-Token": "header-secret"}, "extra_body": {"reasoning": {"effort": "low"}}},
         is_enabled=True,
     )
 
@@ -124,7 +124,7 @@ async def test_create_openai_langchain_model(monkeypatch):
         assert model.wrapped.max_tokens == 2048
         assert model.wrapped.timeout == 45.0
         assert model.wrapped.organization == "test-org"
-        assert model.wrapped.default_headers == {"OpenAI-Organization": "test-org"}
+        assert model.wrapped.default_headers == {"X-Provider-Token": "header-secret", "OpenAI-Organization": "test-org"}
         assert model.wrapped.extra_body == {"reasoning": {"effort": "low"}}
         assert model.get_capabilities().supports_tools is False
     finally:
