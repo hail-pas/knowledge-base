@@ -80,7 +80,11 @@ class FileSourceUpdate(BaseModel):
 
 
 class FileSourceList(
-    pydantic_model_creator(FileSource, name="FileSourceList", exclude=("secret_key", "user_id")),
+    pydantic_model_creator(
+        FileSource,
+        name="FileSourceList",
+        exclude=("access_key", "secret_key", "extra_config", "storage_location", "user_id"),
+    ),
 ):
     pass
 

@@ -90,6 +90,13 @@ class CollectionUpdate(BaseModel):
         return v
 
 
+class ExternalConfigPublicSchema(BaseModel):
+    """Public collection metadata; never serialize external authorization secrets."""
+
+    endpoint: str
+    collection_id: str
+
+
 class CollectionList(
     pydantic_model_creator(
         Collection,
@@ -97,10 +104,23 @@ class CollectionList(
         exclude=(
             "user_id",
             "documents",
+            "external_config",
         ),
     ),
 ):
+    external_config: ExternalConfigPublicSchema | None = None
     document_count: int = 0
+
+    @field_validator("external_config", mode="before")
+    @classmethod
+    def sanitize_external_config(cls, value: dict | None) -> dict | None:
+        if not value:
+            return None
+        return {
+            key: value[key]
+            for key in ("endpoint", "collection_id")
+            if key in value
+        }
 
 
 class CollectionDetail(CollectionList):
