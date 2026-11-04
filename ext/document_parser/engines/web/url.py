@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlsplit
 
 from config.main import local_configs
 from ext.document_parser.core.engine_base import BaseEngine
-from ext.document_parser.core.parse_result import ParseResult, OutputFormat
+from ext.document_parser.core.parse_result import ParseResult
 from ext.document_parser.config.engine_registry import get_engine
 
 
@@ -86,7 +86,7 @@ class URLEngine(BaseEngine):
             raise ValueError("URL host must resolve exclusively to public IP addresses")
 
     async def _download_url(self, url: str) -> tuple[str, str, str | None]:
-        """Download a public URL with redirect, peer-address and size checks."""
+        """Download a public URL to a bounded temporary file."""
         client = local_configs.extensions.httpx.instance
         current_url = url
         max_size = 100 * 1024 * 1024
@@ -99,6 +99,24 @@ class URLEngine(BaseEngine):
                 follow_redirects=False,
                 timeout=30.0,
             ) as response:
+                # DNS validation alone is vulnerable to rebinding. Verify the actual peer
+                # for every response, including redirects, and fail closed if unavailable.
+                network_stream = response.extensions.get("network_stream")
+                if network_stream is None:
+                    raise ValueError("Unable to verify remote URL connection address")
+
+                server_addr = network_stream.get_extra_info("server_addr")
+                if not server_addr:
+                    raise ValueError("Unable to verify remote URL connection address")
+
+                peer = server_addr[0] if isinstance(server_addr, (tuple, list)) else server_addr
+                try:
+                    peer_ip = ipaddress.ip_address(peer)
+                except ValueError as exc:
+                    raise ValueError("Remote URL returned an invalid peer address") from exc
+                if not peer_ip.is_global:
+                    raise ValueError("URL connected to a non-public IP address")
+
                 if response.status_code in {301, 302, 303, 307, 308}:
                     location = response.headers.get("location")
                     if not location or redirect_count == 5:
@@ -108,20 +126,18 @@ class URLEngine(BaseEngine):
 
                 response.raise_for_status()
 
-                # DNS checks alone are vulnerable to rebinding; validate the connected peer too.
-                network_stream = response.extensions.get("network_stream")
-                if network_stream is not None:
-                    server_addr = network_stream.get_extra_info("server_addr")
-                    if server_addr:
-                        peer = server_addr[0] if isinstance(server_addr, (tuple, list)) else server_addr
-                        if not ipaddress.ip_address(peer).is_global:
-                            raise ValueError("URL connected to a non-public IP address")
-
                 content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-                extension = self._get_extension_from_content_type(content_type) or self._get_extension_from_url(current_url)
+                extension = self._get_extension_from_content_type(content_type) or self._get_extension_from_url(
+                    current_url,
+                )
                 content_length = response.headers.get("content-length")
-                if content_length and int(content_length) > max_size:
-                    raise ValueError("Remote document exceeds the 100 MiB download limit")
+                if content_length:
+                    try:
+                        declared_size = int(content_length)
+                    except ValueError as exc:
+                        raise ValueError("Remote document has an invalid Content-Length") from exc
+                    if declared_size < 0 or declared_size > max_size:
+                        raise ValueError("Remote document exceeds the 100 MiB download limit")
 
                 tmp_path = None
                 try:
@@ -142,28 +158,19 @@ class URLEngine(BaseEngine):
 
         raise ValueError("URL redirect limit exceeded")
 
+    @staticmethod
+    def _safe_source_url(url: str) -> str:
+        """Remove query strings and fragments before storing URL metadata."""
+        return urlsplit(url)._replace(query="", fragment="").geturl()
+
     async def parse(self, file_path: str, options: dict | None = None) -> ParseResult:
         tmp_path = None
+        safe_url = self._safe_source_url(file_path)
         try:
-            response = await self._download_url(file_path)
-
-            content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-            content = response.content
-
-            # Determine file extension from content-type or URL
-            ext = self._get_extension_from_content_type(content_type) or self._get_extension_from_url(file_path)
-
-            # Create temp file with appropriate extension
-            suffix = ext if ext else ".tmp"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(content)
-                tmp_path = tmp.name
-
-            # Determine which engines to use
-            engine_names = self._get_engines_for_content(content_type, ext)
-
-            # Try each engine
+            tmp_path, content_type, extension = await self._download_url(file_path)
+            engine_names = self._get_engines_for_content(content_type, extension)
             last_error = None
+
             for engine_name in engine_names:
                 try:
                     engine_instance = get_engine(engine_name)
@@ -171,25 +178,19 @@ class URLEngine(BaseEngine):
                         continue
 
                     result = await engine_instance.parse(tmp_path, options)
-
-                    # Add URL metadata
-                    result.metadata["source_url"] = file_path
+                    result.metadata["source_url"] = safe_url
                     result.metadata["content_type"] = content_type
-                    result.metadata["downloaded_file"] = tmp_path
-
                     return result
+                except Exception as exc:
+                    last_error = exc
 
-                except Exception as e:
-                    last_error = e
-                    continue
-
-            # If all engines failed, raise error
-            raise Exception(f"All delegated engines failed for URL {file_path}. Last error: {last_error}")
-
+            raise RuntimeError(
+                f"All delegated engines failed for remote document {safe_url}"
+                + (f" ({type(last_error).__name__})" if last_error else ""),
+            )
         finally:
-            # Cleanup temp file
             if tmp_path and Path(tmp_path).exists():
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError):
                     Path(tmp_path).unlink()
 
     def _get_extension_from_content_type(self, content_type: str) -> str | None:
@@ -217,7 +218,7 @@ class URLEngine(BaseEngine):
 
     def _get_extension_from_url(self, url: str) -> str | None:
         """Extract extension from URL."""
-        path = Path(url)
+        path = Path(urlsplit(url).path)
         if path.suffix:
             return path.suffix.lower()
         return None

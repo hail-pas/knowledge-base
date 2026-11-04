@@ -180,9 +180,9 @@ class BaseFileSourceProvider(ABC, Generic[ExtraConfigT]):
         local_path_obj = Path(local_path)
         local_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-        content = await self.get_file(uri)
         async with aiofiles.open(local_path, "wb") as f:
-            await f.write(content)
+            async for chunk in self.get_file_stream(uri):
+                await f.write(chunk)
 
     async def health_check(self) -> dict[str, str | bool]:
         """健康检查，返回连接状态和性能指标"""

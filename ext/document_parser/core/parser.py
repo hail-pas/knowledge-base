@@ -34,22 +34,14 @@ class DocumentParser:
         processors: list[BaseProcessor] | None = None,
         options: dict | None = None,
     ) -> ParseResult:
-        if engine:
+        if file_path.lower().startswith(("http://", "https://")):
+            # URL inputs must never bypass the URL engine's SSRF protections.
+            engine_names = ["url"]
+            logger.info("检测到远程 URL，强制使用安全 URL 引擎")
+        elif engine:
             engine_names = [engine]
             logger.info(f"使用指定引擎: {engine}")
         else:
-            # Handle URLs first - check if file_path is a URL
-            if file_path.startswith(("http://", "https://")):
-                engine_instance = get_engine("url")
-                if not engine_instance:
-                    raise ValueError("URLEngine not registered")
-                logger.info(f"检测到URL，使用URLEngine: {file_path}")
-                result = await engine_instance.parse(file_path, options)
-                if processors:
-                    for processor in processors:
-                        result = await processor.process(result)
-                return result
-
             ext = Path(file_path).suffix.lower()
             engine_names = self._selection_rules.get(ext, [])
 

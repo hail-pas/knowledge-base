@@ -26,28 +26,36 @@ class DocumentService(CollectionService):
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         document_ids = [doc.id for doc in documents]
+        await self.collection_index_helper.delete_by_documents(documents)
+        await self.delete_filesource_related(documents)
+
         await Document.filter(id__in=document_ids).delete()
         await DocumentChunk.filter(document_id__in=document_ids).delete()
         await DocumentPages.filter(document_id__in=document_ids).delete()
         await DocumentGeneratedFaq.filter(document_id__in=document_ids).delete()
 
-        await self.collection_index_helper.delete_by_documents(documents)
-        await self.delete_filesource_related(documents)
-
     async def delete_filesource_related(self, documents: list[Document]) -> None:
-        # NOTE: File source cleanup still runs sequentially until batch deletion is implemented.
-
+        """Delete Knowledge Base managed artifacts without deleting imported source files."""
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
-        for d in documents:
-            fs = await FileSourceFactory.create(await d.file_source)
-            await fs.delete_file(d.parsed_uri)
-            await fs.delete_file(d.uri)
-            pages = await DocumentPages.filter(document_id=d.id)
-            for page in pages:
-                if page.images:
-                    for image in page.images:
-                        await fs.delete_file(image)
+        document_ids = [doc.id for doc in documents]
+        pages = await DocumentPages.filter(document_id__in=document_ids, deleted_at=0)
+        images_by_document: dict[int, list[str]] = {}
+        for page in pages:
+            images_by_document.setdefault(page.document_id, []).extend(page.images or [])
+
+        for document in documents:
+            provider = await FileSourceFactory.create(await document.file_source)
+
+            if document.parsed_uri:
+                await provider.delete_file(document.parsed_uri)
+
+            managed_upload = (document.source_meta or {}).get("_knowledge_base", {}).get("managed_upload", False)
+            if managed_upload:
+                await provider.delete_file(document.uri)
+
+            for image_uri in images_by_document.get(document.id, []):
+                await provider.delete_file(image_uri)
 
     async def create_from_upload(
         self,
@@ -69,6 +77,11 @@ class DocumentService(CollectionService):
         Returns:
             创建的 Document 实例
         """
+        # Strip client-supplied path components before constructing a storage key.
+        file_name = file_name.replace("\\", "/").rsplit("/", 1)[-1].strip()
+        if file_name in {"", ".", ".."} or "\x00" in file_name:
+            raise ApiException("上传文件名无效")
+
         # 1. 计算文件属性
         file_size = len(file_content)
         extension = Path(file_name).suffix.lower()
@@ -102,7 +115,7 @@ class DocumentService(CollectionService):
             source_last_modified=None,
             source_version_key=md5_hash,
             is_deleted_in_source=False,
-            source_meta=None,
+            source_meta={"_knowledge_base": {"managed_upload": True}},
             short_summary=None,
             long_summary=None,
             status=DocumentStatusEnum.pending.value,
@@ -142,7 +155,7 @@ class DocumentService(CollectionService):
             source_last_modified = None
             source_version_key = int(time.time())
             source_meta = None
-            logger.info(f"Creating document from HTTP URL (metadata skipped): {uri}")
+            logger.info(f"Creating document from HTTP URL (metadata skipped): {self._safe_url_for_log(uri)}")
         else:
             # 非 HTTP URL: 从 file_source 获取 metadata
             provider = await FileSourceFactory.create(file_source)
@@ -154,7 +167,7 @@ class DocumentService(CollectionService):
             source_last_modified = metadata.last_modified
             source_version_key = metadata.etag or uri
             source_meta = metadata.extra
-            logger.info(f"Creating document from URI with metadata: {uri}, size={file_size}, etag={metadata.etag}")
+            logger.info(f"Creating document from URI with metadata: file_name={file_name}, size={file_size}")
 
         # 创建 Document 记录
         document = await Document.create(
@@ -178,17 +191,16 @@ class DocumentService(CollectionService):
             workflow_template=self.collection.workflow_template,
         )
 
-        logger.info(f"Created document {document.id} from URI: {uri}")
+        logger.info(f"Created document {document.id} from URI")
         return document
+
+    @staticmethod
+    def _safe_url_for_log(url: str) -> str:
+        """Redact query parameters and fragments that may contain access tokens."""
+        return urlparse(url)._replace(query="", fragment="").geturl()
 
     def _extract_filename_from_url(self, url: str) -> str:
         """从 URL 中提取文件名"""
-
-        parsed = urlparse(url)
-        path = unquote(parsed.path)
+        path = unquote(urlparse(url).path)
         filename = Path(path).name
-
-        if not filename:
-            filename = "index.html"
-
-        return url
+        return filename if filename not in {"", ".", ".."} else "index.html"

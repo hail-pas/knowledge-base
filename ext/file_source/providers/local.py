@@ -156,4 +156,5 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
 
     def _compute_etag(self, path: Path) -> str:
         """计算文件 ETag（MD5 hash）"""
-        return hashlib.md5(path.read_bytes()).hexdigest()
+        with path.open("rb") as file:
+            return hashlib.file_digest(file, "md5").hexdigest()

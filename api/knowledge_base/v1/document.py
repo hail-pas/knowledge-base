@@ -52,6 +52,8 @@ from ext.ext_tortoise.models.knowledge_base import (
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
 
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024
+
 
 def get_document_queryset(request: Request, user: CurrentUser) -> QuerySet[Document]:
     """
@@ -131,7 +133,9 @@ async def create_document(
 
     if file is not None:
         # 文件上传方式
-        file_content = await file.read()
+        file_content = await file.read(MAX_UPLOAD_SIZE + 1)
+        if len(file_content) > MAX_UPLOAD_SIZE:
+            raise ApiException("上传文件不能超过 100 MiB", code=413)
         file_name = file.filename
 
         document = await service.create_from_upload(
