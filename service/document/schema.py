@@ -16,6 +16,7 @@ class DocumentList(
     pydantic_model_creator(
         Document,
         name="DocumentList",
+        exclude=("uri", "parsed_uri", "source_meta", "workflow_template"),
     ),
 ):
     pass
