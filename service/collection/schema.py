@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from pydantic import Field, BaseModel, field_validator, model_validator
 from tortoise.contrib.pydantic import pydantic_model_creator
 
@@ -116,10 +118,18 @@ class CollectionList(
     def sanitize_external_config(cls, value: dict | None) -> dict | None:
         if not value:
             return None
+        endpoint = value.get("endpoint")
+        if endpoint:
+            parsed_endpoint = urlsplit(endpoint)
+            endpoint = parsed_endpoint._replace(
+                netloc=parsed_endpoint.netloc.rsplit("@", 1)[-1],
+                query="",
+                fragment="",
+            ).geturl()
+
         return {
-            key: value[key]
-            for key in ("endpoint", "collection_id")
-            if key in value
+            "endpoint": endpoint,
+            "collection_id": value.get("collection_id"),
         }
 
 
