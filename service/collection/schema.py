@@ -28,7 +28,7 @@ class ExternalConfigSchema(BaseModel):
             or parsed.query
             or parsed.fragment
         ):
-            raise ValueError("外部知识库 endpoint 不允许嵌入凭证、query 或 fragment")
+            raise ApiException("外部知识库 endpoint 不允许嵌入凭证、query 或 fragment")
         return value
 
 
