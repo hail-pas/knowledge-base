@@ -201,6 +201,13 @@ def test_get_collection_detail(client):
     assert data["data"]["name"] == "test-collection"
     assert "embedding_model_config" in data["data"]
 
+    external_collection_id = STATE["external_collection_id"]
+    if external_collection_id:
+        external_response = client.get(f"/v1/collection/{external_collection_id}")
+        assert external_response.status_code == 200
+        external_data = external_response.json()
+        assert "authorization" not in external_data["data"].get("external_config", {})
+
 
 def test_update_collection_basic(client):
     """测试更新 Collection 基本信息"""
