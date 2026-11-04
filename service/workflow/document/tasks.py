@@ -242,8 +242,13 @@ class DocumentChunkTask(DocumentWorkflowTask):
                 )
                 for page in db_pages
             ]
-            # Keep the same page separator as document parsers and CoordinateMapper.
-            content = DocumentPages.pages_to_content(db_pages)
+            if len(db_pages) == 1 and not db_pages[0].content:
+                # Long single-page documents are intentionally omitted from the DB row.
+                # Restore their content from the parsed file before chunking.
+                pages[0].content = content
+            else:
+                # Keep the same page separator as document parsers and CoordinateMapper.
+                content = DocumentPages.pages_to_content(db_pages)
 
         # Detect format from uri
         ext = Path(document.parsed_uri).suffix
