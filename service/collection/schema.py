@@ -104,6 +104,7 @@ class CollectionList(
             "user_id",
             "documents",
             "external_config",
+            "workflow_template",
         ),
     ),
 ):
@@ -123,6 +124,7 @@ class CollectionList(
 
 
 class CollectionDetail(CollectionList):
+    workflow_template: dict = Field(default_factory=dict)
     embedding_model_config: EmbeddingModelConfigList | None = None
     summary: str = ""
 
