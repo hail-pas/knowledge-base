@@ -3,7 +3,7 @@ from tortoise.transactions import in_transaction
 
 from core.types import ApiException
 from core.response import Resp
-from service.depend import CurrentUser, api_permission_check, require_user
+from service.depend import CurrentUser, api_permission_check, ensure_super_admin, require_user
 from service.resource.helper import resource_list_to_trees
 from service.resource.schema import (
     ResourceCreateSchema,
@@ -29,6 +29,9 @@ async def _sync_resource_permissions(resource: Resource, codes: list[str]) -> No
 
 @router.post("", summary="创建系统资源/菜单")
 async def create_resource(request: Request, schema: ResourceCreateSchema) -> Resp[ResourceLevelTreeBaseNode]:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     data = schema.model_dump(exclude={"permission_codes"})
     if data.get("parent_id") is not None and not await Resource.filter(id=data["parent_id"]).exists():
         raise ApiException("父级资源不存在", code=422)
@@ -81,6 +84,9 @@ async def my_resource_trees(request: Request) -> Resp[list[ResourceLevelTreeNode
 
 @router.put("/{pk}", summary="更新系统资源/菜单")
 async def update_resource(request: Request, pk: int, schema: ResourceUpdateSchema) -> Resp:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     obj = await Resource.get_or_none(id=pk)
     if not obj:
         raise ApiException("资源不存在", code=404)
@@ -110,6 +116,9 @@ async def update_resource(request: Request, pk: int, schema: ResourceUpdateSchem
 
 @router.delete("/{pk}", summary="删除系统资源/菜单")
 async def delete_resource(request: Request, pk: int) -> Resp:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     obj = await Resource.get_or_none(id=pk)
     if not obj:
         raise ApiException("资源不存在", code=404)
