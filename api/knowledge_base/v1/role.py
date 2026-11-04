@@ -7,7 +7,7 @@ from tortoise.transactions import in_transaction
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import CurrentUser, api_permission_check, is_super_admin_user
+from service.depend import CurrentUser, api_permission_check, ensure_super_admin
 from service.role.schema import RoleList, RoleCreate, RoleDetail, RoleUpdate, RoleFilterSchema
 from service.resource.helper import resource_list_to_trees
 from ext.ext_tortoise.curd import list_view, pagination_factory, obj_prefetch_fields, delete_view
@@ -59,8 +59,7 @@ async def get_role_detail(request: Request, pk: int) -> Resp[RoleDetail]:
 @router.post("", summary="创建角色")
 async def create_role(request: Request, schema: RoleCreate) -> Resp[RoleList]:
     current_user: CurrentUser = request.scope["user"]
-    if schema.is_super_admin and not await is_super_admin_user(current_user.id):
-        raise ApiException("只有系统超级管理员可以创建超级管理员角色", code=403)
+    await ensure_super_admin(current_user.id)
     async with in_transaction(connection_name=Role.Meta.app):
         obj = await Role.create(
             label=schema.label,
@@ -73,15 +72,15 @@ async def create_role(request: Request, schema: RoleCreate) -> Resp[RoleList]:
 
 @router.put("/{pk}", summary="更新角色")
 async def update_role(request: Request, pk: int, schema: RoleUpdate) -> Resp:
+    current_user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(current_user.id)
+
     obj = await get_queryset(request).get_or_none(id=pk)
     if not obj:
         raise ApiException("角色不存在", code=404)
 
     data = schema.model_dump(exclude_unset=True)
     resource_ids = data.pop("resources", None)
-    current_user: CurrentUser = request.scope["user"]
-    if (obj.is_super_admin or "is_super_admin" in data) and not await is_super_admin_user(current_user.id):
-        raise ApiException("只有系统超级管理员可以修改超级管理员角色", code=403)
     async with in_transaction(connection_name=Role.Meta.app):
         if data:
             await get_queryset(request).filter(id=pk).update(**data)
@@ -92,12 +91,12 @@ async def update_role(request: Request, pk: int, schema: RoleUpdate) -> Resp:
 
 @router.delete("/{pk}", summary="删除角色")
 async def delete_role(request: Request, pk: int) -> Resp:
+    current_user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(current_user.id)
+
     obj = await get_queryset(request).get_or_none(id=pk)
     if not obj:
         raise ApiException("角色不存在", code=404)
-    current_user: CurrentUser = request.scope["user"]
-    if obj.is_super_admin and not await is_super_admin_user(current_user.id):
-        raise ApiException("只有系统超级管理员可以删除超级管理员角色", code=403)
     await UserRole.filter(role_id=pk).delete()
     await obj.resources.clear()
     return await delete_view(pk, get_queryset(request))
