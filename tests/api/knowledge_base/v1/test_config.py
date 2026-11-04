@@ -170,6 +170,7 @@ def test_create_indexing_backend_elasticsearch(client):
             "extra_config": {
                 "number_of_shards": 3,
                 "number_of_replicas": 2,
+                "access_token": "test-indexing-extra-token",
             },
         },
     )
@@ -309,3 +310,4 @@ async def test_credentials_are_encrypted_at_rest():
 
     indexing_config = await IndexingBackendConfig.get(name="test-es")
     assert indexing_config.password.startswith("enc:v1:")
+    assert indexing_config.extra_config["access_token"].startswith("enc:v1:")
