@@ -79,6 +79,9 @@ def test_get_file_source_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "access_key" not in data.get("data", {})
+    assert "secret_key" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
 
 
 # =============================================================================
@@ -149,6 +152,8 @@ def test_get_llm_model_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
 
 
 # =============================================================================
@@ -222,6 +227,8 @@ def test_get_indexing_backend_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "password" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
 
 
 # =============================================================================
@@ -274,6 +281,8 @@ def test_get_embedding_model_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
 
 
 @pytest.mark.asyncio
