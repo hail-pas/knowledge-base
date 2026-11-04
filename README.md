@@ -148,7 +148,7 @@ source tests/.env && uv run pytest
 
 ### 敏感凭证加密
 
-启动服务前必须配置 `KB_SECRET_ENCRYPTION_KEY`。生成 32 字节密钥：
+启动服务前必须配置 `KB_SECRET_ENCRYPTION_KEY`。API 的 ASGI 启动和 Celery Worker 初始化都会校验密钥；未配置或格式错误时服务拒绝启动。生成 32 字节密钥：
 
 ```bash
 openssl rand -hex 32
