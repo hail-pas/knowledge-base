@@ -68,6 +68,10 @@ class WorkflowTemplateValidator:
             valid_tasks = ", ".join(cls.VALID_TASKS.keys())
             raise ValueError(f"活动 '{activity_name}' 的 task_name '{task_name}' 无效，必须是: {valid_tasks}")
 
+        max_retries = execute_params.get("max_retries", 0)
+        if isinstance(max_retries, bool) or not isinstance(max_retries, int) or not 0 <= max_retries <= 3:
+            raise ValueError(f"活动 '{activity_name}' 的 max_retries 必须是 0 到 3 之间的整数")
+
     @classmethod
     def _validate_input(cls, activity_name: str, activity_config: dict) -> None:
         execute_params = activity_config.get("execute_params", {})
