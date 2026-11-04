@@ -5,11 +5,11 @@ from service.file_source.security import build_file_upload_uri, validate_public_
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.document_parser.core.parse_result import OutputFormat
 from ext.ext_tortoise.models.knowledge_base import (
-    Document,
-    FileSource,
     Collection,
+    Document,
     DocumentChunk,
     DocumentPages,
+    FileSource,
 )
 
 _ALLOWED_STATUS_TRANSITIONS: dict[DocumentStatusEnum, set[DocumentStatusEnum]] = {
