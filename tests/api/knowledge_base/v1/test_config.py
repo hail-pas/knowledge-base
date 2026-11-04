@@ -58,6 +58,7 @@ def test_create_file_source_s3(client):
     assert data["code"] == 0
     assert "access_key" not in data.get("data", {})
     assert "secret_key" not in data.get("data", {})
+    STATE["file_source_id"] = data.get("data", {}).get("id")
 
 
 def test_list_file_sources(client):
