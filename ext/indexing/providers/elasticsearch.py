@@ -46,7 +46,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             if self.config.port
             else f"{scheme}://{self.config.host}"
         )
-        basic_auth = (self.config.username, self.config.password) if self.config.username else None
+        basic_auth = (self.config.username, self.password) if self.config.username else None
 
         self._client = AsyncElasticsearch(
             hosts=hosts,
