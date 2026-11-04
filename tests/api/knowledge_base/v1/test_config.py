@@ -290,6 +290,14 @@ async def test_credentials_are_encrypted_at_rest():
     assert file_source.extra_config["session_token"].startswith("enc:v1:")
     assert file_source.extra_config["config"]["proxies"]["https"].startswith("enc:v1:")
 
+    from ext.file_source import FileSourceFactory
+
+    provider = await FileSourceFactory.create(file_source, use_cache=False)
+    assert provider.access_key == "test-access-key"
+    assert provider.secret_key == "test-secret-key"
+    assert provider.extra_config.session_token == "test-session-token"
+    assert provider.extra_config.config["proxies"]["https"] == "http://proxy-user:proxy-pass@proxy.example:8080"
+
     llm_config = await LLMModelConfig.get(name="test-openai")
     assert llm_config.api_key.startswith("enc:v1:")
     assert llm_config.extra_config["headers"]["Authorization"].startswith("enc:v1:")
