@@ -18,7 +18,7 @@ s3 = [
     "aiobotocore==3.1.0",
 ]
 minio = [
-    "minio==7.0.0",
+    "minio==7.2.20",
 ]
 aliyun = [
     "oss2==2.19.0",
