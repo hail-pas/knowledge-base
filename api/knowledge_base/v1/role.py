@@ -22,9 +22,9 @@ def get_queryset(request: Request) -> QuerySet[Role]:
 
 async def _set_role_resources(role: Role, resource_ids: list[int]) -> None:
     unique_ids = list(dict.fromkeys(resource_ids))
-    resources = await Resource.filter(id__in=unique_ids, enabled=True)
+    resources = await Resource.filter(id__in=unique_ids, enabled=True, assignable=True)
     if len(resources) != len(unique_ids):
-        raise ApiException("包含不存在或已禁用的资源", code=422)
+        raise ApiException("包含不存在、已禁用或不可分配的资源", code=422)
     await role.resources.clear()
     if resources:
         await role.resources.add(*resources)
@@ -52,7 +52,7 @@ async def get_role_detail(request: Request, pk: int) -> Resp[RoleDetail]:
         raise ApiException("角色不存在", code=404)
     obj = await obj_prefetch_fields(obj, RoleDetail)  # type: ignore
     data = RoleDetail.model_validate(obj)
-    data.resources = await resource_list_to_trees(await obj.resources.filter(enabled=True))  # type: ignore
+    data.resources = await resource_list_to_trees(await obj.resources.filter(enabled=True, assignable=True))  # type: ignore
     return Resp(data=data)
 
 

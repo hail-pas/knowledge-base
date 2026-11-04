@@ -1,5 +1,3 @@
-from typing import List
-
 from ext.indexing.models import CollectionIndexModelHelper
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from service.workflow.document.schemas import (

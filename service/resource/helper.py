@@ -1,5 +1,5 @@
 from service.resource.schema import ResourceLevelTreeNode, ResourceLevelTreeBaseNode
-from ext.ext_tortoise.models.authorization import Resource
+from ext.ext_tortoise.models.authorization import Permission, Resource
 
 
 async def resource_list_to_trees(nodes: list[Resource]) -> list[ResourceLevelTreeNode]:
@@ -8,11 +8,16 @@ async def resource_list_to_trees(nodes: list[Resource]) -> list[ResourceLevelTre
     if not nodes:
         return []
 
+    resource_ids = [node.id for node in nodes]
+    permission_rows = await Permission.filter(resources__id__in=resource_ids).values("code", "resources__id")
+    permission_codes_by_resource: dict[int, list[str]] = {}
+    for row in permission_rows:
+        permission_codes_by_resource.setdefault(row["resources__id"], []).append(row["code"])
+
     node_dict: dict[int, ResourceLevelTreeNode] = {}
     for node in nodes:
-        permissions = await node.permissions.all()
         base = ResourceLevelTreeBaseNode.model_validate(node)
-        base.permission_codes = [permission.code for permission in permissions]
+        base.permission_codes = sorted(permission_codes_by_resource.get(node.id, []))
         node_dict[node.id] = ResourceLevelTreeNode.model_validate(base.model_dump())
 
     tree_list: list[ResourceLevelTreeNode] = []

@@ -86,11 +86,14 @@ async def update_resource(request: Request, pk: int, schema: ResourceUpdateSchem
         raise ApiException("资源不存在", code=404)
     data = schema.model_dump(exclude_unset=True)
     permission_codes = data.pop("permission_codes", None)
-    if "parent_id" in data:
-        if data["parent_id"] == pk:
-            raise ApiException("资源不能将自身设置为父级", code=422)
-        if data["parent_id"] is not None and not await Resource.filter(id=data["parent_id"]).exists():
-            raise ApiException("父级资源不存在", code=422)
+    if "parent_id" in data and data["parent_id"] is not None:
+        parent_id = data["parent_id"]
+        while parent_id is not None:
+            if parent_id == pk:
+                raise ApiException("不能将资源移动到自身或其子级下", code=422)
+            parent_id = await Resource.filter(id=parent_id).values_list("parent_id", flat=True).first()
+            if parent_id is None and not await Resource.filter(id=data["parent_id"]).exists():
+                raise ApiException("父级资源不存在", code=422)
     async with in_transaction(connection_name=Resource.Meta.app):
         if data:
             await Resource.filter(id=pk).update(**data)

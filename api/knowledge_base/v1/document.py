@@ -424,9 +424,7 @@ async def create_document_chunk(request: Request, pk: int, schema: DocumentChunk
 @router.put("/{pk}/chunks/{chunk_id}", summary="修改DocumentChunk")
 async def update_document_chunk(request: Request, pk: int, chunk_id: int, schema: DocumentChunkUpdate) -> Resp:
     await get_document_or_raise(request, pk)
-    _ = (chunk_id, schema)
-    # Placeholder endpoint: current implementation intentionally performs no update yet.
-    return Resp()
+    raise ApiException("DocumentChunk 更新功能尚未实现", code=501)
 
 
 @router.delete("/{pk}/chunks/{chunk_id}", summary="删除DocumentChunk")
