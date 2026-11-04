@@ -70,8 +70,20 @@ async def create_file_source(request: Request, schema: FileSourceCreate) -> Resp
 
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
-    if getattr(schema.type, "value", schema.type) == "local_file" and not await is_super_admin_user(user.id):
-        raise ApiException("本地文件源仅允许系统超级管理员配置", code=403)
+
+    source_type = getattr(schema.type, "value", schema.type)
+    is_super_admin = await is_super_admin_user(user.id)
+    if not is_super_admin:
+        if source_type in {"local_file", "minio", "aliyun_oss"} or (
+            source_type == "s3" and schema.endpoint
+        ):
+            raise ApiException("本地或自定义存储端点仅允许系统超级管理员配置", code=403)
+        if not schema.use_ssl or not schema.verify_ssl:
+            raise ApiException("非超级管理员配置的对象存储必须启用 TLS 和证书验证", code=403)
+
+        provider_config = (schema.extra_config or {}).get("config", {})
+        if source_type == "s3" and isinstance(provider_config, dict) and provider_config.get("proxies"):
+            raise ApiException("自定义对象存储代理仅允许系统超级管理员配置", code=403)
 
     data = schema.model_dump(exclude_unset=True)
     data["user_id"] = user.id
