@@ -1,5 +1,7 @@
 
-from pydantic import Field, BaseModel
+from urllib.parse import urlsplit
+
+from pydantic import Field, BaseModel, field_validator
 from tortoise.contrib.pydantic import pydantic_model_creator
 
 from core.types import ApiException
@@ -58,7 +60,17 @@ class LLMModelConfigUpdate(BaseModel):
 class LLMModelConfigList(
     pydantic_model_creator(LLMModelConfig, name="LLMModelConfigList", exclude=("api_key", "extra_config")),
 ):
-    pass
+    @field_validator("base_url", mode="before")
+    @classmethod
+    def sanitize_base_url(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        parsed_url = urlsplit(value)
+        return parsed_url._replace(
+            netloc=parsed_url.netloc.rsplit("@", 1)[-1],
+            query="",
+            fragment="",
+        ).geturl()
 
 
 class LLMModelConfigDetail(LLMModelConfigList):
