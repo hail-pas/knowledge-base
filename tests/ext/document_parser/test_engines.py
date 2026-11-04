@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -205,23 +206,58 @@ async def test_paddleocr_engine_parses_two_page_scan_pdf(monkeypatch: pytest.Mon
 
 @pytest.mark.asyncio
 async def test_url_engine_downloads_and_delegates_to_real_engine(monkeypatch: pytest.MonkeyPatch):
+    class FakeNetworkStream:
+        def get_extra_info(self, name: str):
+            return ("93.184.216.34", 443) if name == "server_addr" else None
+
     class FakeResponse:
         def __init__(self, file_path: Path, content_type: str) -> None:
             self.content = file_path.read_bytes()
-            self.headers = {"content-type": content_type}
+            self.status_code = 200
+            self.headers = {
+                "content-type": content_type,
+                "content-length": str(len(self.content)),
+            }
+            self.extensions = {"network_stream": FakeNetworkStream()}
 
         def raise_for_status(self) -> None:
             return None
 
+        async def aiter_bytes(self):
+            yield self.content
+
+    class FakeStream:
+        def __init__(self, response: FakeResponse) -> None:
+            self.response = response
+
+        async def __aenter__(self) -> FakeResponse:
+            return self.response
+
+        async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+            return None
+
     class FakeClient:
-        async def get(self, url: str, *, follow_redirects: bool, timeout: float) -> FakeResponse:
+        def stream(self, method: str, url: str, *, follow_redirects: bool, timeout: float):
+            assert method == "GET"
             assert url == "https://example.test/test.pdf"
-            assert follow_redirects is True
+            assert follow_redirects is False
             assert timeout == 30.0
-            return FakeResponse(sample_file("test.pdf"), "application/pdf")
+            return FakeStream(FakeResponse(sample_file("test.pdf"), "application/pdf"))
 
     from config.main import local_configs
 
+    temp_paths: list[Path] = []
+    original_named_temp_file = tempfile.NamedTemporaryFile
+
+    def capture_temp_file(*args, **kwargs):
+        temp_file = original_named_temp_file(*args, **kwargs)
+        temp_paths.append(Path(temp_file.name))
+        return temp_file
+
+    monkeypatch.setattr(
+        "ext.document_parser.engines.web.url.tempfile.NamedTemporaryFile",
+        capture_temp_file,
+    )
     monkeypatch.setattr(local_configs.extensions.httpx, "_client", FakeClient())
 
     result = await URLEngine().parse("https://example.test/test.pdf")
@@ -229,4 +265,11 @@ async def test_url_engine_downloads_and_delegates_to_real_engine(monkeypatch: py
     assert result.page_count == 2
     assert result.metadata["source_url"] == "https://example.test/test.pdf"
     assert result.metadata["content_type"] == "application/pdf"
-    assert not Path(result.metadata["downloaded_file"]).exists()
+    assert temp_paths and all(not path.exists() for path in temp_paths)
+
+
+@pytest.mark.asyncio
+async def test_url_engine_rejects_private_addresses():
+    with pytest.raises(ValueError, match="public IP"):
+        await URLEngine()._validate_public_url("http://127.0.0.1/internal")
+
