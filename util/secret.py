@@ -74,7 +74,7 @@ def decrypt_secret(value: str | None, *, purpose: str) -> str | None:
         cipher = AES.new(_encryption_key(), AES.MODE_GCM, nonce=nonce, mac_len=_TAG_SIZE)
         cipher.update(purpose.encode("utf-8"))
         return cipher.decrypt_and_verify(ciphertext, tag).decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeError):
         raise ValueError("Unable to decrypt stored secret; verify the encryption key and purpose") from None
 
 
