@@ -160,6 +160,7 @@ async def get_collection_detail(request: Request, pk: int) -> Resp[CollectionDet
     data = CollectionDetail.model_validate(obj)
     if obj.user_id != user.id:
         data.workflow_template = {}
+        data.embedding_model_config = None
     return Resp(data=data)
 
 
