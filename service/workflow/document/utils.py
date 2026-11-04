@@ -1,6 +1,7 @@
 from loguru import logger
 
 from ext.file_source import FileSourceFactory
+from service.file_source.security import build_file_upload_uri, validate_public_source_uri
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.document_parser.core.parse_result import OutputFormat
 from ext.ext_tortoise.models.knowledge_base import (
@@ -42,7 +43,14 @@ async def get_document_for_workflow(document_id: int) -> Document:
     Returns:
         Document instance with related objects prefetched
     """
-    return await Document.get(id=document_id).prefetch_related("collection__embedding_model_config", "file_source")
+    document = await Document.get(id=document_id).prefetch_related(
+        "collection__embedding_model_config",
+        "file_source",
+    )
+    validate_public_source_uri(document.file_source, document.collection, document.uri)
+    if document.parsed_uri:
+        validate_public_source_uri(document.file_source, document.collection, document.parsed_uri)
+    return document
 
 
 async def update_document_status(document_id: int, status: DocumentStatusEnum) -> None:
@@ -83,7 +91,13 @@ def get_parsed_uri_extension(content_format: str) -> str:
     return ".md" if content_format == OutputFormat.MARKDOWN.value else ".txt"
 
 
-async def upload_parsed_content(file_source: FileSource, document_id: int, content: str, content_format: str) -> str:
+async def upload_parsed_content(
+    file_source: FileSource,
+    collection,
+    document_id: int,
+    content: str,
+    content_format: str,
+) -> str:
     """
     Upload parsed content to file source
 
@@ -99,7 +113,7 @@ async def upload_parsed_content(file_source: FileSource, document_id: int, conte
     provider = await FileSourceFactory.create(file_source)
     ext = get_parsed_uri_extension(content_format)
 
-    uri = f"{document_id}/parsed{ext}"
+    uri = build_file_upload_uri(file_source, collection, f"{document_id}/parsed{ext}")
 
     content_bytes = content.encode("utf-8")
     content_type = "text/markdown" if ext == ".md" else "text/plain"
@@ -109,7 +123,7 @@ async def upload_parsed_content(file_source: FileSource, document_id: int, conte
     return metadata.uri
 
 
-async def delete_parsed_content(file_source: FileSource, uri: str) -> bool:
+async def delete_parsed_content(file_source: FileSource, collection, uri: str) -> bool:
     """
     Delete uploaded parsed content for rollback
 
@@ -121,6 +135,7 @@ async def delete_parsed_content(file_source: FileSource, uri: str) -> bool:
         True if deleted successfully
     """
     try:
+        validate_public_source_uri(file_source, collection, uri)
         provider = await FileSourceFactory.create(file_source)
         result = await provider.delete_file(uri)
         logger.info(f"Deleted parsed content at {uri}")
