@@ -84,6 +84,8 @@ def validate_public_source_uri(file_source, collection, uri: str) -> None:
     """Reject shared-source URIs outside the caller's user/collection namespace."""
     if file_source.user_id is not None:
         return
+    if not isinstance(uri, str) or not uri:
+        raise ApiException("公共文件源 URI 格式无效")
 
     prefix = resolve_public_source_prefix(file_source, collection)
     source_type = getattr(file_source.type, "value", file_source.type)
