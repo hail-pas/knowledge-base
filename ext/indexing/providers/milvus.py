@@ -572,9 +572,10 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
     async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> None:
         """根据条件删除（带 partition）"""
         collection_name = self.build_collection_name(model_class)
+        if not await self._client.has_collection(collection_name):
+            return
 
         filter_expr = self._convert_filter(model_class, filter_clause)
-
         await self._client.delete(collection_name=collection_name, filter=filter_expr)
 
         if self.extra_config.auto_flush:
