@@ -13,6 +13,7 @@ from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 class IndexingBackendConfigCreate(
     pydantic_model_creator(IndexingBackendConfig, name="IndexingBackendConfigCreate", exclude_readonly=True),
 ):
+    password: str | None = Field(None, max_length=1024, description="连接密码")
     @field_validator("host")
     @classmethod
     def reject_embedded_host_credentials(cls, value: str | None) -> str | None:
