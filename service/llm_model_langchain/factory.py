@@ -17,6 +17,7 @@ from service.llm_model_langchain.model import (
     LangChainModelCapabilities,
 )
 from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
+from util.secret import decrypt_secret, transform_extra_config_secrets
 
 
 class LangChainLLMModelFactory:
@@ -115,15 +116,29 @@ class LangChainLLMModelFactory:
     @classmethod
     def _create_instance(cls, config: LLMModelConfig) -> CapabilityAwareChatModel:
         model: BaseChatModel
+        api_key = (
+            decrypt_secret(config.api_key, purpose="llm_model.api_key")
+            if config._saved_in_db
+            else config.api_key
+        )
+        extra_config = (
+            transform_extra_config_secrets(
+                config.extra_config,
+                purpose="llm_model.extra_config",
+                decrypt=True,
+            )
+            if config._saved_in_db
+            else config.extra_config or {}
+        )
 
         if config.type == LLMModelTypeEnum.openai:
-            extra = OpenAIExtraConfig.from_dict(config.extra_config or {})
+            extra = OpenAIExtraConfig.from_dict(extra_config)
             model_cls = cls._load_class("langchain_openai", "ChatOpenAI")
             model = cls._instantiate_model(
                 model_cls,
                 {
                     "model": config.model_name,
-                    "api_key": config.api_key,
+                    "api_key": api_key,
                     "base_url": config.base_url,
                     "organization": extra.organization,  # type: ignore
                     "default_headers": cls._build_headers(extra),
@@ -134,13 +149,13 @@ class LangChainLLMModelFactory:
             return cls._wrap_model(model, config)
 
         if config.type == LLMModelTypeEnum.deepseek:
-            extra = DeepSeekExtraConfig.from_dict(config.extra_config or {})
+            extra = DeepSeekExtraConfig.from_dict(extra_config)
             model_cls = cls._load_class("langchain_openai", "ChatOpenAI")
             model = cls._instantiate_model(
                 model_cls,
                 {
                     "model": config.model_name,
-                    "api_key": config.api_key,
+                    "api_key": api_key,
                     "base_url": config.base_url,
                     "default_headers": cls._build_headers(extra),
                     "extra_body": cls._build_extra_body(extra),
@@ -150,14 +165,14 @@ class LangChainLLMModelFactory:
             return cls._wrap_model(model, config)
 
         if config.type == LLMModelTypeEnum.azure_openai:
-            extra = AzureOpenAIExtraConfig.from_dict(config.extra_config or {})
+            extra = AzureOpenAIExtraConfig.from_dict(extra_config)
             model_cls = cls._load_class("langchain_openai", "AzureChatOpenAI")
             model = cls._instantiate_model(
                 model_cls,
                 {
                     "model": config.model_name,
                     "azure_deployment": extra.deployment_name or config.model_name,  # type: ignore
-                    "api_key": config.api_key,
+                    "api_key": api_key,
                     "azure_endpoint": config.base_url,
                     "api_version": extra.api_version,  # type: ignore
                     "default_headers": cls._build_headers(extra),
@@ -168,13 +183,13 @@ class LangChainLLMModelFactory:
             return cls._wrap_model(model, config)
 
         if config.type == LLMModelTypeEnum.anthropic:
-            extra = AnthropicExtraConfig.from_dict(config.extra_config or {})
+            extra = AnthropicExtraConfig.from_dict(extra_config)
             model_cls = cls._load_class("langchain_anthropic", "ChatAnthropic")
             model = cls._instantiate_model(
                 model_cls,
                 {
                     "model_name": config.model_name,
-                    "api_key": config.api_key,
+                    "api_key": api_key,
                     "base_url": config.base_url,
                     "default_headers": cls._build_headers(extra),
                     "model_kwargs": cls._build_extra_body(extra),
