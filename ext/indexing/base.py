@@ -29,7 +29,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     EmbeddingModelConfig,
     IndexingBackendConfig,
 )
-from util.secret import decrypt_secret
+from util.secret import decrypt_secret, transform_extra_config_secrets
 
 if TYPE_CHECKING:
     from ext.indexing.base import BaseIndexModel
@@ -48,7 +48,16 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
             if config._saved_in_db
             else config.password
         )
-        self.extra_config = extra_config_type.model_validate(config.extra_config or {})
+        extra_config = (
+            transform_extra_config_secrets(
+                config.extra_config,
+                purpose="indexing_backend.extra_config",
+                decrypt=True,
+            )
+            if config._saved_in_db
+            else config.extra_config or {}
+        )
+        self.extra_config = extra_config_type.model_validate(extra_config)
         self._client = None
 
     def _validate_model_config(self, model_class: type["BaseIndexModel"]) -> None:
