@@ -42,7 +42,10 @@ class DocumentService(CollectionService):
         pages = await DocumentPages.filter(document_id__in=document_ids, deleted_at=0)
         images_by_document: dict[int, list[str]] = {}
         for page in pages:
-            images_by_document.setdefault(page.document_id, []).extend(page.images or [])
+            for image in page.images or []:
+                image_uri = image if isinstance(image, str) else image.get("uri") or image.get("key") if isinstance(image, dict) else None
+                if isinstance(image_uri, str) and image_uri:
+                    images_by_document.setdefault(page.document_id, []).append(image_uri)
 
         for document in documents:
             image_uris = images_by_document.get(document.id, [])
