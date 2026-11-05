@@ -1,4 +1,5 @@
 from loguru import logger
+from uuid import uuid4
 
 from ext.document_parser.core.parse_result import OutputFormat
 from ext.ext_tortoise.models.knowledge_base import Collection, Document, DocumentChunk, DocumentPages, FileSource
@@ -21,7 +22,7 @@ class DocumentStorage:
         file_source = self.document.file_source
         collection = self.document.collection
         ext = ".md" if content_format == OutputFormat.MARKDOWN.value else ".txt"
-        uri = build_file_upload_uri(file_source, collection, f"{self.document.id}/parsed{ext}")
+        uri = build_file_upload_uri(file_source, collection, f"{self.document.id}/parsed/{uuid4().hex}{ext}")
         content_type = "text/markdown" if ext == ".md" else "text/plain"
         metadata = await (await self.provider()).upload_file(uri, content.encode("utf-8"), content_type)
         logger.info(f"Uploaded parsed content to {metadata.uri}")
