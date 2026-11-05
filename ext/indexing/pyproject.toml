@@ -2,7 +2,7 @@
 name = "indexing"
 version = "1.0.0"
 requires-python = ">=3.13.0"
-description = "Indexing integrations (Elasticsearch, Milvus)"
+description = "Backend-neutral indexing integrations (PostgreSQL, Elasticsearch, Milvus)"
 authors = [
     { name = "phoenix", email = "hypofiasco@gmail.com" },
 ]
@@ -13,6 +13,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+postgresql = [
+    "asyncpg>=0.31.0,<1",
+]
 elasticsearch = [
     "elasticsearch[async,orjson]>=8.19.3,<9.0.0",  # pined, because server side
 ]
@@ -21,7 +24,7 @@ milvus = [
 ]
 
 all = [
-    "indexing[elasticsearch,milvus]",
+    "indexing[postgresql,elasticsearch,milvus]",
 ]
 
 [build-system]
