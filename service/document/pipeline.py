@@ -104,8 +104,13 @@ class DocumentPipeline:
                 self.document.parsed_uri = old_uri
             raise
         finally:
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    logger.warning("Failed to remove temporary source file {}", temp_path)
 
     async def chunk(
         self,
