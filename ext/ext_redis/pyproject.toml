@@ -1,15 +1,15 @@
 [project]
 name = "ext-redis"
 version = "1.0.0"
-requires-python = ">=3.9"
+requires-python = ">=3.13.0"
 description = "Redis async client extensions"
 authors = [
     { name = "phoenix", email = "hypofiasco@gmail.com" },
 ]
 
 dependencies = [
-    "redis==6.1.0",
-    "pydantic>=2.0.0",
+    "redis>=8.1.0,<9",
+    "pydantic>=2.14.2,<3",
 ]
 
 [build-system]
