@@ -149,7 +149,11 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             for name, field in model_class.model_fields.items():
                 extra = field.json_schema_extra or {}
                 metadata = extra.get("index_metadata", {}) if isinstance(extra, dict) else {}
-                if field.annotation is str and metadata.get("enable_keyword", name == "content"):
+                if (
+                    not model_class.Meta.dense_vector_field
+                    and field.annotation is str
+                    and metadata.get("enable_keyword", name == "content")
+                ):
                     idx = self._q(f"{model_class.Meta.index_name}_{name}_fts")
                     cfg = self.extra_config.text_search_config
                     await conn.execute(
