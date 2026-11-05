@@ -29,7 +29,13 @@ class DocumentWorkflowTask(ActivityTaskTemplate):
         return document_id
 
     async def _set_running(self) -> None:
-        await update_document_status(self._get_document_id(), DocumentStatusEnum.processing)
+        is_current = await update_document_status(
+            self._get_document_id(),
+            self.activity.workflow_uid,
+            DocumentStatusEnum.processing,
+        )
+        if not is_current:
+            raise RuntimeError("Workflow no longer owns this document")
         await super()._set_running()
 
     async def _set_completed(self, output: dict[str, Any]) -> None:
@@ -54,7 +60,7 @@ class DocumentWorkflowTask(ActivityTaskTemplate):
             target = DocumentStatusEnum.success
         else:
             target = DocumentStatusEnum.processing
-        await update_document_status(self._get_document_id(), target)
+        await update_document_status(self._get_document_id(), self.activity.workflow_uid, target)
 
 
 async def _get_document(document_id: int) -> Document:
@@ -75,6 +81,7 @@ class DocumentParseTask(DocumentWorkflowTask):
             engine=task_input.engine,
             output_format=task_input.output_format,
             options=task_input.options,
+            workflow_uid=self.activity.workflow_uid,
         )
 
 
@@ -99,6 +106,7 @@ class DocumentChunkTask(DocumentWorkflowTask):
         return await DocumentPipeline(document).chunk(
             strategy=task_input.strategy,
             config=task_input.get_chunk_config(),
+            workflow_uid=self.activity.workflow_uid,
         )
 
 
@@ -113,6 +121,7 @@ class IndexChunkTask(DocumentWorkflowTask):
             document,
             batch_size=task_input.batch_size,
             concurrent_batches=task_input.concurrent_batches,
+            workflow_uid=self.activity.workflow_uid,
         )
 
     async def _handle_exception(self, exception: Exception) -> None:
