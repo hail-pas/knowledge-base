@@ -4,6 +4,7 @@ Providers execute native backend queries; strategies decide how query modes are 
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from ext.indexing.base import BaseIndexModel, BaseProvider
@@ -43,7 +44,7 @@ class HybridSearchStrategy(SearchStrategy):
             return await provider.search_native(model, query, filters, limit, offset)
 
         candidate_limit = max(limit + offset, query.dense.top_k, query.sparse.top_k, limit * 3)
-        dense, sparse = await __import__("asyncio").gather(
+        dense, sparse = await asyncio.gather(
             provider.search_native(model, query.dense, filters, candidate_limit, 0),
             provider.search_native(model, query.sparse, filters, candidate_limit, 0),
         )
@@ -82,6 +83,9 @@ class SearchStrategyFactory:
 
     @classmethod
     async def execute_cursor(cls, provider, model, query, filters, page_size, cursor):
+        native_cursor = getattr(provider, "search_cursor_native", None)
+        if native_cursor is not None:
+            return await native_cursor(model, query, filters, page_size, cursor)
         offset = int(cursor or 0)
         if offset < 0:
             raise ValueError("Cursor offset cannot be negative")
