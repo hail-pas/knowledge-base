@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Protocol, cast
 
-from ext.indexing.base import BaseIndexModel, BaseProvider
+from ext.indexing.base import BaseIndexModel
 from ext.indexing.types import DenseSearchClause, FilterClause, HybridSearchClause, SparseSearchClause
 
 
