@@ -224,13 +224,16 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
 
     async def delete_file(self, uri: str) -> bool:
         """删除文件"""
+        key = self._extract_key(uri)
+        client = await self.client
         try:
-            key = self._extract_key(uri)
-            client = await self.client
-            await client.delete_object(Bucket=self.storage_location, Key=key)
-            return True
-        except Exception:
-            return False
+            await client.head_object(Bucket=self.storage_location, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise
+        await client.delete_object(Bucket=self.storage_location, Key=key)
+        return True
 
     async def close(self) -> None:
         """关闭连接"""
@@ -242,6 +245,4 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
 
     def _extract_key(self, uri: str) -> str:
         """从 URI 提取 object key"""
-        if uri.startswith(f"s3://{self.storage_location}/"):
-            return uri[len(f"s3://{self.storage_location}/") :]
-        return uri
+        return parse_object_key(uri, scheme="s3", bucket=self.storage_location)

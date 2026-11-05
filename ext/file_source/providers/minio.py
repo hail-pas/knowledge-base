@@ -154,7 +154,9 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
             None,
-            lambda: self.client.put_object(self.storage_location or "", key, content, len(content)),  # type: ignore[arg-type]
+            lambda: self.client.put_object(
+                self.storage_location or "", key, content, len(content), content_type=content_type or "application/octet-stream"
+            ),  # type: ignore[arg-type]
         )
         return await self.get_file_metadata(uri)
 
