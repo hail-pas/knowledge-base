@@ -137,14 +137,15 @@ class FileSourceFactory:
                 logger.exception("Failed to close cached file-source provider")
 
     @classmethod
-    def clear_cache(cls, config_id: int | None = None) -> None:
-        """Drop cached references; use close_all during shutdown to release clients."""
-        if config_id is None:
-            cls._instances.clear()
-            cls._locks.clear()
-        else:
-            cls._instances.pop(config_id, None)
-            cls._locks.pop(config_id, None)
+    async def clear_cache(cls, config_id: int | None = None) -> None:
+        """Close and evict cached provider instances."""
+        config_ids = [config_id] if config_id is not None else list(cls._instances)
+        for current_id in config_ids:
+            lock = cls._locks.setdefault(current_id, asyncio.Lock())
+            async with lock:
+                cached = cls._instances.pop(current_id, None)
+                if cached:
+                    await cls._close_provider(cached[1])
 
     @classmethod
     async def create_by_name(cls, name: str, use_cache: bool = True) -> BaseFileSourceProvider:
