@@ -24,7 +24,6 @@ from ext.ext_tortoise.models.knowledge_base import (
 class DocumentService:
     def __init__(self, collection):
         self.collection = collection
-        self.indexer = DocumentIndexer(collection)
 
     async def start_processing(self, document: Document, workflow_uid: str | None = None) -> str:
         from service.workflow.document import process_document
@@ -43,7 +42,7 @@ class DocumentService:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         document_ids = [doc.id for doc in documents]
-        await self.indexer.delete_documents(documents)
+        await DocumentIndexer(self.collection).delete_documents(documents)
         await self.delete_filesource_related(documents)
 
         await Document.filter(id__in=document_ids).delete()
