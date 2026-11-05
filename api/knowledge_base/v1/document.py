@@ -22,6 +22,7 @@ from ext.ext_tortoise.curd import (
     detail_view,
     pagination_factory,
 )
+from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from service.document.helper import DocumentService
 from service.file_source.security import validate_public_source_uri
