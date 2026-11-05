@@ -22,7 +22,10 @@ class PostgreSQLConfig(ProviderConfig):
     schema: str = Field(default="public", pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
     vector_metric: Literal["cosine", "l2", "ip"] = "cosine"
     vector_index: Literal["hnsw", "ivfflat"] = "hnsw"
-    text_search_config: str = Field(default="simple", pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    text_search_config: str = Field(
+        default="simple",
+        pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$",
+    )
     pool_min_size: int = Field(default=1, ge=1)
     pool_max_size: int | None = Field(default=None, ge=1)
     hnsw_m: int = Field(default=16, ge=2, le=100)
@@ -39,14 +42,12 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             raise ValueError("vector_metric must be cosine, l2 or ip")
         if self.extra_config.vector_index not in {"hnsw", "ivfflat"}:
             raise ValueError("vector_index must be hnsw or ivfflat")
-        if (
-            self.extra_config.pool_max_size is not None
-            and self.extra_config.pool_max_size < self.extra_config.pool_min_size
-        ):
+        max_pool_size = self.extra_config.pool_max_size or config.max_connections
+        if max_pool_size < self.extra_config.pool_min_size:
             raise ValueError("pool_max_size must be greater than or equal to pool_min_size")
         if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", self.extra_config.schema):
             raise ValueError("Invalid schema")
-        if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", self.extra_config.text_search_config):
+        if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?", self.extra_config.text_search_config):
             raise ValueError("Invalid PostgreSQL text search configuration")
         self._pool: asyncpg.Pool | None = None
 
