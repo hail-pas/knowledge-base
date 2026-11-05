@@ -20,7 +20,8 @@ class QueryClause(BaseModel):
     output_fields: list[str] = Field(default_factory=lambda: ["*"], description="返回字段")
 
     @field_validator("output_fields", mode="after")
-    def model_validator(cls, value: list[str]) -> list[str]:
+    @classmethod
+    def ensure_id_in_output_fields(cls, value: list[str]) -> list[str]:
         if "*" in value:
             return ["*"]
 
