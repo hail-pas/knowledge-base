@@ -1,23 +1,23 @@
 [project]
 name = "indexing"
 version = "1.0.0"
-requires-python = ">=3.9"
+requires-python = ">=3.13.0"
 description = "Indexing integrations (Elasticsearch, Milvus)"
 authors = [
     { name = "phoenix", email = "hypofiasco@gmail.com" },
 ]
 
 dependencies = [
-    "pydantic>=2.0.0",
-    "loguru==0.7.3",
+    "pydantic>=2.14.2,<3",
+    "loguru>=0.7.3,<1",
 ]
 
 [project.optional-dependencies]
 elasticsearch = [
-    "elasticsearch[async,orjson]>=8.0.0,<9.0.0",  # pined, because server side
+    "elasticsearch[async,orjson]>=8.19.3,<9.0.0",  # pined, because server side
 ]
 milvus = [
-    "pymilvus==2.6.9",
+    "pymilvus>=2.6.9,<3",
 ]
 
 all = [
