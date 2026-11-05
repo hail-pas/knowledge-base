@@ -193,6 +193,11 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
     @staticmethod
     def _decode(model: type[BaseIndexModel], row: Any) -> dict[str, Any]:
         document = dict(row)
+        for name, field in model.model_fields.items():
+            value = document.get(name)
+            origin = get_origin(field.annotation)
+            if isinstance(value, str) and (origin in (list, dict) or field.annotation in (list, dict)):
+                document[name] = json.loads(value)
         vector_field = model.Meta.dense_vector_field
         if vector_field and isinstance(document.get(vector_field), str):
             document[vector_field] = json.loads(document[vector_field])
