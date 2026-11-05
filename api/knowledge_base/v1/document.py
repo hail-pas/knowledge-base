@@ -2,7 +2,7 @@ import mimetypes
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import Body, File, Form, Depends, Request, APIRouter, UploadFile
+from fastapi import File, Form, Depends, Request, APIRouter, UploadFile
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
