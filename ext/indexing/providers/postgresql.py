@@ -241,8 +241,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                         f"UPDATE {self._table(model)} SET {assignments} "
                         f"WHERE id = ${len(values)} RETURNING *", *values
                     )
-                    if row:
-                        output.append(self._decode(model, row))
+                    output.append(self._decode(model, row) if row else {"id": None})
                     continue
                 if model.Meta.auto_generate_id and not doc.get("id"):
                     doc.pop("id", None)
