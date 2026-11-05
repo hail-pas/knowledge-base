@@ -70,4 +70,4 @@ The storage contract in `BaseProvider` no longer requires search methods. Search
 - A collection with existing documents cannot change its indexing backend through the update API. Create a new collection and re-index its documents to migrate data safely.
 - External collections cannot bind an internal indexing backend.
 
-The relation is added by migration `0002_collection_indexing_backend.py`; existing collections remain unbound and continue to use the default provider.
+The relation is added by migration `0002_collection_indexing_backend.py`; existing collections remain unbound and continue to use the default provider. This schema migration does not copy existing vectors or keyword documents between backends. If a deployment previously stored indexes in Elasticsearch or Milvus, re-index those collections into PostgreSQL (or explicitly bind them to their existing backend configuration) before switching their retrieval traffic.
