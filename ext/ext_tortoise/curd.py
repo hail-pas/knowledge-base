@@ -4,7 +4,7 @@ from typing import TypeVar
 from collections import defaultdict, abc
 
 from fastapi import Body, Query, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 from tortoise.models import Model
 from tortoise.queryset import QuerySet
 from tortoise.exceptions import IntegrityError
@@ -14,7 +14,6 @@ from tortoise.contrib.pydantic.base import PydanticModel
 from core.types import ApiException
 from core.schema import CRUDPager, paginate
 from core.response import Resp, PageData
-from enhance.epydantic import create_sub_fields_model
 
 unique_error_msg_key_regex = re.compile(r"'(.*?)'")
 
@@ -55,9 +54,16 @@ async def get_all_obj(
 
     list_schema = pagination.list_schema
     if pagination.selected_fields:
-        list_schema = create_sub_fields_model(  # type: ignore
-            pagination.list_schema,
-            pagination.selected_fields,
+        fields = {
+            name: (field.annotation, field)
+            for name, field in pagination.list_schema.model_fields.items()
+            if name in pagination.selected_fields
+        }
+        list_schema = create_model(
+            f"{pagination.list_schema.__name__}Selected",
+            __config__=pagination.list_schema.model_config,
+            __module__=pagination.list_schema.__module__,
+            **fields,
         )
 
     data = await list_schema.from_queryset(  # type: ignore
