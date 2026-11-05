@@ -1,5 +1,2 @@
-allow-insecure-host = ["mirrors.tuna.tsinghua.edu.cn"]
-# index-url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
-index-url = "https://mirrors.aliyun.com/pypi/simple"
-extra-index-url = []
+index-url = "https://pypi.org/simple"
 native-tls = true
