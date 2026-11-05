@@ -1,9 +1,11 @@
 from typing import override
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from loguru import logger
 from pydantic import ConfigDict
 
 from config.default import RegisterExtensionConfig
+from config.main import local_configs
 from ext.indexing.base import BaseProvider
 from ext.indexing.models import (
     DocumentFAQDenseIndex,
@@ -22,6 +24,29 @@ class ModelProviderConfig(RegisterExtensionConfig):
 
     postgresql_provider: BaseProvider | None = None
 
+    @staticmethod
+    def _default_postgresql_config() -> IndexingBackendConfig:
+        """Reuse the knowledge-base PostgreSQL DSN when no explicit backend is configured."""
+        dsn = urlsplit(str(local_configs.extensions.tortoise.knowledge_base.url))
+        query = parse_qs(dsn.query)
+        sslmode = query.get("sslmode", ["disable"])[0]
+        return IndexingBackendConfig(
+            name="default-postgresql",
+            type=IndexingBackendTypeEnum.postgresql,
+            host=dsn.hostname or "127.0.0.1",
+            port=dsn.port or 5432,
+            username=unquote(dsn.username or ""),
+            password=unquote(dsn.password or ""),
+            use_ssl=sslmode not in {"disable", "allow"},
+            verify_ssl=sslmode in {"verify-ca", "verify-full"},
+            timeout=30,
+            max_retries=3,
+            max_connections=10,
+            extra_config={"database": (dsn.path or "/postgres").lstrip("/")},
+            is_enabled=True,
+            is_default=True,
+        )
+
     @override
     async def register(self) -> None:
         logger.info("Registering PostgreSQL indexing provider")
@@ -31,10 +56,8 @@ class ModelProviderConfig(RegisterExtensionConfig):
             is_default=True,
         ).first()
         if config is None:
-            raise RuntimeError(
-                "No enabled default PostgreSQL indexing backend configured. "
-                "Create an IndexingBackendConfig with type=postgresql and is_default=True."
-            )
+            config = self._default_postgresql_config()
+            logger.info("No explicit PostgreSQL indexing config; reusing knowledge-base database")
         provider = await IndexingProviderFactory.create(config)
         self.postgresql_provider = provider
         DocumentContentDenseIndex.Meta.provider = provider
