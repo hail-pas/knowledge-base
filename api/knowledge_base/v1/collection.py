@@ -30,6 +30,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
     EmbeddingModelConfig,
+    IndexingBackendConfig,
 )
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
@@ -80,6 +81,13 @@ async def create_collection(request: Request, schema: CollectionCreate) -> Resp[
     schema_dict = schema.model_dump(exclude_unset=True)
     schema_dict["user_id"] = user.id
     external_config = schema_dict.get("external_config")
+    backend_config_id = schema_dict.get("indexing_backend_config_id")
+    if schema.is_external and backend_config_id is not None:
+        raise ApiException("外部知识库不能设置索引后端")
+    if backend_config_id is not None and not await IndexingBackendConfig.filter(
+        id=backend_config_id, deleted_at=0, is_enabled=True
+    ).exists():
+        raise ApiException("索引后端配置不存在或已停用")
     if external_config and external_config.get("authorization"):
         external_config["authorization"] = encrypt_secret(
             external_config["authorization"],
@@ -111,12 +119,28 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
         )
 
     if obj.is_external:
+        if update_data.get("indexing_backend_config_id") is not None:
+            raise ApiException("外部知识库不能设置索引后端")
         if "workflow_template" in update_data:
             raise ApiException("外部知识库不能配置 workflow_template")
         if "external_config" in update_data and not update_data["external_config"]:
             raise ApiException("外部知识库必须保留 external_config")
     elif "external_config" in update_data and update_data["external_config"] is not None:
         raise ApiException("普通知识库不能设置 external_config")
+
+    if "indexing_backend_config_id" in update_data:
+        backend_id = update_data["indexing_backend_config_id"]
+        if backend_id is not None and not await IndexingBackendConfig.filter(
+            id=backend_id, deleted_at=0, is_enabled=True
+        ).exists():
+            raise ApiException("索引后端配置不存在或已停用")
+        if backend_id != obj.indexing_backend_config_id and await Document.filter(
+            collection_id=pk, deleted_at=0
+        ).exists():
+            raise ApiException(
+                "非空集合暂不支持切换索引后端，请新建集合并重新导入文档",
+                code=409,
+            )
 
     if "embedding_model_config_id" in update_data:
         new_config_id = update_data["embedding_model_config_id"]
