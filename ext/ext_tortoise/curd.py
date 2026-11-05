@@ -225,8 +225,6 @@ async def list_view(
     *,
     post_process: abc.Callable[[list], abc.Awaitable[list | None]] | None = None,
 ) -> Resp:
-    if pager.selected_fields:
-        queryset = queryset.only(*pager.selected_fields)
     data, total = await get_all_obj(
         queryset=queryset.distinct(),
         pagination=pager,
