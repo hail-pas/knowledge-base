@@ -8,6 +8,9 @@ from urllib.parse import unquote, urlparse
 from loguru import logger
 
 from core.exception import ApiException
+from tortoise.transactions import in_transaction
+from ext.ext_tortoise.main import ConnectionNameEnum
+from ext.workflow.manager import WorkflowManager
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.file_source.factory import FileSourceFactory
 from service.file_source.security import build_file_upload_uri, validate_public_source_uri
@@ -38,6 +41,41 @@ class DocumentService:
         document.current_workflow_uid = workflow_id
         await document.save(update_fields=["current_workflow_uid"])
         return workflow_id
+
+    async def reprocess(self, document: Document) -> str:
+        async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+            locked = await Document.filter(id=document.id, collection_id=self.collection.id).using_db(conn).select_for_update().first()
+            if locked is None:
+                raise ApiException("Document不存在")
+            if locked.status not in {DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value}:
+                raise ApiException("当前状态不支持重新处理")
+            old_workflow_uid = locked.current_workflow_uid
+            locked.status = DocumentStatusEnum.pending
+            await locked.save(using_db=conn, update_fields=["status"])
+            if old_workflow_uid:
+                await WorkflowManager.delete_workflow(old_workflow_uid, using_db=conn)
+        return await self.start_processing(locked)
+
+    async def rechunk(self, document: Document) -> str:
+        async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+            locked = await Document.filter(id=document.id, collection_id=self.collection.id).using_db(conn).select_for_update().first()
+            if locked is None:
+                raise ApiException("Document不存在")
+            if locked.status not in {DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value}:
+                raise ApiException("当前状态不支持")
+            workflow_uid = str(locked.current_workflow_uid) if locked.current_workflow_uid else None
+            if not workflow_uid:
+                raise ApiException("Document 缺少可重新切块的工作流", code=409)
+            reset_count = await WorkflowManager.reset_activities_from_task(
+                locked.current_workflow_uid,
+                "workflow_document.DocumentChunkTask",
+                using_db=conn,
+            )
+            if not reset_count:
+                raise ApiException("当前工作流没有 DocumentChunkTask，无法重新切块", code=409)
+            locked.status = DocumentStatusEnum.pending
+            await locked.save(using_db=conn, update_fields=["status"])
+        return await self.start_processing(locked, workflow_uid)
 
     async def delete(self, documents: list[Document]) -> None:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
