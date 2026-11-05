@@ -1,10 +1,10 @@
 import enum
 from typing import override
-from urllib.parse import unquote
 
-from aerich import Command
 from pydantic import BaseModel, PostgresDsn
 from tortoise import Tortoise
+from tortoise.backends.base.config_generator import expand_db_url
+from tortoise.migrations.api import migrate
 
 from config.default import RegisterExtensionConfig
 
@@ -26,20 +26,35 @@ class DatabaseConnectionConfig(BaseModel):
     url: PostgresDsn
 
     def config_dict(self, timezone: str) -> dict:
-        host = self.url.hosts()[0]
-        return {
-            "engine": "tortoise.backends.asyncpg",
-            "credentials": {
-                "host": host.get("host"),
-                "port": host.get("port") or 5432,
-                "user": unquote(host.get("username") or ""),
-                "password": unquote(host.get("password") or ""),
-                "database": unquote(self.url.path.lstrip("/")),
-                "minsize": 1,
-                "maxsize": 10,
-                "server_settings": {"timezone": timezone},
-            },
-        }
+        config = expand_db_url(str(self.url))
+        config["credentials"].update(
+            minsize=1,
+            maxsize=10,
+            server_settings={"timezone": timezone},
+        )
+        return config
+
+
+async def _legacy_schema_apps(config: dict) -> list[str]:
+    """Detect databases created by Aerich before adopting native migrations."""
+    await Tortoise.init(config=config, init_connections=False)
+
+    legacy_apps: list[str] = []
+    core_tables = {
+        ConnectionNameEnum.knowledge_base.value: "collection",
+        ConnectionNameEnum.authorization.value: "role",
+    }
+    for app_label, core_table in core_tables.items():
+        connection = Tortoise.get_connection(app_label)
+        rows = await connection.execute_query_dict(
+            "SELECT "
+            "to_regclass('public.tortoise_migrations') IS NOT NULL AS has_native_migrations, "
+            f"to_regclass('public.{core_table}') IS NOT NULL AS has_legacy_schema"
+        )
+        if rows and rows[0]["has_legacy_schema"] and not rows[0]["has_native_migrations"]:
+            legacy_apps.append(app_label)
+
+    return legacy_apps
 
 
 class TortoiseConfig(RegisterExtensionConfig):
@@ -50,21 +65,21 @@ class TortoiseConfig(RegisterExtensionConfig):
 
     @override
     async def register(self) -> None:
-        from ext.ext_tortoise.migrate.env import VERSION_FILE_PATH
+        config = gen_tortoise_config_dict()
 
-        for connection in ConnectionNameEnum:
-            Tortoise.init_models(_model_modules(connection), connection.value)
-
-        for connection in ConnectionNameEnum:
-            command = Command(
-                tortoise_config=gen_tortoise_config_dict(),
-                app=connection.value,
-                location=VERSION_FILE_PATH,
+        # Existing Aerich databases already contain the initial schema. Mark only
+        # the native baseline as applied, then let native migrations reconcile
+        # subsequent schema changes. Fresh databases run the baseline normally.
+        for app_label in await _legacy_schema_apps(config):
+            await migrate(
+                config=config,
+                app_labels=[app_label],
+                target=f"{app_label}.0001_initial",
+                fake=True,
             )
-            await command.init()
-            await command.upgrade(run_in_transaction=True)
 
-        await Tortoise.init(config=gen_tortoise_config_dict())
+        await migrate(config=config)
+        await Tortoise.init(config=config)
 
     @override
     async def unregister(self) -> None:
@@ -77,13 +92,16 @@ def gen_tortoise_config_dict() -> dict:
     tortoise_config = local_configs.extensions.tortoise
     return {
         "connections": {
-            connection.value: getattr(tortoise_config, connection.value).config_dict(local_configs.server.timezone)
+            connection.value: getattr(tortoise_config, connection.value).config_dict(
+                local_configs.server.timezone
+            )
             for connection in ConnectionNameEnum
         },
         "apps": {
             connection.value: {
-                "models": [*_model_modules(connection), "aerich.models"],
+                "models": _model_modules(connection),
                 "default_connection": connection.value,
+                "migrations": f"ext.ext_tortoise.migrate.{connection.value}",
             }
             for connection in ConnectionNameEnum
         },
