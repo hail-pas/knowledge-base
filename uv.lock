@@ -2179,6 +2179,7 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "asyncpg" },
     { name = "elasticsearch", extra = ["async", "orjson"] },
     { name = "pymilvus" },
 ]
@@ -2187,6 +2188,9 @@ elasticsearch = [
 ]
 milvus = [
     { name = "pymilvus" },
+]
+postgresql = [
+    { name = "asyncpg" },
 ]
 
 [package.dev-dependencies]
@@ -2199,13 +2203,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "asyncpg", marker = "extra == 'postgresql'", specifier = ">=0.31.0,<1" },
     { name = "elasticsearch", extras = ["async", "orjson"], marker = "extra == 'elasticsearch'", specifier = ">=8.19.3,<9.0.0" },
-    { name = "indexing", extras = ["elasticsearch", "milvus"], marker = "extra == 'all'", editable = "ext/indexing" },
+    { name = "indexing", extras = ["postgresql", "elasticsearch", "milvus"], marker = "extra == 'all'", editable = "ext/indexing" },
     { name = "loguru", specifier = ">=0.7.3,<1" },
     { name = "pydantic", specifier = ">=2.14.2,<3" },
     { name = "pymilvus", marker = "extra == 'milvus'", specifier = ">=2.6.9,<3" },
 ]
-provides-extras = ["elasticsearch", "milvus", "all"]
+provides-extras = ["postgresql", "elasticsearch", "milvus", "all"]
 
 [package.metadata.requires-dev]
 dev = [
