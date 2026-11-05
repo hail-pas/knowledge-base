@@ -9,6 +9,8 @@ from ext.document_parser import DocumentParser
 from ext.document_parser.core.parse_result import OutputFormat, PageResult, ParseResult
 from ext.ext_tortoise.models.knowledge_base import Document, DocumentChunk, DocumentPages
 from ext.text_chunker import TextChunker
+from ext.ext_tortoise.main import ConnectionNameEnum
+from tortoise.transactions import in_transaction
 from service.document.storage import DocumentStorage
 
 
@@ -35,12 +37,8 @@ class DocumentPipeline:
                 file_path=source_path, engine=engine, output_format=output_format, options=options
             )
             new_uri = await self.storage.upload_parsed(result.content, result.format.value)
-            self.document.parsed_uri = new_uri
-            await self.document.save(update_fields=["parsed_uri"])
-            await self.storage.cleanup_pages(self.document.id)
-
+            records = []
             if result.pages:
-                records = []
                 for page in result.pages:
                     metadata = {
                         **(page.metadata or {}),
@@ -59,7 +57,12 @@ class DocumentPipeline:
                         images=list(page.images),
                         metadata=metadata,
                     ))
-                await DocumentPages.bulk_create(records)
+            async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+                self.document.parsed_uri = new_uri
+                await self.document.save(using_db=conn, update_fields=["parsed_uri"])
+                await DocumentPages.filter(document_id=self.document.id).using_db(conn).delete()
+                if records:
+                    await DocumentPages.bulk_create(records, using_db=conn)
 
             if old_uri and old_uri != new_uri:
                 try:
@@ -77,7 +80,6 @@ class DocumentPipeline:
                 "engine_used": result.engine_used,
             }
         except Exception:
-            await self.storage.cleanup_pages(self.document.id)
             if new_uri:
                 try:
                     await self.storage.delete_managed_uri(new_uri)
