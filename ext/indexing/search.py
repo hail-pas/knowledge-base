@@ -5,10 +5,23 @@ Providers execute native backend queries; strategies decide how query modes are 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Protocol, cast
 
 from ext.indexing.base import BaseIndexModel, BaseProvider
 from ext.indexing.types import DenseSearchClause, FilterClause, HybridSearchClause, SparseSearchClause
+
+
+class NativeSearchProvider(Protocol):
+    """Optional provider capability for executing one backend-native query."""
+
+    async def search_native(
+        self,
+        model: type[BaseIndexModel],
+        query: Any,
+        filters: FilterClause | None,
+        limit: int,
+        offset: int,
+    ) -> list[tuple[dict[str, Any], float]]: ...
 
 
 class SearchStrategy:
@@ -16,7 +29,7 @@ class SearchStrategy:
 
     async def execute(
         self,
-        provider: BaseProvider,
+        provider: NativeSearchProvider,
         model: type[BaseIndexModel],
         query: Any,
         filters: FilterClause | None,
@@ -79,7 +92,7 @@ class SearchStrategyFactory:
         strategy = cls._strategies.get(type(query))
         if strategy is None:
             raise TypeError(f"Unsupported search clause: {type(query).__name__}")
-        return await strategy.execute(provider, model, query, filters, limit, offset)
+        return await strategy.execute(cast(NativeSearchProvider, provider), model, query, filters, limit, offset)
 
     @classmethod
     async def execute_cursor(cls, provider, model, query, filters, page_size, cursor):
