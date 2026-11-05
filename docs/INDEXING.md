@@ -47,3 +47,27 @@ Example provider `extra_config`:
 3. pgvector applies filters during SQL query execution, but approximate-index filtering can reduce the number of returned candidates. Validate filtered recall and tune iterative scans / candidate limits when needed.
 4. Changing embedding dimensions creates a distinct physical index name; it does not migrate or re-embed existing vectors. Re-index data before switching production traffic to a new embedding model.
 5. Graph retrieval is not implemented by this provider. The query type can be extended later, but graph storage/traversal should be introduced as a distinct capability rather than simulated through vector search.
+
+
+## Search strategy and provider separation
+
+Retrieval is routed through `ext/indexing/search.py`:
+
+- `DenseSearchStrategy` delegates a dense query to the provider's native search capability.
+- `SparseSearchStrategy` delegates a keyword/full-text query.
+- `HybridSearchStrategy` uses native hybrid search when the backend supports it; otherwise it executes dense and sparse queries concurrently and combines ranked candidates with weighted RRF.
+- `SearchStrategyFactory.register(query_clause_type, strategy)` is the extension point for future Graph, Image, or Multi-vector retrieval modes.
+
+The storage contract in `BaseProvider` no longer requires search methods. Search-capable providers expose `search_native(...)`; providers may additionally expose `search_cursor_native(...)` for backend-specific cursor pagination. This keeps backend-native query syntax out of the strategy contract.
+
+## Collection-level backend selection
+
+`Collection.indexing_backend_config_id` optionally binds a collection to one enabled `IndexingBackendConfig`.
+
+- When set, the collection's sparse, dense, and FAQ index models resolve that provider independently.
+- When unset, the system default PostgreSQL provider is used.
+- Dynamic index-model cache keys include the embedding dimension and provider instance identity, preventing cross-collection provider leakage.
+- A collection with existing documents cannot change its indexing backend through the update API. Create a new collection and re-index its documents to migrate data safely.
+- External collections cannot bind an internal indexing backend.
+
+The relation is added by migration `0002_collection_indexing_backend.py`; existing collections remain unbound and continue to use the default provider.
