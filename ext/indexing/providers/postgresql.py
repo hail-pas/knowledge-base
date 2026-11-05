@@ -19,10 +19,10 @@ from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 class PostgreSQLConfig(ProviderConfig):
     database: str = "postgres"
-    schema: str = "public"
+    schema: str = Field(default="public", pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
     vector_metric: Literal["cosine", "l2", "ip"] = "cosine"
     vector_index: Literal["hnsw", "ivfflat"] = "hnsw"
-    text_search_config: str = "simple"
+    text_search_config: str = Field(default="simple", pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
     pool_min_size: int = Field(default=1, ge=1)
     pool_max_size: int | None = Field(default=None, ge=1)
     hnsw_m: int = Field(default=16, ge=2, le=100)
