@@ -111,6 +111,7 @@ class LLMModelTypeEnum(StrEnum):
 class IndexingBackendTypeEnum(StrEnum):
     """Indexing 后端类型"""
 
+    postgresql = ("postgresql", "PostgreSQL")
     elasticsearch = ("elasticsearch", "Elasticsearch")
     milvus = ("milvus", "Milvus")
 
