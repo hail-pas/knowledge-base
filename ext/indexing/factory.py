@@ -256,5 +256,10 @@ class IndexModelFactory:
         cls, base_name: str, dimension: int, provider: BaseProvider | None = None
     ) -> type[BaseIndexModel] | None:
         """Return a cached model, optionally scoped to a specific provider."""
-        model_key = cls._get_model_key(base_name, dimension, provider)
-        return cls._model_registry.get(model_key)
+        if provider is not None:
+            return cls._model_registry.get(cls._get_model_key(base_name, dimension, provider))
+        prefix = f"{base_name}_{dimension}_"
+        return next(
+            (model for key, model in cls._model_registry.items() if key.startswith(prefix)),
+            cls._model_registry.get(f"{base_name}_{dimension}"),
+        )
