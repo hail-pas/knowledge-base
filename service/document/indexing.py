@@ -97,7 +97,7 @@ class DocumentIndexer:
             await dense_model.bulk_insert(
                 dense_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
             )
-        except Exception:
+        except BaseException:
             if await Document.filter(
                 id=document.id,
                 current_workflow_uid=workflow_uid,
