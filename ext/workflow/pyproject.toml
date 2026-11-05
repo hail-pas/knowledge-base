@@ -1,17 +1,17 @@
 [project]
 name = "workflow"
 version = "1.0.0"
-requires-python = ">=3.9"
+requires-python = ">=3.13.0"
 description = "Workflow execution engine and task management"
 authors = [
     { name = "phoenix", email = "hypofiasco@gmail.com" },
 ]
 
 dependencies = [
-    "celery==5.6.2",
-    "pydantic>=2.0.0",
-    "loguru==0.7.3",
-    "networkx==3.6.1",
+    "celery>=5.6.3,<6",
+    "pydantic>=2.14.2,<3",
+    "loguru>=0.7.3,<1",
+    "networkx>=3.6.1,<4",
 ]
 
 [build-system]
