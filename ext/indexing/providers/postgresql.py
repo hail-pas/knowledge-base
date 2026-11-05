@@ -35,6 +35,8 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             raise ValueError("vector_index must be hnsw or ivfflat")
         if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", self.extra_config.schema):
             raise ValueError("Invalid schema")
+        if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", self.extra_config.text_search_config):
+            raise ValueError("Invalid PostgreSQL text search configuration")
         self._pool: asyncpg.Pool | None = None
 
     async def connect(self) -> None:
@@ -114,9 +116,11 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                 prefix = "vector" if model_class.Meta.dense_vector_dimension <= 2000 else "halfvec"
                 ops = {metric: f"{prefix}_{metric}_ops" for metric in ("cosine", "l2", "ip")}
                 idx = self._q(f"{model_class.Meta.index_name}_{model_class.Meta.dense_vector_dimension}_hnsw")
+                index_type = self.extra_config.vector_index.lower()
+                options = " WITH (m = 16, ef_construction = 64)" if index_type == "hnsw" else " WITH (lists = 100)"
                 await conn.execute(
-                    f"CREATE INDEX IF NOT EXISTS {idx} ON {table} USING hnsw "
-                    f"({self._q(vector_field)} {ops[self.extra_config.vector_metric]})"
+                    f"CREATE INDEX IF NOT EXISTS {idx} ON {table} USING {index_type} "
+                    f"({self._q(vector_field)} {ops[self.extra_config.vector_metric]}){options}"
                 )
             for name, field in model_class.model_fields.items():
                 extra = field.json_schema_extra or {}
