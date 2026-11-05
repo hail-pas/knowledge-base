@@ -2,6 +2,7 @@
 AWS S3 Provider (async with aiobotocore)
 """
 
+import inspect
 from typing import Any
 from collections.abc import AsyncIterator
 
@@ -145,7 +146,9 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
                     break
                 yield chunk
         finally:
-            await body.close()
+            result = body.close()
+            if inspect.isawaitable(result):
+                await result
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""
@@ -209,7 +212,10 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
                     MultipartUpload={"Parts": parts},
                 )
             except BaseException:
-                await client.abort_multipart_upload(Bucket=self.storage_location, Key=key, UploadId=upload_id)
+                try:
+                    await client.abort_multipart_upload(Bucket=self.storage_location, Key=key, UploadId=upload_id)
+                except Exception:
+                    logger.exception("Failed to abort multipart upload for %s", key)
                 raise
         else:
             await client.put_object(Bucket=self.storage_location, Key=key, Body=content, **extra_args)

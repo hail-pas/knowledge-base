@@ -112,8 +112,8 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
         if not self.extra_config.follow_symlinks:
             flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags, 0o600)
-        async with aiofiles.open(descriptor, "wb") as file:
-            await file.write(content)
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(content)
         return await self.get_file_metadata(uri)
 
     async def delete_file(self, uri: str) -> bool:
