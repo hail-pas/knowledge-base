@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
-from tortoise.transactions import in_transaction
 
 from core.types import ApiException
 from core.schema import CRUDPager
@@ -22,7 +21,6 @@ from ext.ext_tortoise.curd import (
     detail_view,
     pagination_factory,
 )
-from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from service.document.helper import DocumentService
 from service.file_source.security import validate_public_source_uri
@@ -39,7 +37,6 @@ from service.document.schema import (
     DocumentGeneratedFaqUpdate,
 )
 from ext.workflow.validator import WorkflowTemplateValidator
-from ext.workflow.manager import WorkflowManager
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
@@ -254,57 +251,22 @@ async def get_document_detail(request: Request, pk: int) -> Resp[DocumentDetail]
 @router.post("/{pk}/re-process", summary="Document 重新处理")
 async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
     user: CurrentUser = request.scope["user"]
-    queryset = get_document_queryset(request, user)
-    async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
-        obj = await queryset.filter(pk=pk).select_for_update().first()
-        if not obj:
-            raise ApiException("Document不存在")
-
-        if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
-            raise ApiException("当前状态不支持重新处理")
-
-        obj.status = DocumentStatusEnum.pending
-        await obj.save(using_db=conn, update_fields=["status"])
-
-        if obj.current_workflow_uid:
-            await WorkflowManager.delete_workflow(obj.current_workflow_uid, using_db=conn)
-
-    collection = await obj.collection
-    workflow_id = await DocumentService(collection).start_processing(obj)
-
+    document = await get_document_queryset(request, user).get_or_none(pk=pk)
+    if not document:
+        raise ApiException("Document不存在")
+    collection = await document.collection
+    workflow_id = await DocumentService(collection).reprocess(document)
     return Resp(data={"workflow_id": workflow_id})
 
 
 @router.post("/{pk}/re-chunk", summary="Document 重新切块")
 async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
     user: CurrentUser = request.scope["user"]
-    queryset = get_document_queryset(request, user)
-    async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
-        obj = await queryset.filter(id=pk).select_for_update().first()
-        if not obj:
-            raise ApiException("Document不存在")
-
-        if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
-            raise ApiException("当前状态不支持")
-
-        workflow_uid = str(obj.current_workflow_uid) if obj.current_workflow_uid else None
-        if not workflow_uid:
-            raise ApiException("Document 缺少可重新切块的工作流", code=409)
-
-        reset_count = await WorkflowManager.reset_activities_from_task(
-            obj.current_workflow_uid,
-            "workflow_document.DocumentChunkTask",
-            using_db=conn,
-        )
-        if not reset_count:
-            raise ApiException("当前工作流没有 DocumentChunkTask，无法重新切块", code=409)
-
-        obj.status = DocumentStatusEnum.pending
-        await obj.save(using_db=conn, update_fields=["status"])
-
-    collection = await obj.collection
-    workflow_id = await DocumentService(collection).start_processing(obj, str(obj.current_workflow_uid))
-
+    document = await get_document_queryset(request, user).get_or_none(pk=pk)
+    if not document:
+        raise ApiException("Document不存在")
+    collection = await document.collection
+    workflow_id = await DocumentService(collection).rechunk(document)
     return Resp(data={"workflow_id": workflow_id})
 
 
