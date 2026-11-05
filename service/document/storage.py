@@ -2,7 +2,7 @@ from loguru import logger
 from uuid import uuid4
 
 from ext.document_parser.core.parse_result import OutputFormat
-from ext.ext_tortoise.models.knowledge_base import Collection, Document, DocumentChunk, DocumentPages, FileSource
+from ext.ext_tortoise.models.knowledge_base import Document, DocumentChunk, DocumentPages
 from ext.file_source import FileSourceFactory
 from service.file_source.security import build_file_upload_uri, validate_public_source_uri
 
