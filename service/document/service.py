@@ -224,7 +224,7 @@ class DocumentService:
                 config_flag=config_flag,
                 workflow_template=self.collection.workflow_template,
             )
-        except Exception:
+        except BaseException:
             try:
                 await provider.delete_file(metadata.uri)
             except Exception:
