@@ -9,7 +9,6 @@ from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
     EmbeddingModelConfig,
-    IndexingBackendConfig,
 )
 
 
@@ -72,17 +71,18 @@ class DocumentFAQDenseIndex(_DocumentBaseIndexModel):
 class CollectionIndexModelHelper:
     """Collection 索引模型访问代理
 
-    提供 collection 关联的三种 index model 的访问属性：
-    - sparse_model: DocumentContentSparseIndex (BM25 搜索)
-    - dense_model: DocumentContentDenseIndex (动态维度向量搜索)
-    - faq_model: DocumentGenerateFAQDenseIndex (FAQ 向量搜索)
+    根据 Collection 绑定的后端解析索引模型：
+    - get_sparse_model(): 关键词检索模型
+    - get_dense_model(): 指定 Embedding 维度的向量模型
+    - get_faq_model(): FAQ 向量模型
 
     Usage:
         collection = await Collection.get(id=1).prefetch_related("embedding_model_config")
         helper = CollectionIndexModelHelper(collection)
 
         # 直接使用 model 的方法
-        await helper.sparse_model.bulk_insert([...])
+        sparse_model = await helper.get_sparse_model()
+        await sparse_model.bulk_insert([...])
         dense_model = await helper.get_dense_model()
         results = await dense_model.search(query_clause, ...)
     """
