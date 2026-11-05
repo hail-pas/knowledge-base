@@ -1,16 +1,16 @@
 [project]
 name = "ext-httpx"
 version = "1.0.0"
-requires-python = ">=3.9"
+requires-python = ">=3.13.0"
 description = "HTTPX client extensions"
 authors = [
     { name = "phoenix", email = "hypofiasco@gmail.com" },
 ]
 
 dependencies = [
-    "httpx==0.28.1",
-    "pydantic>=2.0.0",
-    "loguru==0.7.3",
+    "httpx>=0.28.1,<1",
+    "pydantic>=2.14.2,<3",
+    "loguru>=0.7.3,<1",
 ]
 
 [build-system]
