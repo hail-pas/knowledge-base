@@ -9,6 +9,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
     EmbeddingModelConfig,
+    IndexingBackendConfig,
 )
 
 
@@ -91,21 +92,46 @@ class CollectionIndexModelHelper:
         assert self.collection.embedding_model_config
         assert isinstance(self.collection.embedding_model_config, EmbeddingModelConfig)
 
-    @property
-    def sparse_model(self) -> type[DocumentContentSparseIndex]:
-        """获取稀疏索引模型（无需 embedding 维度）"""
-        return DocumentContentSparseIndex
+    async def get_provider(self):
+        """Resolve this collection's backend without mutating shared model metadata."""
+        from ext.indexing.factory import IndexingProviderFactory
+
+        backend_config_id = self.collection.indexing_backend_config_id
+        if backend_config_id:
+            config = getattr(self.collection, "indexing_backend_config", None)
+            if config is None:
+                await self.collection.fetch_related("indexing_backend_config")
+                config = self.collection.indexing_backend_config
+            if config is None or not config.is_enabled or config.deleted_at:
+                raise ValueError(
+                    f"Indexing backend config {backend_config_id} is missing or disabled"
+                )
+            return await IndexingProviderFactory.create(config)
+
+        provider = DocumentContentDenseIndex.Meta.provider
+        if provider is None:
+            raise RuntimeError("No collection indexing backend or default provider is configured")
+        return provider
+
+    async def get_sparse_model(self) -> type[DocumentContentSparseIndex]:
+        provider = await self.get_provider()
+        return cast(
+            type[DocumentContentSparseIndex],
+            await IndexModelFactory.create_for_provider(DocumentContentSparseIndex, provider),
+        )
 
     async def get_dense_model(self) -> type[DocumentContentDenseIndex]:
         """获取稠密索引模型（自动根据 collection embedding config 创建正确维度的模型）"""
         emb_config = self.collection.embedding_model_config
         if not emb_config:
             raise ValueError("Collection embedding model config is not set")
+        provider = await self.get_provider()
         return cast(
             type[DocumentContentDenseIndex],
             await IndexModelFactory.create_for_embedding(
                 DocumentContentDenseIndex,
                 emb_config,
+                provider=provider,
             ),
         )
 
@@ -114,21 +140,24 @@ class CollectionIndexModelHelper:
         emb_config = self.collection.embedding_model_config
         if not emb_config:
             raise ValueError("Collection embedding model config is not set")
+        provider = await self.get_provider()
         return cast(
             type[DocumentFAQDenseIndex],
             await IndexModelFactory.create_for_embedding(
                 DocumentFAQDenseIndex,
                 emb_config,
+                provider=provider,
             ),
         )
 
     async def delete_by_collection(self) -> None:
         equal_clause = FilterClause(equals={"collection_id": self.collection.id})
         dense_model = await self.get_dense_model()
+        sparse_model = await self.get_sparse_model()
         faq_model = await self.get_faq_model()
 
         await dense_model.delete_by_query(equal_clause)
-        await self.sparse_model.delete_by_query(equal_clause)
+        await sparse_model.delete_by_query(equal_clause)
         await faq_model.delete_by_query(equal_clause)
 
     async def delete_by_documents(self, documents: list[Document]) -> None:
