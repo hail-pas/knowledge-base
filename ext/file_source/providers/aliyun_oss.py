@@ -16,10 +16,13 @@ from oss2.exceptions import OssError, NoSuchKey
 
 from ext.file_source.base import FileMetadata, BaseFileSourceProvider
 from ext.file_source.types import AliyunOSSExtraConfig
+from ext.file_source.keys import parse_object_key
 
 
 class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
     """阿里云 OSS Provider（支持 CryptoBucket）"""
+
+    extra_config_type = AliyunOSSExtraConfig
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
@@ -222,16 +225,15 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
 
     async def delete_file(self, uri: str) -> bool:
         """删除文件"""
+        key = self._extract_key(uri)
+        loop = asyncio.get_running_loop()
         try:
-            key = self._extract_key(uri)
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: self.bucket.delete_object(key))
-            return True
-        except Exception:
+            await loop.run_in_executor(None, lambda: self.bucket.head_object(key))
+        except NoSuchKey:
             return False
+        await loop.run_in_executor(None, lambda: self.bucket.delete_object(key))
+        return True
 
     def _extract_key(self, uri: str) -> str:
         """从 URI 提取 object key"""
-        if uri.startswith(f"oss://{self.storage_location}/"):
-            return uri[len(f"oss://{self.storage_location}/") :]
-        return uri
+        return parse_object_key(uri, scheme="oss", bucket=self.storage_location)

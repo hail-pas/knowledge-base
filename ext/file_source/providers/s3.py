@@ -189,23 +189,28 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             mpu = await client.create_multipart_upload(Bucket=self.storage_location, Key=key, **extra_args)
             parts = []
 
-            for part_num, start in enumerate(range(0, len(content), chunk_size), 1):
-                end = min(start + chunk_size, len(content))
-                part = await client.upload_part(
+            upload_id = mpu["UploadId"]
+            try:
+                for part_num, start in enumerate(range(0, len(content), chunk_size), 1):
+                    end = min(start + chunk_size, len(content))
+                    part = await client.upload_part(
+                        Bucket=self.storage_location,
+                        Key=key,
+                        PartNumber=part_num,
+                        UploadId=upload_id,
+                        Body=content[start:end],
+                    )
+                    parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
+
+                await client.complete_multipart_upload(
                     Bucket=self.storage_location,
                     Key=key,
-                    PartNumber=part_num,
-                    UploadId=mpu["UploadId"],
-                    Body=content[start:end],
+                    UploadId=upload_id,
+                    MultipartUpload={"Parts": parts},
                 )
-                parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
-
-            await client.complete_multipart_upload(
-                Bucket=self.storage_location,
-                Key=key,
-                UploadId=mpu["UploadId"],
-                MultipartUpload={"Parts": parts},
-            )
+            except BaseException:
+                await client.abort_multipart_upload(Bucket=self.storage_location, Key=key, UploadId=upload_id)
+                raise
         else:
             await client.put_object(Bucket=self.storage_location, Key=key, Body=content, **extra_args)
 

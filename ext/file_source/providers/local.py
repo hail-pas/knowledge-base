@@ -1,53 +1,56 @@
-"""
-Local File System Provider
-"""
+"""Local filesystem provider with root confinement and symlink controls."""
 
-import os
 import hashlib
-from typing import cast
-from pathlib import Path
-from datetime import datetime, timezone
+import os
+import stat
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
+from pathlib import Path
 
-import aiofiles  # type: ignore[import-untyped]
-from loguru import logger
+import aiofiles
 
-from ext.file_source.base import FileMetadata, BaseFileSourceProvider
+from ext.file_source.base import BaseFileSourceProvider, FileMetadata
 from ext.file_source.types import LocalFileSourceExtraConfig
 
 
 class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]):
-    """本地文件系统 Provider"""
+    extra_config_type = LocalFileSourceExtraConfig
 
     def _validate_config(self) -> None:
         if not self.storage_location:
-            raise ValueError("storage_location (root_path) is required for local file source")
+            raise ValueError("storage_location is required for local file source")
+        root = Path(self.storage_location).resolve(strict=True)
+        if not root.is_dir():
+            raise ValueError("storage_location must be an existing directory")
+        self._root = root
 
-        path = Path(self.storage_location)
-        if not path.exists():
-            raise ValueError(f"Root path does not exist: {self.storage_location}")
-        if not path.is_dir():
-            raise ValueError(f"Root path is not a directory: {self.storage_location}")
-
-    def _resolve_path(self, uri: str) -> Path:
-        """Resolve a file URI and prevent access outside the configured root."""
-        root = Path(self.storage_location or "").resolve()
-        path = Path(uri)
-        if not path.is_absolute():
-            path = root / path
-        resolved = path.resolve()
-        if not resolved.is_relative_to(root):
+    def _resolve_path(self, uri: str, *, allow_missing: bool = False) -> Path:
+        candidate = Path(uri)
+        if candidate.is_absolute():
+            path = candidate
+        else:
+            path = self._root / candidate
+        if not self.extra_config.follow_symlinks:
+            current = self._root
+            try:
+                relative = path.relative_to(self._root)
+            except ValueError:
+                raise ValueError("File path is outside the configured storage root") from None
+            for part in relative.parts:
+                current = current / part
+                try:
+                    if stat.S_ISLNK(current.lstat().st_mode):
+                        raise ValueError("Symbolic links are disabled for this file source")
+                except FileNotFoundError:
+                    if not allow_missing:
+                        raise
+        resolved = path.resolve(strict=not allow_missing)
+        if not resolved.is_relative_to(self._root):
             raise ValueError("File path is outside the configured storage root")
         return resolved
 
     async def validate_connection(self) -> bool:
-        """验证根路径是否存在且可访问"""
-        try:
-            path = Path(self.storage_location or "")
-            return path.exists() and path.is_dir() and os.access(path, os.R_OK)
-        except Exception as e:
-            logger.error(f"Failed to validate local connection: {e}")
-            return False
+        return self._root.is_dir() and os.access(self._root, os.R_OK | os.X_OK)
 
     async def list_files(
         self,
@@ -55,106 +58,79 @@ class LocalFileSourceProvider(BaseFileSourceProvider[LocalFileSourceExtraConfig]
         recursive: bool = False,
         limit: int | None = None,
     ) -> list[FileMetadata]:
-        """列出文件"""
-        base_path = Path(self.storage_location or "")
-        search_path = self._resolve_path(str(base_path / prefix)) if prefix else base_path.resolve()
-
-        files = []
+        if limit is not None and limit <= 0:
+            return []
+        search_root = self._resolve_path(prefix, allow_missing=False) if prefix else self._root
         pattern = "**/*" if recursive else "*"
-
-        count = 0
-        for file_path in search_path.glob(pattern):
-            if limit and count >= limit:
+        result: list[FileMetadata] = []
+        for path in search_root.glob(pattern):
+            if path.is_symlink() and not self.extra_config.follow_symlinks:
+                continue
+            resolved = self._resolve_path(str(path))
+            if not resolved.is_file():
+                continue
+            if self.extra_config.allowed_extensions and resolved.suffix.lower() not in self.extra_config.allowed_extensions:
+                continue
+            if self.extra_config.excluded_extensions and resolved.suffix.lower() in self.extra_config.excluded_extensions:
+                continue
+            info = resolved.stat()
+            if self.extra_config.max_file_size is not None and info.st_size > self.extra_config.max_file_size:
+                continue
+            if self.extra_config.require_readable and not os.access(resolved, os.R_OK):
+                continue
+            result.append(self._metadata(resolved, str(resolved), info))
+            if limit is not None and len(result) >= limit:
                 break
-
-            if not file_path.is_file():
-                continue
-
-            current_path = file_path
-            if file_path.is_symlink():
-                if not self.extra_config.follow_symlinks:
-                    continue
-                current_path = self._resolve_path(str(file_path))
-
-            if self.extra_config.allowed_extensions and current_path.suffix not in self.extra_config.allowed_extensions:
-                continue
-
-            if self.extra_config.excluded_extensions and current_path.suffix in self.extra_config.excluded_extensions:
-                continue
-
-            stat = current_path.stat()
-            if self.extra_config.max_file_size and stat.st_size > self.extra_config.max_file_size:
-                continue
-
-            if self.extra_config.require_readable and not os.access(current_path, os.R_OK):
-                continue
-
-            files.append(
-                FileMetadata(  # type: ignore[call-arg]
-                    uri=str(current_path),
-                    file_name=current_path.name,
-                    file_size=stat.st_size,
-                    last_modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),  # noqa: UP017
-                    etag=self._compute_etag(current_path),
-                ),
-            )
-            count += 1
-
-        return files
+        return result
 
     async def get_file(self, uri: str) -> bytes:
-        """获取文件内容"""
-        path = self._resolve_path(uri)
-        async with aiofiles.open(path, "rb") as f:
-            return cast(bytes, await f.read())
+        async with aiofiles.open(self._resolve_path(uri), "rb") as file:
+            return await file.read()
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
-        """获取文件流"""
-        path = self._resolve_path(uri)
-        async with aiofiles.open(path, "rb") as f:
-            while True:
-                chunk = await f.read(chunk_size)
-                if not chunk:
-                    break
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        async with aiofiles.open(self._resolve_path(uri), "rb") as file:
+            while chunk := await file.read(chunk_size):
                 yield chunk
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
-        """获取文件元数据"""
         path = self._resolve_path(uri)
-        stat = path.stat()
-        return FileMetadata(  # type: ignore[call-arg]
-            uri=uri,
-            file_name=path.name,
-            file_size=stat.st_size,
-            last_modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),  # noqa: UP017
-            etag=self._compute_etag(path),
-        )
+        return self._metadata(path, uri, path.stat())
 
     async def file_exists(self, uri: str) -> bool:
-        """检查文件是否存在"""
-        path = self._resolve_path(uri)
-        return path.exists() and path.is_file()
+        try:
+            return self._resolve_path(uri).is_file()
+        except FileNotFoundError:
+            return False
 
     async def upload_file(self, uri: str, content: bytes, content_type: str | None = None) -> FileMetadata:
-        """上传（写入）文件"""
-        path = self._resolve_path(uri)
+        path = self._resolve_path(uri, allow_missing=True)
         path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(path, "wb") as f:
-            await f.write(content)
-
+        path = self._resolve_path(uri, allow_missing=True)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if not self.extra_config.follow_symlinks:
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags, 0o600)
+        async with aiofiles.open(descriptor, "wb") as file:
+            await file.write(content)
         return await self.get_file_metadata(uri)
 
     async def delete_file(self, uri: str) -> bool:
-        """删除文件"""
         try:
             self._resolve_path(uri).unlink()
             return True
         except FileNotFoundError:
             return False
-        except Exception:
-            return False
 
-    def _compute_etag(self, path: Path) -> str:
-        """计算文件 ETag（MD5 hash）"""
+    @staticmethod
+    def _metadata(path: Path, uri: str, info: os.stat_result) -> FileMetadata:
         with path.open("rb") as file:
-            return hashlib.file_digest(file, "md5").hexdigest()
+            etag = hashlib.file_digest(file, "md5").hexdigest()
+        return FileMetadata(
+            uri=uri,
+            file_name=path.name,
+            file_size=info.st_size,
+            last_modified=datetime.fromtimestamp(info.st_mtime, tz=timezone.utc),
+            etag=etag,
+        )

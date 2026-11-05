@@ -12,10 +12,13 @@ from minio.error import S3Error
 
 from ext.file_source.base import FileMetadata, BaseFileSourceProvider
 from ext.file_source.types import MinIOExtraConfig
+from ext.file_source.keys import parse_object_key
 
 
 class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
     """MinIO Provider（S3 兼容）"""
+
+    extra_config_type = MinIOExtraConfig
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
@@ -155,8 +158,15 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
         )
         return await self.get_file_metadata(uri)
 
+    async def delete_file(self, uri: str) -> bool:
+        key = self._extract_key(uri)
+        try:
+            await asyncio.to_thread(self.client.remove_object, self.storage_location, key)
+            return True
+        except S3Error as exc:
+            if exc.code in {"NoSuchKey", "NoSuchObject"}:
+                return False
+            raise
+
     def _extract_key(self, uri: str) -> str:
-        """从 URI 提取 object key"""
-        if uri.startswith(f"minio://{self.storage_location}/"):
-            return uri[len(f"minio://{self.storage_location}/") :]
-        return uri
+        return parse_object_key(uri, scheme="minio", bucket=self.storage_location)
