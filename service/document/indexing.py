@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from loguru import logger
+
 from ext.embedding import EmbeddingModelFactory
 from ext.ext_tortoise.models.knowledge_base import Collection, Document, DocumentChunk
 from ext.indexing.models import CollectionIndexModelHelper
@@ -47,6 +49,7 @@ class DocumentIndexer:
         await self._ensure_current_workflow(document.id, workflow_uid)
         chunks = await DocumentChunk.filter(document_id=document.id, deleted_at=0).order_by("id")
         if not chunks:
+            await self._ensure_current_workflow(document.id, workflow_uid)
             await self.delete_document(document.id)
             return {"indexed_chunks": 0, "sparse_index_count": 0, "dense_index_count": 0}
 
@@ -66,7 +69,6 @@ class DocumentIndexer:
 
         dense_model = await self.helper.get_dense_model()
         await self._ensure_current_workflow(document.id, workflow_uid)
-        await self.delete_document(document.id)
         sparse_docs, dense_docs = [], []
         for chunk, vector in zip(chunks, embeddings, strict=True):
             fields = dict(
@@ -86,6 +88,8 @@ class DocumentIndexer:
             sparse_docs.append(self.helper.sparse_model(**fields))
             dense_docs.append(dense_model(**fields, dense_vector=vector))
 
+        await self._ensure_current_workflow(document.id, workflow_uid)
+        await self.delete_document(document.id)
         try:
             await self.helper.sparse_model.bulk_insert(
                 sparse_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
@@ -98,7 +102,10 @@ class DocumentIndexer:
                 id=document.id,
                 current_workflow_uid=workflow_uid,
             ).exists():
-                await self.delete_document(document.id)
+                try:
+                    await self.delete_document(document.id)
+                except Exception:
+                    logger.exception("Failed to clean partial document index for {}", document.id)
             raise
         return {
             "indexed_chunks": len(chunks),
