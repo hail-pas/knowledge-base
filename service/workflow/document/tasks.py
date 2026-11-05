@@ -82,7 +82,7 @@ class DocumentWorkflowTask(ActivityTaskTemplate):
 
 async def _get_document(document_id: int) -> Document:
     document = await Document.get(id=document_id).prefetch_related(
-        "collection__embedding_model_config", "file_source"
+        "collection__embedding_model_config", "collection__indexing_backend_config", "file_source"
     )
     return document
 
