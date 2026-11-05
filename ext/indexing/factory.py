@@ -156,11 +156,11 @@ class IndexModelFactory:
         selected_provider = provider or base_model.Meta.provider
         if not selected_provider:
             raise RuntimeError(
-                f"No indexing provider is bound to {base_model.__name__}; "
+                f"{base_model.__name__}.Meta.provider is not bound; "
                 "pass provider= or bind Meta.provider before creating the index model."
             )
 
-        model_key = cls._get_model_key(base_model.__name__, dimension, selected_provider)
+        model_key = cls._get_model_key(base_model.__name__, dimension, provider)
 
         if model_key not in cls._model_registry:
             cls._model_registry[model_key] = cls._create_dynamic_class(
@@ -258,8 +258,8 @@ class IndexModelFactory:
         """Return a cached model, optionally scoped to a specific provider."""
         if provider is not None:
             return cls._model_registry.get(cls._get_model_key(base_name, dimension, provider))
+        default_key = cls._get_model_key(base_name, dimension)
+        if default_key in cls._model_registry:
+            return cls._model_registry[default_key]
         prefix = f"{base_name}_{dimension}_"
-        return next(
-            (model for key, model in cls._model_registry.items() if key.startswith(prefix)),
-            cls._model_registry.get(f"{base_name}_{dimension}"),
-        )
+        return next((model for key, model in cls._model_registry.items() if key.startswith(prefix)), None)
