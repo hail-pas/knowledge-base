@@ -109,10 +109,23 @@ class DocumentService:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         document_ids = [doc.id for doc in documents]
-        await DocumentIndexer(self.collection).delete_documents(documents)
-        await self.delete_filesource_related(documents)
-
         async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+            locked_documents = await Document.filter(
+                id__in=document_ids,
+                collection_id=self.collection.id,
+            ).using_db(conn).select_for_update().all()
+            if len(locked_documents) != len(set(document_ids)):
+                raise ApiException("部分文档不存在或不属于当前集合")
+            if any(
+                DocumentStatusEnum(document.status)
+                not in {DocumentStatusEnum.success, DocumentStatusEnum.failure}
+                for document in locked_documents
+            ):
+                raise ApiException("仅允许删除已完成或失败的文档")
+
+            await DocumentIndexer(self.collection).delete_documents(locked_documents)
+            await self.delete_filesource_related(locked_documents)
+
             await DocumentChunk.filter(document_id__in=document_ids).using_db(conn).delete()
             await DocumentPages.filter(document_id__in=document_ids).using_db(conn).delete()
             await DocumentGeneratedFaq.filter(document_id__in=document_ids).using_db(conn).delete()
