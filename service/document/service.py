@@ -109,8 +109,8 @@ class DocumentService:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         document_ids = [doc.id for doc in documents]
-        await self.delete_filesource_related(documents)
         await DocumentIndexer(self.collection).delete_documents(documents)
+        await self.delete_filesource_related(documents)
 
         async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
             await DocumentChunk.filter(document_id__in=document_ids).using_db(conn).delete()
