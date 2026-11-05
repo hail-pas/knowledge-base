@@ -22,8 +22,7 @@ from ext.ext_tortoise.curd import (
     detail_view,
     pagination_factory,
 )
-from ext.ext_tortoise.main import ConnectionNameEnum
-from ext.ext_tortoise.enums import ActivityStatusEnum, DocumentStatusEnum, WorkflowStatusEnum
+from ext.ext_tortoise.enums import DocumentStatusEnum
 from service.document.helper import DocumentService
 from service.file_source.security import validate_public_source_uri
 from service.document.schema import (
@@ -38,13 +37,11 @@ from service.document.schema import (
     DocumentGeneratedFaqCreate,
     DocumentGeneratedFaqUpdate,
 )
-from service.collection.helper import WorkflowTemplateValidator
+from ext.workflow.validator import WorkflowTemplateValidator
 from service.workflow.document import process_document
 from ext.workflow.manager import WorkflowManager
 from ext.ext_tortoise.models.knowledge_base import (
-    Activity,
     Document,
-    Workflow,
     Collection,
     FileSource,
     DocumentChunk,
@@ -278,8 +275,7 @@ async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["w
         await obj.save(using_db=conn, update_fields=["status"])
 
         if obj.current_workflow_uid:
-            await Activity.filter(workflow_uid=obj.current_workflow_uid).delete()
-            await Workflow.filter(uid=obj.current_workflow_uid).delete()
+            await WorkflowManager.delete_workflow(obj.current_workflow_uid, using_db=conn)
 
     workflow_id = await process_document(
         workflow_uid=None,
@@ -310,43 +306,13 @@ async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["wor
         if not workflow_uid:
             raise ApiException("Document 缺少可重新切块的工作流", code=409)
 
-        workflow = await Workflow.filter(uid=workflow_uid).select_for_update().first()
-        if not workflow:
-            raise ApiException("Document 工作流不存在", code=404)
-
-        graph = WorkflowManager.build_graph(workflow)
-        activities = await Activity.filter(workflow_uid=workflow_uid)
-        chunk_activity_names = {
-            activity.name
-            for activity in activities
-            if (activity.execute_params or {}).get("task_name") == "workflow_document.DocumentChunkTask"
-        }
-        if not chunk_activity_names:
+        reset_count = await WorkflowManager.reset_activities_from_task(
+            obj.current_workflow_uid,
+            "workflow_document.DocumentChunkTask",
+            using_db=conn,
+        )
+        if not reset_count:
             raise ApiException("当前工作流没有 DocumentChunkTask，无法重新切块", code=409)
-
-        affected_activity_names = set(chunk_activity_names)
-        for activity_name in chunk_activity_names:
-            affected_activity_names.update(graph.get_node_info(activity_name).descendants)
-
-        await Activity.filter(
-            workflow_uid=workflow_uid,
-            name__in=affected_activity_names,
-        ).update(
-            status=ActivityStatusEnum.pending.value,
-            retry_count=0,
-            output={},
-            started_at=None,
-            completed_at=None,
-            error_message=None,
-            stack_trace=None,
-            canceled_at=None,
-        )
-        await Workflow.filter(uid=workflow_uid).update(
-            status=WorkflowStatusEnum.pending.value,
-            started_at=None,
-            completed_at=None,
-            canceled_at=None,
-        )
 
         obj.status = DocumentStatusEnum.pending
         await obj.save(using_db=conn, update_fields=["status"])
