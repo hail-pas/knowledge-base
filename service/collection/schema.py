@@ -43,6 +43,7 @@ class CollectionCreate(
     workflow_template: dict = Field(default_factory=dict, description="工作流DAG配置，非外部知识库时必需")
     external_config: ExternalConfigSchema | None = Field(None, description="外部知识库配置")
     embedding_model_config_id: int | None = Field(None, description="关联嵌入模型ID")
+    indexing_backend_config_id: int | None = Field(None, description="关联索引后端配置ID；为空时使用系统默认后端")
 
     @field_validator("external_config", mode="before")
     @classmethod
@@ -61,6 +62,8 @@ class CollectionCreate(
         if self.is_external:  # type: ignore
             if self.embedding_model_config_id is not None:
                 raise ApiException("外部知识库不能设置 embedding_model_config")
+            if self.indexing_backend_config_id is not None:
+                raise ApiException("外部知识库不能设置 indexing_backend_config")
             if self.workflow_template:  # type: ignore
                 self.workflow_template = {}  # type: ignore
             if not self.external_config or self.external_config == {}:  # type: ignore
@@ -83,6 +86,7 @@ class CollectionUpdate(BaseModel):
     workflow_template: dict | None = None
     external_config: dict | None = None
     embedding_model_config_id: int | None = None
+    indexing_backend_config_id: int | None = None
 
     @field_validator("workflow_template", mode="before")
     @classmethod
@@ -138,6 +142,7 @@ class CollectionList(
     ),
 ):
     external_config: ExternalConfigPublicSchema | None = None
+    indexing_backend_config_id: int | None = None
     document_count: int = 0
 
     @field_validator("external_config", mode="before")
