@@ -47,25 +47,37 @@ class DocumentWorkflowTask(ActivityTaskTemplate):
         await self._sync_document_status()
 
     async def _sync_document_status(self) -> None:
+        document_id = self._get_document_id()
+        workflow_uid = self.activity.workflow_uid
         if not await Document.filter(
-            id=self._get_document_id(),
-            current_workflow_uid=self.activity.workflow_uid,
+            id=document_id,
+            current_workflow_uid=workflow_uid,
         ).exists():
             return
-        workflow = await WorkflowManager.get_workflow_by_uid(self.activity.workflow_uid)
-        activities = await WorkflowManager.get_activities_by_workflow(self.activity.workflow_uid)
-        statuses = [ActivityStatusEnum(activity.status) for activity in activities]
-        workflow_status = WorkflowStatusEnum(workflow.status)
 
-        if workflow_status in {WorkflowStatusEnum.failed, WorkflowStatusEnum.canceled} or any(
-            status in {ActivityStatusEnum.failed, ActivityStatusEnum.canceled} for status in statuses
-        ):
+        activities = await WorkflowManager.get_activities_by_workflow(workflow_uid)
+        statuses = [ActivityStatusEnum(activity.status) for activity in activities]
+        failed = any(status in {ActivityStatusEnum.failed, ActivityStatusEnum.canceled} for status in statuses)
+
+        if failed:
+            await WorkflowManager.mark_workflow_failed(
+                workflow_uid,
+                f"Document workflow {workflow_uid} contains a failed or canceled activity",
+            )
+        elif statuses and all(WorkflowManager.is_terminal_status(status) for status in statuses):
+            await WorkflowManager.is_workflow_completed(workflow_uid)
+
+        workflow = await WorkflowManager.get_workflow_by_uid(workflow_uid)
+        workflow_status = WorkflowStatusEnum(workflow.status)
+        if workflow_status in {WorkflowStatusEnum.failed, WorkflowStatusEnum.canceled}:
             target = DocumentStatusEnum.failure
-        elif statuses and all(status == ActivityStatusEnum.completed for status in statuses):
+        elif workflow_status == WorkflowStatusEnum.completed:
             target = DocumentStatusEnum.success
         else:
             target = DocumentStatusEnum.processing
-        await update_document_status(self._get_document_id(), self.activity.workflow_uid, target)
+
+        await update_document_status(document_id, workflow_uid, target)
+
 
 
 async def _get_document(document_id: int) -> Document:
