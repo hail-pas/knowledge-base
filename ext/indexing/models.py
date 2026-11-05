@@ -167,8 +167,9 @@ class CollectionIndexModelHelper:
 
         equal_clause = FilterClause(in_list={"file_id": [doc.id for doc in documents]})
         dense_model = await self.get_dense_model()
+        sparse_model = await self.get_sparse_model()
         faq_model = await self.get_faq_model()
 
         await dense_model.delete_by_query(equal_clause)
-        await self.sparse_model.delete_by_query(equal_clause)
+        await sparse_model.delete_by_query(equal_clause)
         await faq_model.delete_by_query(equal_clause)
