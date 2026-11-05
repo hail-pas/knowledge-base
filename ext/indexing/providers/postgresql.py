@@ -163,12 +163,20 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                     values.extend(args)
         return " AND ".join(terms), values
 
+    @staticmethod
+    def _decode(model: type[BaseIndexModel], row: Any) -> dict[str, Any]:
+        document = dict(row)
+        vector_field = model.Meta.dense_vector_field
+        if vector_field and isinstance(document.get(vector_field), str):
+            document[vector_field] = json.loads(document[vector_field])
+        return document
+
     async def get(self, model_class: type[BaseIndexModel], ids: list) -> list[dict]:
         if not ids:
             return []
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(f"SELECT * FROM {self._table(model_class)} WHERE id = ANY($1)", ids)
-            return [dict(row) for row in rows]
+            return [self._decode(model_class, row) for row in rows]
 
     async def filter(self, model_class: type[BaseIndexModel], filter_clause: FilterClause | None,
                      limit: int = 10, offset: int = 0, sort: str | None = None) -> list[dict[str, Any]]:
@@ -179,7 +187,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         sql = f"SELECT * FROM {self._table(model_class)}" + (f" WHERE {where}" if where else "")
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(sql + order + f" LIMIT {int(limit)} OFFSET {int(offset)}", *args)
-            return [dict(row) for row in rows]
+            return [self._decode(model_class, row) for row in rows]
 
     def _encode(self, model: type[BaseIndexModel], doc: dict[str, Any]) -> tuple[list[str], list[Any], list[str]]:
         names, values, casts = [], [], []
@@ -215,7 +223,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                     f"INSERT INTO {self._table(model)} ({', '.join(names)}) VALUES ({placeholders})"
                     f"{conflict} RETURNING *", *values
                 )
-                output.append(dict(row))
+                output.append(self._decode(model, row))
         return output
 
     async def insert(self, model_class: type[BaseIndexModel], documents: list[dict[str, Any]]) -> list[dict]:
@@ -261,7 +269,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         sql += f" ORDER BY {self._q(field)} {op} $1::{vector_type} LIMIT {int(limit)} OFFSET {int(offset)}"
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(sql, vector, *args)
-        return [(dict(row), float(1 - row["distance"]) if self.extra_config.vector_metric == "cosine"
+        return [(self._decode(model, row), float(1 - row["distance"]) if self.extra_config.vector_metric == "cosine"
                  else float(-row["distance"] if self.extra_config.vector_metric == "ip" else row["distance"])) for row in rows]
 
     async def _sparse(self, model: type[BaseIndexModel], query: SparseSearchClause, filters: FilterClause | None,
@@ -278,7 +286,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         sql += f" ORDER BY score DESC LIMIT {int(limit)} OFFSET {int(offset)}"
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(sql, query.query_text, *args)
-        return [(dict(row), float(row["score"])) for row in rows if row["score"] >= query.min_score]
+        return [(self._decode(model, row), float(row["score"])) for row in rows if row["score"] >= query.min_score]
 
     async def search(self, model_class: type[BaseIndexModel],
                      query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
