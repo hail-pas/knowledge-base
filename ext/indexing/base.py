@@ -146,28 +146,6 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
         """统计文档数量"""
 
     @abstractmethod
-    async def search(
-        self,
-        model_class: type["BaseIndexModel"],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        limit: int = 10,
-        offset: int = 0,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """搜索（返回 [(文档, 分数)]）"""
-
-    @abstractmethod
-    async def search_cursor(
-        self,
-        model_class: type["BaseIndexModel"],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        page_size: int = 100,
-        cursor: str | None = None,
-    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
-        """搜索（返回 [(文档, 分数)], next_cursor）"""
-
-    @abstractmethod
     async def bulk_upsert(
         self,
         model_class: type["BaseIndexModel"],
