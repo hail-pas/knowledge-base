@@ -278,4 +278,5 @@ class IndexModelFactory:
         if default_key in cls._model_registry:
             return cls._model_registry[default_key]
         prefix = f"{base_name}_{dimension}_"
-        return next((model for key, model in cls._model_registry.items() if key.startswith(prefix)), None)
+        matches = [model for key, model in cls._model_registry.items() if key.startswith(prefix)]
+        return matches[0] if len(matches) == 1 else None
