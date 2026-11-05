@@ -108,13 +108,14 @@ class DocumentService:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         document_ids = [doc.id for doc in documents]
-        await DocumentIndexer(self.collection).delete_documents(documents)
         await self.delete_filesource_related(documents)
+        await DocumentIndexer(self.collection).delete_documents(documents)
 
-        await Document.filter(id__in=document_ids).delete()
-        await DocumentChunk.filter(document_id__in=document_ids).delete()
-        await DocumentPages.filter(document_id__in=document_ids).delete()
-        await DocumentGeneratedFaq.filter(document_id__in=document_ids).delete()
+        async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+            await DocumentChunk.filter(document_id__in=document_ids).using_db(conn).delete()
+            await DocumentPages.filter(document_id__in=document_ids).using_db(conn).delete()
+            await DocumentGeneratedFaq.filter(document_id__in=document_ids).using_db(conn).delete()
+            await Document.filter(id__in=document_ids).using_db(conn).delete()
 
     async def delete_filesource_related(self, documents: list[Document]) -> None:
         """Delete Knowledge Base managed artifacts without deleting imported source files."""
