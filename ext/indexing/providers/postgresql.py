@@ -146,7 +146,8 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         for field, bounds in (clause.range or {}).items():
             for op, value in bounds.items():
                 values.append(value)
-                terms.append(f"{self._q(field)} {{'gte': '>=', 'gt': '>', 'lte': '<=', 'lt': '<'}[op]} ${len(values) + start - 1}")
+                sql_op = {"gte": ">=", "gt": ">", "lte": "<=", "lt": "<"}[op]
+                terms.append(f"{self._q(field)} {sql_op} ${len(values) + start - 1}")
         for nested_clause in clause.and_conditions or []:
             sql, params = self._where(nested_clause, start + len(values))
             if sql:
