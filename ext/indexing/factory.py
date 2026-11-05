@@ -1,5 +1,6 @@
 """Indexing Provider 工厂（管理连接池缓存）"""
 
+import asyncio
 from typing import ClassVar
 
 from ext.indexing.base import BaseProvider, BaseIndexModel
@@ -14,7 +15,8 @@ class IndexingProviderFactory:
     """Indexing Provider 工厂"""
 
     _providers: dict[str, type[BaseProvider]] = {}
-    _instances: dict[int, BaseProvider] = {}
+    _instances: dict[tuple[int, str], BaseProvider] = {}
+    _locks: dict[tuple[int, str], asyncio.Lock] = {}
 
     @classmethod
     def register(cls, backend_type: str, provider_class: type[BaseProvider]) -> None:
@@ -24,20 +26,33 @@ class IndexingProviderFactory:
     @classmethod
     async def create(cls, config: IndexingBackendConfig, use_cache: bool = True) -> BaseProvider:
         """创建 provider 实例（带连接池缓存）"""
-        if use_cache and config.id in cls._instances:
-            return cls._instances[config.id]
-
         provider_class = cls._providers.get(config.type)
         if not provider_class:
             raise RuntimeError(f"Provider not found: {config.type}")
 
-        provider = provider_class(config)  # type: ignore
-        await provider.connect()
+        if not use_cache:
+            provider = provider_class(config)
+            await provider.connect()
+            return provider
 
-        if use_cache:
-            cls._instances[config.id] = provider
-
-        return provider
+        config_id = int(config.id)
+        version = str(getattr(config, "updated_at", None) or hash(
+            (config.host, config.port, config.username, config.password, str(config.extra_config))
+        ))
+        key = (config_id, version)
+        lock = cls._locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            cached = cls._instances.get(key)
+            if cached:
+                return cached
+            # Close stale instances for the same configuration before replacing them.
+            for stale_key in [item for item in cls._instances if item[0] == config_id]:
+                stale = cls._instances.pop(stale_key)
+                await stale.disconnect()
+            provider = provider_class(config)
+            await provider.connect()
+            cls._instances[key] = provider
+            return provider
 
     @classmethod
     async def get_config(cls, backend_type: str) -> IndexingBackendConfig:
@@ -58,14 +73,18 @@ class IndexingProviderFactory:
     @classmethod
     async def clear_cache(cls) -> None:
         """清空缓存"""
-        for provider in cls._instances.values():
-            await provider.disconnect()
+        providers = list(cls._instances.values())
         cls._instances.clear()
+        cls._locks.clear()
+        for provider in providers:
+            await provider.disconnect()
 
 
 from ext.indexing.providers.milvus import MilvusProvider
 from ext.indexing.providers.elasticsearch import ElasticsearchProvider
+from ext.indexing.providers.postgresql import PostgreSQLProvider
 
+IndexingProviderFactory.register(IndexingBackendTypeEnum.postgresql.value, PostgreSQLProvider)
 IndexingProviderFactory.register(IndexingBackendTypeEnum.elasticsearch.value, ElasticsearchProvider)
 IndexingProviderFactory.register(IndexingBackendTypeEnum.milvus.value, MilvusProvider)
 
