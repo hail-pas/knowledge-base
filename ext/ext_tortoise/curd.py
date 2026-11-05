@@ -186,14 +186,8 @@ async def update_obj(
 
     if data:
         try:
-            await queryset.filter(
-                **{
-                    db_model._meta.pk_attr: getattr(
-                        obj,
-                        db_model._meta.pk_attr,
-                    ),
-                },
-            ).update(**data)
+            obj.update_from_dict(data)
+            await obj.save(update_fields=list(data))
         except IntegrityError as e:
             msg = e.args[0].args[1]
             if "Duplicate" in msg:
