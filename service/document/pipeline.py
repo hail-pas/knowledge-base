@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+from uuid import UUID
 from typing import Any
 
 from loguru import logger
@@ -19,9 +20,16 @@ class DocumentPipeline:
         self.document = document
         self.storage = DocumentStorage(document)
 
-    async def parse(self, *, engine: str | None = None, output_format: OutputFormat = OutputFormat.AUTO,
-                    options: dict[str, Any] | None = None) -> dict:
+    async def parse(
+        self,
+        *,
+        workflow_uid: UUID,
+        engine: str | None = None,
+        output_format: OutputFormat = OutputFormat.AUTO,
+        options: dict[str, Any] | None = None,
+    ) -> dict:
         temp_path = None
+        committed = False
         new_uri = None
         old_uri = self.document.parsed_uri
         try:
@@ -58,11 +66,18 @@ class DocumentPipeline:
                         metadata=metadata,
                     ))
             async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+                current = await Document.filter(
+                    id=self.document.id,
+                    current_workflow_uid=workflow_uid,
+                ).using_db(conn).select_for_update().first()
+                if current is None:
+                    raise RuntimeError("Workflow no longer owns this document")
                 self.document.parsed_uri = new_uri
                 await self.document.save(using_db=conn, update_fields=["parsed_uri"])
                 await DocumentPages.filter(document_id=self.document.id).using_db(conn).delete()
                 if records:
                     await DocumentPages.bulk_create(records, using_db=conn)
+            committed = True
 
             if old_uri and old_uri != new_uri:
                 try:
@@ -80,20 +95,25 @@ class DocumentPipeline:
                 "engine_used": result.engine_used,
             }
         except Exception:
-            if new_uri:
+            if not committed and new_uri:
                 try:
                     await self.storage.delete_managed_uri(new_uri)
                 except Exception:
                     logger.exception("Failed to rollback parsed artifact for document {}", self.document.id)
-            if self.document.parsed_uri != old_uri:
+            if not committed:
                 self.document.parsed_uri = old_uri
-                await self.document.save(update_fields=["parsed_uri"])
             raise
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
 
-    async def chunk(self, *, strategy: str = "auto", config: dict | None = None) -> dict:
+    async def chunk(
+        self,
+        *,
+        workflow_uid: UUID,
+        strategy: str = "auto",
+        config: dict | None = None,
+    ) -> dict:
         content = await self.storage.read_parsed()
         db_pages = await DocumentPages.filter(document_id=self.document.id, deleted_at=0).order_by("page_number")
         if not db_pages:
@@ -133,6 +153,12 @@ class DocumentPipeline:
             for chunk in chunks
         ]
         async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+            current = await Document.filter(
+                id=self.document.id,
+                current_workflow_uid=workflow_uid,
+            ).using_db(conn).select_for_update().first()
+            if current is None:
+                raise RuntimeError("Workflow no longer owns this document")
             await DocumentChunk.filter(document_id=self.document.id).using_db(conn).delete()
             if records:
                 await DocumentChunk.bulk_create(records, using_db=conn)
