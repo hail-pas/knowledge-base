@@ -47,6 +47,11 @@ class DocumentWorkflowTask(ActivityTaskTemplate):
         await self._sync_document_status()
 
     async def _sync_document_status(self) -> None:
+        if not await Document.filter(
+            id=self._get_document_id(),
+            current_workflow_uid=self.activity.workflow_uid,
+        ).exists():
+            return
         workflow = await WorkflowManager.get_workflow_by_uid(self.activity.workflow_uid)
         activities = await WorkflowManager.get_activities_by_workflow(self.activity.workflow_uid)
         statuses = [ActivityStatusEnum(activity.status) for activity in activities]
@@ -89,10 +94,12 @@ class DocumentParseTask(DocumentWorkflowTask):
 class DocumentSummarizeTask(DocumentWorkflowTask):
     async def execute(self) -> dict[str, Any]:
         task_input = DocumentSummarizeTaskInput(**self.input)
-        document = await Document.get(id=task_input.document_id)
-        document.short_summary = ""
-        document.long_summary = ""
-        await document.save(update_fields=["short_summary", "long_summary"])
+        updated = await Document.filter(
+            id=task_input.document_id,
+            current_workflow_uid=self.activity.workflow_uid,
+        ).update(short_summary="", long_summary="")
+        if not updated:
+            raise RuntimeError("Workflow no longer owns this document")
         return {"short_summary": "", "long_summary": ""}
 
 
