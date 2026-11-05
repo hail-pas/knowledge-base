@@ -117,7 +117,6 @@ class DocumentPipeline:
             engine_used="",
         )
         chunks = await TextChunker().chunk(result, strategy=strategy, config=config or None)
-        await self.storage.cleanup_chunks(self.document.id)
         records = [
             DocumentChunk(
                 document_id=self.document.id,
@@ -133,7 +132,9 @@ class DocumentPipeline:
             )
             for chunk in chunks
         ]
-        if records:
-            await DocumentChunk.bulk_create(records)
+        async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+            await DocumentChunk.filter(document_id=self.document.id).using_db(conn).delete()
+            if records:
+                await DocumentChunk.bulk_create(records, using_db=conn)
         saved = await DocumentChunk.filter(document_id=self.document.id, deleted_at=0).only("id").order_by("id")
         return {"chunk_count": len(saved), "chunk_ids": [chunk.id for chunk in saved], "strategy_used": strategy}
