@@ -3,7 +3,7 @@ from typing import cast
 from pydantic import Field
 
 from core.types import StrEnum
-from ext.indexing.base import FilterClause, BaseIndexModel
+from ext.indexing.base import FilterClause, BaseIndexModel, BaseProvider
 from ext.indexing.factory import IndexModelFactory
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
@@ -92,7 +92,7 @@ class CollectionIndexModelHelper:
         assert self.collection.embedding_model_config
         assert isinstance(self.collection.embedding_model_config, EmbeddingModelConfig)
 
-    async def get_provider(self):
+    async def get_provider(self) -> BaseProvider:
         """Resolve this collection's backend without mutating shared model metadata."""
         from ext.indexing.factory import IndexingProviderFactory
 
