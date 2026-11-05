@@ -41,6 +41,13 @@ class Collection(BaseModel):
         on_delete=fields.RESTRICT,
         description="关联嵌入模型",
     )
+    indexing_backend_config = fields.ForeignKeyField(
+        f"{_KBConnectionName}.IndexingBackendConfig",
+        related_name="collections",
+        null=True,
+        on_delete=fields.RESTRICT,
+        description="关联索引后端配置；为空时使用系统默认后端",
+    )
 
     class Meta:  # type: ignore
         table = "collection"
