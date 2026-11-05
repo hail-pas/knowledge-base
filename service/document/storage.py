@@ -2,7 +2,7 @@ from loguru import logger
 from uuid import uuid4
 
 from ext.document_parser.core.parse_result import OutputFormat
-from ext.ext_tortoise.models.knowledge_base import Document, DocumentChunk, DocumentPages
+from ext.ext_tortoise.models.knowledge_base import Document
 from ext.file_source import FileSourceFactory
 from service.file_source.security import build_file_upload_uri, validate_public_source_uri
 
@@ -38,11 +38,3 @@ class DocumentStorage:
         validate_public_source_uri(self.document.file_source, self.document.collection, self.document.parsed_uri)
         content = await (await self.provider()).get_file(self.document.parsed_uri)
         return content.decode("utf-8")
-
-    @staticmethod
-    async def cleanup_pages(document_id: int) -> int:
-        return await DocumentPages.filter(document_id=document_id).delete()
-
-    @staticmethod
-    async def cleanup_chunks(document_id: int) -> int:
-        return await DocumentChunk.filter(document_id=document_id).delete()
