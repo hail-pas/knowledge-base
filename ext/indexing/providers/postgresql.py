@@ -215,13 +215,35 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                 casts.append("")
         return names, values, casts
 
-    async def _write(self, model: type[BaseIndexModel], documents: list[dict[str, Any]], upsert: bool) -> list[dict]:
+    async def _write(
+        self, model: type[BaseIndexModel], documents: list[dict[str, Any]],
+        upsert: bool, update_only: bool = False,
+    ) -> list[dict]:
         if not documents:
             return []
         output = []
         async with self.pool.acquire() as conn, conn.transaction():
             for raw in documents:
                 doc = dict(raw)
+                if update_only:
+                    if "id" not in doc:
+                        raise ValueError("id is required for update")
+                    document_id = doc.pop("id")
+                    names, values, casts = self._encode(model, doc)
+                    if not names:
+                        continue
+                    assignments = ", ".join(
+                        f"{name} = ${index}{cast}"
+                        for index, (name, cast) in enumerate(zip(names, casts, strict=True), 1)
+                    )
+                    values.append(document_id)
+                    row = await conn.fetchrow(
+                        f"UPDATE {self._table(model)} SET {assignments} "
+                        f"WHERE id = ${len(values)} RETURNING *", *values
+                    )
+                    if row:
+                        output.append(self._decode(model, row))
+                    continue
                 if model.Meta.auto_generate_id and not doc.get("id"):
                     doc.pop("id", None)
                 names, values, casts = self._encode(model, doc)
@@ -239,7 +261,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         return await self._write(model_class, documents, False)
 
     async def update(self, model_class: type[BaseIndexModel], documents: list[dict[str, Any]]) -> list:
-        rows = await self._write(model_class, documents, True)
+        rows = await self._write(model_class, documents, False, update_only=True)
         return [row["id"] for row in rows]
 
     async def bulk_upsert(self, model_class: type[BaseIndexModel], documents: list[dict[str, Any]]) -> list[dict]:
