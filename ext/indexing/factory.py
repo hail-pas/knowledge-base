@@ -35,7 +35,7 @@ class IndexingProviderFactory:
             await provider.connect()
             return provider
 
-        config_id = int(config.id)
+        config_id = int(config.id) if config.id is not None else id(config)
         version = str(getattr(config, "updated_at", None) or hash(
             (config.host, config.port, config.username, config.password, str(config.extra_config))
         ))
