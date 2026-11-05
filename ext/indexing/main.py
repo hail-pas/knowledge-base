@@ -16,44 +16,34 @@ from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 
 class ModelProviderConfig(RegisterExtensionConfig):
+    """Own the shared indexing provider lifecycle."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    es_provider: BaseProvider | None = None
-    milvus_provider: BaseProvider | None = None
+    postgresql_provider: BaseProvider | None = None
 
     @override
     async def register(self) -> None:
-        """初始化 httpx.AsyncClient"""
-
-        logger.info("Registering model provider")
-
-        es_config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum.elasticsearch,
+        logger.info("Registering PostgreSQL indexing provider")
+        config = await IndexingBackendConfig.filter(
+            type=IndexingBackendTypeEnum.postgresql,
             is_enabled=True,
             is_default=True,
         ).first()
-        milvus_config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum.milvus,
-            is_enabled=True,
-            is_default=True,
-        ).first()
-
-        assert es_config
-        assert milvus_config
-        es_provider = await IndexingProviderFactory.create(es_config, use_cache=False)
-        milvus_provider = await IndexingProviderFactory.create(milvus_config, use_cache=False)
-        self.es_provider = es_provider
-        self.milvus_provider = milvus_provider
-        DocumentContentDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
-        DocumentContentSparseIndex.Meta.provider = self.es_provider  # type: ignore
-        DocumentFAQDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
+        if config is None:
+            raise RuntimeError(
+                "No enabled default PostgreSQL indexing backend configured. "
+                "Create an IndexingBackendConfig with type=postgresql and is_default=True."
+            )
+        provider = await IndexingProviderFactory.create(config)
+        self.postgresql_provider = provider
+        DocumentContentDenseIndex.Meta.provider = provider
+        DocumentContentSparseIndex.Meta.provider = provider
+        DocumentFAQDenseIndex.Meta.provider = provider
 
     @override
     async def unregister(self) -> None:
-        """关闭 httpx.AsyncClient"""
-        logger.info("Unregistering model provider")
-
-        if self.es_provider:
-            await self.es_provider.disconnect()
-        if self.milvus_provider:
-            await self.milvus_provider.disconnect()
+        logger.info("Unregistering PostgreSQL indexing provider")
+        if self.postgresql_provider:
+            await self.postgresql_provider.disconnect()
+            self.postgresql_provider = None
