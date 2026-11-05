@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 
 from pydantic import Field, BaseModel
 
-from ext.indexing.types import QueryClause, FilterClause, SearchCursor, DenseSearchClause, HybridSearchClause, SparseSearchClause
+from ext.indexing.types import QueryClause, FilterClause, SearchCursor
 from ext.ext_tortoise.models.knowledge_base import (
     EmbeddingModelConfig,
     IndexingBackendConfig,
