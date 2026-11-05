@@ -1,6 +1,7 @@
 """Provider 包"""
 
 from ext.indexing.base import BaseProvider
+from ext.indexing.providers.postgresql import PostgreSQLConfig, PostgreSQLProvider
 from ext.indexing.providers.types import (
     MilvusConfig,
     ProviderConfig,
@@ -12,4 +13,6 @@ __all__ = [
     "ProviderConfig",
     "ElasticsearchConfig",
     "MilvusConfig",
+    "PostgreSQLConfig",
+    "PostgreSQLProvider",
 ]
