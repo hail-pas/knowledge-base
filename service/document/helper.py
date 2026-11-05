@@ -26,6 +26,19 @@ class DocumentService:
         self.collection = collection
         self.indexer = DocumentIndexer(collection)
 
+    async def start_processing(self, document: Document, workflow_uid: str | None = None) -> str:
+        from service.workflow.document import process_document
+
+        workflow_id = await process_document(
+            workflow_uid=workflow_uid,
+            document_id=document.id,
+            workflow_template=document.workflow_template,
+            execute_mode="direct",
+        )
+        document.current_workflow_uid = workflow_id
+        await document.save(update_fields=["current_workflow_uid"])
+        return workflow_id
+
     async def delete(self, documents: list[Document]) -> None:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
