@@ -203,7 +203,7 @@ class IndexModelFactory:
         if provider is None:
             return f"{base_name}_{dimension}" if dimension is not None else base_name
         config_id = getattr(provider.config, "id", None)
-        provider_key = f"{type(provider).__name__}_{config_id or id(provider)}"
+        provider_key = f"{type(provider).__name__}_{config_id or 'transient'}_{id(provider)}"
         return f"{base_name}_{dimension}_{provider_key}"
 
     @classmethod
