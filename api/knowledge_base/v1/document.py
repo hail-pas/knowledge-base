@@ -98,7 +98,7 @@ async def create_document(
     - file 和 uri 二选一
     - display_name 未指定则使用原始文件名
     - HTTP URI 跳过 metadata 获取
-    - 创建后状态为 pending，不自动触发 workflow
+    - 创建后自动启动文档处理 workflow
     """
     user: CurrentUser = request.scope["user"]
 
