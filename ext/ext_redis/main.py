@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 
 from pydantic import RedisDsn
 from redis.retry import Retry
-from redis.asyncio import Redis, ConnectionPool
+from redis.asyncio import Redis
 from redis.backoff import NoBackoff
 
 from config.default import InstanceExtensionConfig, RegisterExtensionConfig
@@ -16,9 +16,9 @@ class RedisConfig(RegisterExtensionConfig, InstanceExtensionConfig[AsyncGenerato
     max_connections: int = 10
 
     @cached_property
-    def connection_pool(self) -> ConnectionPool:
-        return ConnectionPool.from_url(  # type: ignore
-            url=str(self.url),
+    def client(self) -> Redis:
+        return Redis.from_url(
+            str(self.url),
             max_connections=self.max_connections,
             decode_responses=True,
             encoding_errors="strict",
@@ -29,21 +29,14 @@ class RedisConfig(RegisterExtensionConfig, InstanceExtensionConfig[AsyncGenerato
     @property
     @asynccontextmanager
     @override
-    async def instance(self) -> AsyncGenerator[Redis]:  # type: ignore
-        r: Redis | None = None
-        try:
-            r = Redis.from_pool(
-                connection_pool=self.connection_pool,
-            )
-            yield r
-        finally:
-            if r:
-                await r.close()
+    async def instance(self) -> AsyncGenerator[Redis]:
+        yield self.client
 
     @override
     async def register(self) -> None: ...
 
     @override
     async def unregister(self) -> None:
-        if self.connection_pool:
-            await self.connection_pool.aclose()
+        client = self.__dict__.get("client")
+        if client is not None:
+            await client.aclose()
