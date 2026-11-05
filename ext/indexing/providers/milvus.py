@@ -39,9 +39,9 @@ class IndexMetadataEnum(StrEnum):
 
 
 class MilvusProvider(BaseProvider[MilvusConfig]):
-    supports_native_hybrid = True
+    """Milvus Provider 实现."""
 
-    """Milvus Provider 实现"""
+    supports_native_hybrid = True
 
     def __init__(self, config: "IndexingBackendConfig") -> None:
         super().__init__(config, MilvusConfig)
