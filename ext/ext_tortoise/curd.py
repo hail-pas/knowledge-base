@@ -5,6 +5,7 @@ focused crud/ and query/ modules.
 """
 
 import uuid
+from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -29,9 +30,12 @@ ModelType = TypeVar("ModelType", bound=Model)
 
 
 async def obj_prefetch_fields(obj: Model, schema: type[PydanticModelType]) -> Model:
-    fields = set(obj._meta.fetch_fields).intersection(schema.model_fields)
-    if fields:
-        await obj.fetch_related(*fields)
+    fields_by_connection = defaultdict(list)
+    for field_name in obj._meta.fetch_fields.intersection(schema.model_fields):
+        related_model = obj._meta.fields_map[field_name].related_model
+        fields_by_connection[related_model._meta.db].append(field_name)
+    for connection, fields in fields_by_connection.items():
+        await obj.fetch_related(*fields, using_db=connection)
     return obj
 
 

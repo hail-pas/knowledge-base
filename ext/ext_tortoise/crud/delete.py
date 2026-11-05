@@ -1,6 +1,5 @@
 """Delete operations with explicit soft-delete and physical-delete semantics."""
 
-import datetime
 import uuid
 
 from pydantic import BaseModel
@@ -8,7 +7,6 @@ from tortoise.models import Model
 from tortoise.queryset import QuerySet
 
 from core.response import Resp
-from core.types import ApiException
 
 
 class DeleteResp(BaseModel):
