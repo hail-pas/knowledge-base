@@ -1,12 +1,68 @@
-name: Temporary GitHub Actions smoke test
+name: One-off dependency and Tortoise migration refresh
 
-on: [push]
+on:
+  push:
+    branches:
+      - v2
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  smoke:
+  refresh:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "GitHub Actions runner is available"
+      - name: Checkout v2
+        uses: actions/checkout@v4
+        with:
+          ref: v2
+
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Resolve latest compatible dependencies
+        env:
+          UV_INDEX_URL: https://pypi.org/simple
+        run: uv lock --upgrade
+
+      - name: Generate Tortoise native initial migrations
+        env:
+          UV_INDEX_URL: https://pypi.org/simple
+        run: |
+          cat > /tmp/tortoise-config.json <<'EOF'
+          {
+            "connections": {
+              "knowledge_base": "postgres://postgres:postgres@127.0.0.1:5432/knowledge_base",
+              "authorization": "postgres://postgres:postgres@127.0.0.1:5432/authorization"
+            },
+            "apps": {
+              "knowledge_base": {
+                "models": ["ext.ext_tortoise.models.knowledge_base"],
+                "default_connection": "knowledge_base",
+                "migrations": "ext.ext_tortoise.migrate.knowledge_base"
+              },
+              "authorization": {
+                "models": ["ext.ext_tortoise.models.authorization"],
+                "default_connection": "authorization",
+                "migrations": "ext.ext_tortoise.migrate.authorization"
+              }
+            },
+            "timezone": "Asia/Shanghai",
+            "use_tz": false
+          }
+          EOF
+          uv run --package ext-tortoise tortoise --config-file /tmp/tortoise-config.json makemigrations --name initial
+
+      - name: Commit lockfile and generated migrations
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock ext/ext_tortoise/migrate
+          if git diff --cached --quiet; then
+            echo "No dependency or migration changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: refresh uv lock and generate Tortoise migrations"
+          git push origin HEAD:v2
