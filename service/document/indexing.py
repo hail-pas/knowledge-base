@@ -19,9 +19,11 @@ class DocumentIndexer:
 
     async def delete_document(self, document_id: int) -> None:
         dense_model = await self.helper.get_dense_model()
+        faq_model = await self.helper.get_faq_model()
         clause = FilterClause(equals={"file_id": document_id})
         await self.helper.sparse_model.delete_by_query(clause)
         await dense_model.delete_by_query(clause)
+        await faq_model.delete_by_query(clause)
 
     async def build(self, document: Document, *, batch_size: int = 20, concurrent_batches: int = 2) -> dict:
         chunks = await DocumentChunk.filter(document_id=document.id, deleted_at=0).order_by("id")
