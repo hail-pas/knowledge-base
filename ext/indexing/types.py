@@ -1,7 +1,7 @@
 """查询条件类型定义（Provider 无感知）"""
 
 from enum import StrEnum
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 from dataclasses import dataclass
 
 from pydantic import Field, BaseModel, field_validator
@@ -14,10 +14,10 @@ class QueryTypeEnum(StrEnum):
     graph = "graph"
 
 
-class QueryClause:
-    """查询条件基类（Provider 无感知）"""
+class QueryClause(BaseModel):
+    """Backend-neutral base model shared by all search and filter clauses."""
 
-    output_fields: list[str] = Field(default=["*"], description="返回字段")
+    output_fields: list[str] = Field(default_factory=lambda: ["*"], description="返回字段")
 
     @field_validator("output_fields", mode="after")
     def model_validator(cls, value: list[str]) -> list[str]:
@@ -29,14 +29,14 @@ class QueryClause:
         return value
 
 
-class DenseSearchClause(BaseModel, QueryClause):
+class DenseSearchClause(QueryClause):
     """稠密向量搜索"""
 
     vector: list[float] = Field(description="查询向量")
     top_k: int = Field(default=10, ge=1, le=1000, description="返回结果数量")
 
 
-class SparseSearchClause(BaseModel, QueryClause):
+class SparseSearchClause(QueryClause):
     """稀疏全文搜索"""
 
     query_text: str = Field(description="查询文本")
@@ -45,7 +45,7 @@ class SparseSearchClause(BaseModel, QueryClause):
     min_score: float = Field(default=0.0, description="最小分数")
 
 
-class HybridSearchClause(BaseModel, QueryClause):
+class HybridSearchClause(QueryClause):
     """混合搜索（Dense + Sparse）"""
 
     dense: DenseSearchClause
@@ -54,7 +54,7 @@ class HybridSearchClause(BaseModel, QueryClause):
     weight_sparse: float = Field(default=0.3, ge=0.0, le=1.0, description="稀疏搜索权重")
 
 
-class FilterClause(BaseModel, QueryClause):
+class FilterClause(QueryClause):
     """过滤条件（支持：相等、范围、AND/OR）"""
 
     equals: dict[str, Any] | None = Field(default=None, description="相等条件：{'category': 'tech'}")
