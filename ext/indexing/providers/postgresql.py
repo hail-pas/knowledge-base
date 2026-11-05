@@ -372,15 +372,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             return await self._dense(model_class, query_clause, filter_clause, limit, offset)
         if isinstance(query_clause, SparseSearchClause):
             return await self._sparse(model_class, query_clause, filter_clause, limit, offset)
-        dense = await self._dense(model_class, query_clause.dense, filter_clause, limit * 3, 0)
-        sparse = await self._sparse(model_class, query_clause.sparse, filter_clause, limit * 3, 0)
-        fused: dict[str, tuple[dict, float]] = {}
-        for hits, weight in ((dense, query_clause.weight_dense), (sparse, query_clause.weight_sparse)):
-            for rank, (doc, _) in enumerate(hits, 1):
-                key = str(doc["id"])
-                old = fused.get(key, (doc, 0.0))
-                fused[key] = (doc, old[1] + weight / (60 + rank))
-        return sorted(fused.values(), key=lambda item: item[1], reverse=True)[offset:offset + limit]
+        raise TypeError("PostgreSQL native search accepts DenseSearchClause or SparseSearchClause")
 
     async def health_check(self) -> bool:
         try:
