@@ -163,12 +163,13 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
     async def delete_file(self, uri: str) -> bool:
         key = self._extract_key(uri)
         try:
-            await asyncio.to_thread(self.client.remove_object, self.storage_location, key)
-            return True
+            await asyncio.to_thread(self.client.stat_object, self.storage_location, key)
         except S3Error as exc:
             if exc.code in {"NoSuchKey", "NoSuchObject"}:
                 return False
             raise
+        await asyncio.to_thread(self.client.remove_object, self.storage_location, key)
+        return True
 
     def _extract_key(self, uri: str) -> str:
         return parse_object_key(uri, scheme="minio", bucket=self.storage_location)
