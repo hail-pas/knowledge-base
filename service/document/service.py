@@ -202,26 +202,33 @@ class DocumentService:
         logger.info(f"Uploaded file to {metadata.uri}, size={file_size}, sha256={content_hash}")
 
         # 5. 创建 Document 记录
-        document = await Document.create(
-            collection_id=self.collection.id,
-            file_source_id=file_source.id,
-            uri=metadata.uri,
-            parsed_uri=None,
-            file_name=file_name,
-            display_name=display_name or file_name,
-            extension=extension,
-            file_size=file_size,
-            source_last_modified=None,
-            source_version_key=content_hash,
-            is_deleted_in_source=False,
-            source_meta={"_knowledge_base": {"managed_upload": True}},
-            short_summary=None,
-            long_summary=None,
-            status=DocumentStatusEnum.pending.value,
-            current_workflow_uid=None,
-            config_flag=config_flag,
-            workflow_template=self.collection.workflow_template,
-        )
+        try:
+            document = await Document.create(
+                collection_id=self.collection.id,
+                file_source_id=file_source.id,
+                uri=metadata.uri,
+                parsed_uri=None,
+                file_name=file_name,
+                display_name=display_name or file_name,
+                extension=extension,
+                file_size=file_size,
+                source_last_modified=None,
+                source_version_key=content_hash,
+                is_deleted_in_source=False,
+                source_meta={"_knowledge_base": {"managed_upload": True}},
+                short_summary=None,
+                long_summary=None,
+                status=DocumentStatusEnum.pending.value,
+                current_workflow_uid=None,
+                config_flag=config_flag,
+                workflow_template=self.collection.workflow_template,
+            )
+        except Exception:
+            try:
+                await provider.delete_file(metadata.uri)
+            except Exception:
+                logger.exception("Failed to rollback uploaded source file {}", metadata.uri)
+            raise
 
         logger.info(f"Created document {document.id} from upload: {file_name}")
         return document
