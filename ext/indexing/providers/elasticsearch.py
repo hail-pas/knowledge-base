@@ -507,7 +507,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return results
 
-    async def search_cursor(
+    async def search_cursor_native(
         self,
         model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
