@@ -160,7 +160,7 @@ class IndexModelFactory:
                 "pass provider= or bind Meta.provider before creating the index model."
             )
 
-        model_key = cls._get_model_key(base_model.__name__, dimension, provider)
+        model_key = cls._get_model_key(base_model.__name__, dimension, selected_provider)
 
         if model_key not in cls._model_registry:
             cls._model_registry[model_key] = cls._create_dynamic_class(
