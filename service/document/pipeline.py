@@ -20,6 +20,8 @@ class DocumentPipeline:
     async def parse(self, *, engine: str | None = None, output_format: OutputFormat = OutputFormat.AUTO,
                     options: dict[str, Any] | None = None) -> dict:
         temp_path = None
+        new_uri = None
+        old_uri = self.document.parsed_uri
         try:
             if self.document.uri.lower().startswith(("http://", "https://")):
                 source_path = self.document.uri
@@ -33,7 +35,6 @@ class DocumentPipeline:
                 file_path=source_path, engine=engine, output_format=output_format, options=options
             )
             new_uri = await self.storage.upload_parsed(result.content, result.format.value)
-            old_uri = self.document.parsed_uri
             self.document.parsed_uri = new_uri
             await self.document.save(update_fields=["parsed_uri"])
             await self.storage.cleanup_pages(self.document.id)
@@ -77,6 +78,14 @@ class DocumentPipeline:
             }
         except Exception:
             await self.storage.cleanup_pages(self.document.id)
+            if new_uri:
+                try:
+                    await self.storage.delete_managed_uri(new_uri)
+                except Exception:
+                    logger.exception("Failed to rollback parsed artifact for document {}", self.document.id)
+            if self.document.parsed_uri != old_uri:
+                self.document.parsed_uri = old_uri
+                await self.document.save(update_fields=["parsed_uri"])
             raise
         finally:
             if temp_path and os.path.exists(temp_path):
