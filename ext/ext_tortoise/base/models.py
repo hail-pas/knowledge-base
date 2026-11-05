@@ -1,23 +1,17 @@
-import uuid
 import datetime
+import uuid
 from collections.abc import Iterable
 
 from ulid import ULID
-from tortoise import fields, manager
+from tortoise import BaseDBAsyncClient, fields, manager
 from tortoise.models import Model
 from tortoise.queryset import QuerySet
-from tortoise.backends.base.client import BaseDBAsyncClient
 
-from ext.ext_tortoise.base.fields import TimestampField, BinaryUUIDField
-
-
-class NotDeletedManager(manager.Manager):
-    def get_queryset(self) -> QuerySet:
-        return super().get_queryset().filter(deleted_at=0)
+from ext.ext_tortoise.base.fields import TimestampField
 
 
 class UUIDPrimaryKeyModel(Model):
-    id = BinaryUUIDField(
+    id = fields.UUIDField(
         description="主键",
         pk=True,
         default=lambda: ULID().to_uuid(),
@@ -59,20 +53,25 @@ class TimeStampModel(Model):
         force_update: bool = False,
     ) -> None:
         if update_fields:
-            update_fields = list(update_fields) + ["updated_at"]
-        await super().save(using_db, update_fields, force_create, force_update)
+            update_fields = [*update_fields, "updated_at"]
+        await super().save(
+            using_db=using_db,
+            update_fields=update_fields,
+            force_create=force_create,
+            force_update=force_update,
+        )
 
     async def real_delete(
         self,
         using_db: BaseDBAsyncClient | None = None,
     ) -> None:
-        await super().delete(using_db)
+        await super().delete(using_db=using_db)
 
     async def delete(
         self,
         using_db: BaseDBAsyncClient | None = None,
     ) -> None:
-        """fake delete"""
+        """Soft delete."""
         self.deleted_at = datetime.datetime.now(
             tz=self._meta.fields_map["deleted_at"].timezone,  # type: ignore
         )
@@ -84,7 +83,7 @@ class TimeStampModel(Model):
 
     @classmethod
     async def delete_by_ids(cls, ids: list[int | str | uuid.UUID]) -> int:
-        """batch fake delete"""
+        """Batch soft delete."""
         now = datetime.datetime.now(
             tz=cls._meta.fields_map["deleted_at"].timezone,  # type: ignore
         )
