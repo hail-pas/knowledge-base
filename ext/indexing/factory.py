@@ -211,14 +211,11 @@ class IndexModelFactory:
             动态创建的 IndexModel 子类
         """
 
-        class DynamicMeta(base_model.Meta):
-            """动态 Meta 类
-
-            继承 base_model.Meta 的所有配置，只覆盖 dense_vector_dimension
-            """
-
-            dense_vector_dimension = dimension
-            provider = provider
+        DynamicMeta = type(
+            "DynamicMeta",
+            (base_model.Meta,),
+            {"dense_vector_dimension": dimension, "provider": provider},
+        )
 
         namespace = {
             "Meta": DynamicMeta,
