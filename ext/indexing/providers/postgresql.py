@@ -153,18 +153,23 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                 values.append(value)
                 sql_op = {"gte": ">=", "gt": ">", "lte": "<=", "lt": "<"}[op]
                 terms.append(f"{self._q(field)} {sql_op} ${len(values) + start - 1}")
+        next_position = start + len(values)
         for nested_clause in clause.and_conditions or []:
-            sql, params = self._where(nested_clause, start + len(values))
+            sql, params = self._where(nested_clause, next_position)
             if sql:
                 terms.append(f"({sql})")
                 values.extend(params)
+                next_position += len(params)
         if clause.or_conditions:
-            nested = [self._where(item, start + len(values)) for item in clause.or_conditions]
-            nested = [(sql, args) for sql, args in nested if sql]
+            nested = []
+            for item in clause.or_conditions:
+                sql, params = self._where(item, next_position)
+                if sql:
+                    nested.append(sql)
+                    values.extend(params)
+                    next_position += len(params)
             if nested:
-                terms.append("(" + " OR ".join(f"({sql})" for sql, _ in nested) + ")")
-                for _, args in nested:
-                    values.extend(args)
+                terms.append("(" + " OR ".join(f"({sql})" for sql in nested) + ")")
         return " AND ".join(terms), values
 
     @staticmethod
