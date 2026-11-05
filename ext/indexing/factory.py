@@ -129,6 +129,7 @@ class IndexModelFactory:
         cls,
         base_model: type[BaseIndexModel],
         embedding_config: "EmbeddingModelConfig",
+        provider: BaseProvider | None = None,
     ) -> type[BaseIndexModel]:
         """根据 embedding 配置动态创建 IndexModel 类
 
@@ -152,17 +153,19 @@ class IndexModelFactory:
         if not dimension or dimension <= 0:
             raise ValueError(f"Invalid dimension: {dimension}")
 
-        if not base_model.Meta.provider:
+        selected_provider = provider or base_model.Meta.provider
+        if not selected_provider:
             raise RuntimeError(
-                f"base_model.Meta.provider is not bound. "
-                "Please bind provider in register.py first: "
-                f"{base_model.__name__}.Meta.provider = await IndexingProviderFactory.create(...)",
+                f"No indexing provider is bound to {base_model.__name__}; "
+                "pass provider= or bind Meta.provider before creating the index model."
             )
 
-        model_key = cls._get_model_key(base_model.__name__, dimension)
+        model_key = cls._get_model_key(base_model.__name__, dimension, selected_provider)
 
         if model_key not in cls._model_registry:
-            cls._model_registry[model_key] = cls._create_dynamic_class(base_model, dimension, model_key)
+            cls._model_registry[model_key] = cls._create_dynamic_class(
+                base_model, dimension, model_key, selected_provider
+            )
 
         _m = cls._model_registry[model_key]
 
@@ -171,7 +174,7 @@ class IndexModelFactory:
         return _m
 
     @classmethod
-    def _get_model_key(cls, base_name: str, dimension: int) -> str:
+    def _get_model_key(cls, base_name: str, dimension: int, provider: BaseProvider | None = None) -> str:
         """生成唯一模型标识
 
         Args:
@@ -181,7 +184,11 @@ class IndexModelFactory:
         Returns:
             唯一标识字符串，如 "ChunkIndex_1536"
         """
-        return f"{base_name}_{dimension}"
+        if provider is None:
+            return f"{base_name}_{dimension}"
+        config_id = getattr(provider.config, "id", None)
+        provider_key = f"{type(provider).__name__}_{config_id or id(provider)}"
+        return f"{base_name}_{dimension}_{provider_key}"
 
     @classmethod
     def _create_dynamic_class(
@@ -189,6 +196,7 @@ class IndexModelFactory:
         base_model: type[BaseIndexModel],
         dimension: int,
         class_name: str,
+        provider: BaseProvider,
     ) -> type[BaseIndexModel]:
         """动态创建 IndexModel 子类
 
@@ -210,6 +218,7 @@ class IndexModelFactory:
             """
 
             dense_vector_dimension = dimension
+            provider = provider
 
         namespace = {
             "Meta": DynamicMeta,
@@ -246,20 +255,9 @@ class IndexModelFactory:
         return list(cls._model_registry.keys())
 
     @classmethod
-    def get_model(cls, base_name: str, dimension: int) -> type[BaseIndexModel] | None:
-        """根据基础模型名和维度获取已注册的动态模型
-
-        Args:
-            base_name: 基础模型名称，如 "ChunkIndex"
-            dimension: 向量维度
-
-        Returns:
-            动态模型类，如果不存在返回 None
-
-        Example:
-            >>> model_cls = IndexModelFactory.get_model("ChunkIndex", 1536)
-            >>> if model_cls:
-            ...     print(model_cls.Meta.dense_vector_dimension)
-        """
-        model_key = cls._get_model_key(base_name, dimension)
+    def get_model(
+        cls, base_name: str, dimension: int, provider: BaseProvider | None = None
+    ) -> type[BaseIndexModel] | None:
+        """Return a cached model, optionally scoped to a specific provider."""
+        model_key = cls._get_model_key(base_name, dimension, provider)
         return cls._model_registry.get(model_key)
