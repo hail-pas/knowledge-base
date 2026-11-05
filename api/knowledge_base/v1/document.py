@@ -39,7 +39,6 @@ from service.document.schema import (
     DocumentGeneratedFaqUpdate,
 )
 from ext.workflow.validator import WorkflowTemplateValidator
-from service.workflow.document import process_document
 from ext.workflow.manager import WorkflowManager
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
@@ -157,15 +156,7 @@ async def create_document(
             config_flag=config_flag,
         )
 
-    workflow_id = await process_document(
-        workflow_uid=None,
-        document_id=document.id,
-        workflow_template=document.workflow_template,
-        execute_mode="direct",
-    )
-
-    document.current_workflow_uid = workflow_id  # type: ignore
-    await document.save(update_fields=["current_workflow_uid"])
+    await service.start_processing(document)
 
     return Resp(data=DocumentList.model_validate(document))
 
@@ -278,15 +269,8 @@ async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["w
         if obj.current_workflow_uid:
             await WorkflowManager.delete_workflow(obj.current_workflow_uid, using_db=conn)
 
-    workflow_id = await process_document(
-        workflow_uid=None,
-        document_id=obj.id,
-        workflow_template=obj.workflow_template,
-        execute_mode="direct",
-    )
-
-    obj.current_workflow_uid = workflow_id  # type: ignore
-    await obj.save(update_fields=["current_workflow_uid"])
+    collection = await obj.collection
+    workflow_id = await DocumentService(collection).start_processing(obj)
 
     return Resp(data={"workflow_id": workflow_id})
 
@@ -318,15 +302,8 @@ async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["wor
         obj.status = DocumentStatusEnum.pending
         await obj.save(using_db=conn, update_fields=["status"])
 
-    workflow_id = await process_document(
-        workflow_uid=str(obj.current_workflow_uid),
-        document_id=obj.id,
-        workflow_template=obj.workflow_template,
-        execute_mode="direct",
-    )
-    if not obj.current_workflow_uid or str(obj.current_workflow_uid) != workflow_id:
-        obj.current_workflow_uid = workflow_id  # type: ignore
-        await obj.save(update_fields=["current_workflow_uid"])
+    collection = await obj.collection
+    workflow_id = await DocumentService(collection).start_processing(obj, str(obj.current_workflow_uid))
 
     return Resp(data={"workflow_id": workflow_id})
 
