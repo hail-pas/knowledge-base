@@ -5,7 +5,6 @@ from collections.abc import Iterable
 from ulid import ULID
 from tortoise import BaseDBAsyncClient, fields, manager
 from tortoise.models import Model
-from tortoise.queryset import QuerySet
 
 from ext.ext_tortoise.base.fields import TimestampField
 
@@ -61,32 +60,24 @@ class TimeStampModel(Model):
             force_update=force_update,
         )
 
-    async def real_delete(
-        self,
-        using_db: BaseDBAsyncClient | None = None,
-    ) -> None:
+    async def real_delete(self, using_db: BaseDBAsyncClient | None = None) -> None:
+        """Physically delete this record, bypassing the soft-delete override."""
         await super().delete(using_db=using_db)
 
-    async def delete(
-        self,
-        using_db: BaseDBAsyncClient | None = None,
-    ) -> None:
-        """Soft delete."""
-        self.deleted_at = datetime.datetime.now(
-            tz=self._meta.fields_map["deleted_at"].timezone,  # type: ignore
-        )
-        await self.save(
-            using_db=using_db,
-            update_fields=["deleted_at"],
-            force_update=True,
-        )
+    async def delete(self, using_db: BaseDBAsyncClient | None = None) -> None:
+        """Soft-delete this record; use real_delete() for physical deletion."""
+        if self.deleted_at:
+            return
+        self.deleted_at = datetime.datetime.now(tz=self._meta.fields_map["deleted_at"].timezone)  # type: ignore
+        await self.save(using_db=using_db, update_fields=["deleted_at"], force_update=True)
 
     @classmethod
-    async def delete_by_ids(cls, ids: list[int | str | uuid.UUID]) -> int:
-        """Batch soft delete."""
-        now = datetime.datetime.now(
-            tz=cls._meta.fields_map["deleted_at"].timezone,  # type: ignore
-        )
+    async def delete_by_ids(cls, ids: Iterable[int | str | uuid.UUID]) -> int:
+        """Soft-delete active records in one UPDATE statement."""
+        ids = tuple(ids)
+        if not ids:
+            return 0
+        now = datetime.datetime.now(tz=cls._meta.fields_map["deleted_at"].timezone)  # type: ignore
         return await cls.filter(id__in=ids, deleted_at=0).update(deleted_at=now, updated_at=now)
 
 
