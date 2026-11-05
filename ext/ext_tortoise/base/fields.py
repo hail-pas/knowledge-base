@@ -18,6 +18,7 @@ class TimestampField(fields.BigIntField):
         default: int | None = None,
         read_only: bool = True,
         index: bool = False,
+        db_index: bool | None = None,
         description: str | None = None,
         validators: list[validators.Validator | Callable] | None = None,
         timezone: ZoneInfo = ZoneInfo("Asia/Shanghai"),
@@ -26,7 +27,7 @@ class TimestampField(fields.BigIntField):
             null=null,
             default=default,
             description=description,
-            index=index,
+            index=index if db_index is None else db_index,
             validators=validators,
         )
         self.read_only = read_only
