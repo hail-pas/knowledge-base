@@ -11,6 +11,7 @@ from core.exception import ApiException
 from tortoise.transactions import in_transaction
 from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.workflow.manager import WorkflowManager
+from ext.workflow import schedule_workflow
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.file_source.factory import FileSourceFactory
 from service.file_source.security import build_file_upload_uri, validate_public_source_uri
@@ -30,17 +31,17 @@ class DocumentService:
         self.collection = collection
 
     async def start_processing(self, document: Document, workflow_uid: str | None = None) -> str:
-        from service.workflow.document import process_document
+        if workflow_uid is None:
+            workflow = await WorkflowManager.create_workflow(
+                config=document.workflow_template,
+                initial_inputs={"document_id": document.id},
+            )
+            workflow_uid = str(workflow.uid)
 
-        workflow_id = await process_document(
-            workflow_uid=workflow_uid,
-            document_id=document.id,
-            workflow_template=document.workflow_template,
-            execute_mode="direct",
-        )
-        document.current_workflow_uid = workflow_id
+        document.current_workflow_uid = workflow_uid
         await document.save(update_fields=["current_workflow_uid"])
-        return workflow_id
+
+        return await schedule_workflow(workflow_uid=workflow_uid, execute_mode="celery")
 
     async def reprocess(self, document: Document) -> str:
         async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
