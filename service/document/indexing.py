@@ -29,8 +29,9 @@ class DocumentIndexer:
         if not document_ids:
             return
         dense_model = await self.helper.get_dense_model()
+        sparse_model = await self.helper.get_sparse_model()
         clause = FilterClause(in_list={"file_id": document_ids})
-        await self.helper.sparse_model.delete_by_query(clause)
+        await sparse_model.delete_by_query(clause)
         await dense_model.delete_by_query(clause)
         if include_faq:
             faq_model = await self.helper.get_faq_model()
@@ -76,6 +77,7 @@ class DocumentIndexer:
             raise ValueError(f"Embedding dimension mismatch: expected {config.dimension}")
 
         dense_model = await self.helper.get_dense_model()
+        sparse_model = await self.helper.get_sparse_model()
         await self._ensure_current_workflow(document.id, workflow_uid)
         sparse_docs, dense_docs = [], []
         for chunk, vector in zip(chunks, embeddings, strict=True):
@@ -93,7 +95,7 @@ class DocumentIndexer:
                 end_page=chunk.max_page or 0,
                 end_char_index=len(chunk.content),
             )
-            sparse_docs.append(self.helper.sparse_model(**fields))
+            sparse_docs.append(sparse_model(**fields))
             dense_docs.append(dense_model(**fields, dense_vector=vector))
 
         async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
@@ -106,7 +108,7 @@ class DocumentIndexer:
 
             try:
                 await self.delete_document(document.id)
-                await self.helper.sparse_model.bulk_insert(
+                await sparse_model.bulk_insert(
                     sparse_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
                 )
                 await dense_model.bulk_insert(
