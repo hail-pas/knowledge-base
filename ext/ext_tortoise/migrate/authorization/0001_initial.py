@@ -1,3 +1,5 @@
+import zoneinfo
+
 from tortoise import migrations
 from tortoise.migrations import operations as ops
 from ext.ext_tortoise.base.fields import TimestampField
