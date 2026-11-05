@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 
 from pydantic import Field, BaseModel
 
-from ext.indexing.types import FilterClause, SearchCursor, DenseSearchClause, HybridSearchClause, SparseSearchClause
+from ext.indexing.types import QueryClause, FilterClause, SearchCursor, DenseSearchClause, HybridSearchClause, SparseSearchClause
 from ext.ext_tortoise.models.knowledge_base import (
     EmbeddingModelConfig,
     IndexingBackendConfig,
@@ -291,7 +291,7 @@ class BaseIndexModel(BaseModel):
     @classmethod
     async def search(
         cls,
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: QueryClause,
         filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
