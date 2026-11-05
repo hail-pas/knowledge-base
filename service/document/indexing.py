@@ -51,8 +51,14 @@ class DocumentIndexer:
         await self._ensure_current_workflow(document.id, workflow_uid)
         chunks = await DocumentChunk.filter(document_id=document.id, deleted_at=0).order_by("id")
         if not chunks:
-            await self._ensure_current_workflow(document.id, workflow_uid)
-            await self.delete_document(document.id)
+            async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+                current = await Document.filter(
+                    id=document.id,
+                    current_workflow_uid=workflow_uid,
+                ).using_db(conn).select_for_update().first()
+                if current is None:
+                    raise RuntimeError("Workflow no longer owns this document")
+                await self.delete_document(document.id)
             return {"indexed_chunks": 0, "sparse_index_count": 0, "dense_index_count": 0}
 
         config = self.collection.embedding_model_config
