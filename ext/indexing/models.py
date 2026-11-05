@@ -98,10 +98,8 @@ class CollectionIndexModelHelper:
 
         backend_config_id = self.collection.indexing_backend_config_id
         if backend_config_id:
-            config = getattr(self.collection, "indexing_backend_config", None)
-            if config is None:
-                await self.collection.fetch_related("indexing_backend_config")
-                config = self.collection.indexing_backend_config
+            await self.collection.fetch_related("indexing_backend_config")
+            config = self.collection.indexing_backend_config
             if config is None or not config.is_enabled or config.deleted_at:
                 raise ValueError(
                     f"Indexing backend config {backend_config_id} is missing or disabled"
