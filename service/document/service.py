@@ -50,6 +50,7 @@ class DocumentService:
             locked.current_workflow_uid = workflow.uid
             await locked.save(using_db=conn, update_fields=["current_workflow_uid"])
 
+        document.current_workflow_uid = workflow.uid
         return await schedule_workflow(workflow_uid=str(workflow.uid), execute_mode="celery")
 
     async def reprocess(self, document: Document) -> str:
