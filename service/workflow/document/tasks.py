@@ -124,15 +124,6 @@ class IndexChunkTask(DocumentWorkflowTask):
             workflow_uid=self.activity.workflow_uid,
         )
 
-    async def _handle_exception(self, exception: Exception) -> None:
-        task_input = IndexChunkTaskInput(**self.input)
-        try:
-            document = await _get_document(task_input.document_id)
-            await DocumentIndexer(document.collection).delete_document(document.id)
-        except Exception:
-            logger.exception("Failed to clean document index after indexing error")
-        await super()._handle_exception(exception)
-
 
 @activity_task(prefix="workflow_document")  # type: ignore
 class GenerateTagsTask(DocumentWorkflowTask):
