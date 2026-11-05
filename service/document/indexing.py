@@ -89,8 +89,8 @@ class DocumentIndexer:
             dense_docs.append(dense_model(**fields, dense_vector=vector))
 
         await self._ensure_current_workflow(document.id, workflow_uid)
-        await self.delete_document(document.id)
         try:
+            await self.delete_document(document.id)
             await self.helper.sparse_model.bulk_insert(
                 sparse_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
             )
