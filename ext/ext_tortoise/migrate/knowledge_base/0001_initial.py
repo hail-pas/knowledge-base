@@ -79,6 +79,7 @@ class Migration(migrations.Migration):
                 ('workflow_template', fields.JSONField(default=dict, description='默认DAG工作流模版', encoder=functools.partial(dumps, separators=(',', ':')), decoder=loads)),
                 ('external_config', fields.JSONField(default=dict, description='外部知识库配置, 占位后续扩展', encoder=functools.partial(dumps, separators=(',', ':')), decoder=loads)),
                 ('embedding_model_config', fields.ForeignKeyField('knowledge_base.EmbeddingModelConfig', source_field='embedding_model_config_id', null=True, description='关联嵌入模型', db_constraint=True, to_field='id', related_name='collections', on_delete=OnDelete.RESTRICT)),
+                ('indexing_backend_config', fields.ForeignKeyField('knowledge_base.IndexingBackendConfig', source_field='indexing_backend_config_id', null=True, description='关联索引后端配置；为空时使用系统默认后端', db_constraint=True, to_field='id', related_name='collections', on_delete=OnDelete.RESTRICT)),
             ],
             options={'table': 'collection', 'app': 'knowledge_base', 'unique_together': (('user_id', 'name'),), 'pk_attr': 'id', 'table_description': '文件集合表'},
             bases=['BaseModel'],
