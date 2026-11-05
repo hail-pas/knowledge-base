@@ -308,7 +308,7 @@ class BaseIndexModel(BaseModel):
     @classmethod
     async def search_cursor(
         cls,
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: QueryClause,
         filter_clause: FilterClause | None = None,
         page_size: int = 100,
         cursor: str | None = None,
