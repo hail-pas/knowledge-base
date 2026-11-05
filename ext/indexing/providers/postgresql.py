@@ -9,6 +9,7 @@ from typing import Any, get_args, get_origin
 
 import asyncpg
 from loguru import logger
+from pydantic import Field
 
 from ext.indexing.base import BaseIndexModel, BaseProvider
 from ext.indexing.providers.types import ProviderConfig
@@ -22,11 +23,11 @@ class PostgreSQLConfig(ProviderConfig):
     vector_metric: str = "cosine"
     vector_index: str = "hnsw"
     text_search_config: str = "simple"
-    pool_min_size: int = 1
-    pool_max_size: int = 10
-    hnsw_m: int = 16
-    hnsw_ef_construction: int = 64
-    ivfflat_lists: int = 100
+    pool_min_size: int = Field(default=1, ge=1)
+    pool_max_size: int = Field(default=10, ge=1)
+    hnsw_m: int = Field(default=16, ge=2, le=100)
+    hnsw_ef_construction: int = Field(default=64, ge=4)
+    ivfflat_lists: int = Field(default=100, ge=1)
 
 
 class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
@@ -38,6 +39,8 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             raise ValueError("vector_metric must be cosine, l2 or ip")
         if self.extra_config.vector_index not in {"hnsw", "ivfflat"}:
             raise ValueError("vector_index must be hnsw or ivfflat")
+        if self.extra_config.pool_max_size < self.extra_config.pool_min_size:
+            raise ValueError("pool_max_size must be greater than or equal to pool_min_size")
         if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", self.extra_config.schema):
             raise ValueError("Invalid schema")
         if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", self.extra_config.text_search_config):
