@@ -39,6 +39,8 @@ class IndexMetadataEnum(StrEnum):
 
 
 class MilvusProvider(BaseProvider[MilvusConfig]):
+    supports_native_hybrid = True
+
     """Milvus Provider 实现"""
 
     def __init__(self, config: "IndexingBackendConfig") -> None:
@@ -595,7 +597,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         return result[0]["count(*)"]
 
-    async def search(
+    async def search_native(
         self,
         model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
