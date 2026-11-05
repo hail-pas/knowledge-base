@@ -5,7 +5,7 @@ import json
 import re
 import ssl
 from datetime import date, datetime
-from typing import Any, get_args, get_origin
+from typing import Any, Literal, get_args, get_origin
 
 import asyncpg
 from loguru import logger
@@ -20,8 +20,8 @@ from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 class PostgreSQLConfig(ProviderConfig):
     database: str = "postgres"
     schema: str = "public"
-    vector_metric: str = "cosine"
-    vector_index: str = "hnsw"
+    vector_metric: Literal["cosine", "l2", "ip"] = "cosine"
+    vector_index: Literal["hnsw", "ivfflat"] = "hnsw"
     text_search_config: str = "simple"
     pool_min_size: int = Field(default=1, ge=1)
     pool_max_size: int | None = Field(default=None, ge=1)
