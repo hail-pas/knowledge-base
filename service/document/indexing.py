@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from ext.embedding import EmbeddingModelFactory
 from ext.ext_tortoise.models.knowledge_base import Collection, Document, DocumentChunk
 from ext.indexing.models import CollectionIndexModelHelper
@@ -30,7 +32,19 @@ class DocumentIndexer:
             faq_model = await self.helper.get_faq_model()
             await faq_model.delete_by_query(clause)
 
-    async def build(self, document: Document, *, batch_size: int = 20, concurrent_batches: int = 2) -> dict:
+    async def _ensure_current_workflow(self, document_id: int, workflow_uid: UUID) -> None:
+        if not await Document.filter(id=document_id, current_workflow_uid=workflow_uid).exists():
+            raise RuntimeError("Workflow no longer owns this document")
+
+    async def build(
+        self,
+        document: Document,
+        *,
+        workflow_uid: UUID,
+        batch_size: int = 20,
+        concurrent_batches: int = 2,
+    ) -> dict:
+        await self._ensure_current_workflow(document.id, workflow_uid)
         chunks = await DocumentChunk.filter(document_id=document.id, deleted_at=0).order_by("id")
         if not chunks:
             await self.delete_document(document.id)
@@ -51,6 +65,7 @@ class DocumentIndexer:
             raise ValueError(f"Embedding dimension mismatch: expected {config.dimension}")
 
         dense_model = await self.helper.get_dense_model()
+        await self._ensure_current_workflow(document.id, workflow_uid)
         await self.delete_document(document.id)
         sparse_docs, dense_docs = [], []
         for chunk, vector in zip(chunks, embeddings, strict=True):
@@ -71,12 +86,20 @@ class DocumentIndexer:
             sparse_docs.append(self.helper.sparse_model(**fields))
             dense_docs.append(dense_model(**fields, dense_vector=vector))
 
-        await self.helper.sparse_model.bulk_insert(
-            sparse_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
-        )
-        await dense_model.bulk_insert(
-            dense_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
-        )
+        try:
+            await self.helper.sparse_model.bulk_insert(
+                sparse_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
+            )
+            await dense_model.bulk_insert(
+                dense_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
+            )
+        except Exception:
+            if await Document.filter(
+                id=document.id,
+                current_workflow_uid=workflow_uid,
+            ).exists():
+                await self.delete_document(document.id)
+            raise
         return {
             "indexed_chunks": len(chunks),
             "sparse_index_count": len(sparse_docs),
