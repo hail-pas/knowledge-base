@@ -44,6 +44,5 @@ class ModelProviderConfig(RegisterExtensionConfig):
     @override
     async def unregister(self) -> None:
         logger.info("Unregistering PostgreSQL indexing provider")
-        if self.postgresql_provider:
-            await self.postgresql_provider.disconnect()
-            self.postgresql_provider = None
+        await IndexingProviderFactory.clear_cache()
+        self.postgresql_provider = None
