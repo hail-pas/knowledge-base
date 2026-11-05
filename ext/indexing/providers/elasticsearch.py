@@ -26,6 +26,8 @@ class IndexMetadataEnum(StrEnum):
 
 
 class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
+    supports_native_hybrid = True
+
     """Elasticsearch Provider 实现"""
 
     def __init__(self, config: IndexingBackendConfig) -> None:
@@ -468,7 +470,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         result = await self._client.count(index=index_name, query=query)
         return result["count"]
 
-    async def search(
+    async def search_native(
         self,
         model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
