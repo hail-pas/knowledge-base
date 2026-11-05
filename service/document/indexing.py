@@ -14,13 +14,17 @@ class DocumentIndexer:
             return
         if any(document.collection_id != self.collection.id for document in documents):
             raise ValueError("All documents must belong to the configured collection")
-        for document in documents:
-            await self.delete_document(document.id)
+        await self._delete_by_ids([document.id for document in documents])
 
     async def delete_document(self, document_id: int) -> None:
+        await self._delete_by_ids([document_id])
+
+    async def _delete_by_ids(self, document_ids: list[int]) -> None:
+        if not document_ids:
+            return
         dense_model = await self.helper.get_dense_model()
         faq_model = await self.helper.get_faq_model()
-        clause = FilterClause(equals={"file_id": document_id})
+        clause = FilterClause(in_list={"file_id": document_ids})
         await self.helper.sparse_model.delete_by_query(clause)
         await dense_model.delete_by_query(clause)
         await faq_model.delete_by_query(clause)
