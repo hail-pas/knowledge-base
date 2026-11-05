@@ -318,7 +318,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             rows = await conn.fetch(sql, query.query_text, *args)
         return [(self._decode(model, row), float(row["score"])) for row in rows if row["score"] >= query.min_score]
 
-    async def search(self, model_class: type[BaseIndexModel],
+    async def search_native(self, model_class: type[BaseIndexModel],
                      query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
                      filter_clause: FilterClause | None = None, limit: int = 10, offset: int = 0) -> list[tuple[dict, float]]:
         if isinstance(query_clause, DenseSearchClause):
@@ -334,14 +334,6 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                 old = fused.get(key, (doc, 0.0))
                 fused[key] = (doc, old[1] + weight / (60 + rank))
         return sorted(fused.values(), key=lambda item: item[1], reverse=True)[offset:offset + limit]
-
-    async def search_cursor(self, model_class: type[BaseIndexModel],
-                            query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-                            filter_clause: FilterClause | None = None, page_size: int = 100,
-                            cursor: str | None = None) -> tuple[list[tuple[dict, float]], str | None]:
-        offset = int(cursor or 0)
-        rows = await self.search(model_class, query_clause, filter_clause, page_size + 1, offset)
-        return rows[:page_size], str(offset + page_size) if len(rows) > page_size else None
 
     async def health_check(self) -> bool:
         try:
