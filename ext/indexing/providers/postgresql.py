@@ -13,7 +13,7 @@ from pydantic import Field
 
 from ext.indexing.base import BaseIndexModel, BaseProvider
 from ext.indexing.providers.types import ProviderConfig
-from ext.indexing.types import DenseSearchClause, FilterClause, HybridSearchClause, SparseSearchClause
+from ext.indexing.types import DenseSearchClause, FilterClause, SparseSearchClause
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 
@@ -363,7 +363,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         return [(self._decode(model, row), float(row["score"])) for row in rows if row["score"] >= query.min_score]
 
     async def search_native(self, model_class: type[BaseIndexModel],
-                     query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+                     query_clause: DenseSearchClause | SparseSearchClause,
                      filter_clause: FilterClause | None = None, limit: int = 10, offset: int = 0) -> list[tuple[dict, float]]:
         if isinstance(query_clause, DenseSearchClause):
             return await self._dense(model_class, query_clause, filter_clause, limit, offset)
