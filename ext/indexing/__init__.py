@@ -10,6 +10,7 @@ from ext.indexing.types import (
     SparseSearchClause,
 )
 from ext.indexing.factory import IndexModelFactory, IndexingProviderFactory
+from ext.indexing.search import SearchStrategy, SearchStrategyFactory
 
 __all__ = [
     "BaseIndexModel",
@@ -21,4 +22,6 @@ __all__ = [
     "HybridSearchClause",
     "FilterClause",
     "SearchCursor",
+    "SearchStrategy",
+    "SearchStrategyFactory",
 ]
