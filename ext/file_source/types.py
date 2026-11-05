@@ -6,7 +6,7 @@ File Source Extra Config 类型定义
 
 from typing import Any
 
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BaseFileSourceExtraConfig(BaseModel):
@@ -20,6 +20,8 @@ class BaseFileSourceExtraConfig(BaseModel):
     此处只定义真正 provider 特有的配置
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     def to_dict(self) -> dict[str, Any]:
         """转换为字典（用于存储到数据库）"""
         return self.model_dump(exclude_none=True)
@@ -27,8 +29,7 @@ class BaseFileSourceExtraConfig(BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "BaseFileSourceExtraConfig":
         """从字典创建实例"""
-        valid_data = {k: v for k, v in data.items() if k in cls.model_fields}
-        return cls.model_validate(valid_data)
+        return cls.model_validate(data)
 
 
 class LocalFileSourceExtraConfig(BaseFileSourceExtraConfig):

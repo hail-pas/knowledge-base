@@ -1,87 +1,102 @@
-"""
-File Source Factory
-
-负责根据数据库配置动态创建 file source provider 实例
-"""
+"""Create and cache configured file-source providers."""
 
 import asyncio
+import hashlib
 import inspect
+import json
 from typing import Any
 
 from loguru import logger
 
-from ext.file_source.base import BaseFileSourceProvider
 from ext.ext_tortoise.enums import FileSourceTypeEnum
 from ext.ext_tortoise.models.knowledge_base import FileSource
+from ext.file_source.base import BaseFileSourceProvider
+from ext.file_source.providers.aliyun_oss import AliyunOSSFileSourceProvider
+from ext.file_source.providers.local import LocalFileSourceProvider
+from ext.file_source.providers.minio import MinIOFileSourceProvider
+from ext.file_source.providers.s3 import S3FileSourceProvider
 from ext.file_source.secrets import decrypt_file_source_extra_config
 from util.secret import decrypt_secret
 
 
 class FileSourceFactory:
-    """文件源工厂类
-
-    负责根据数据库配置动态创建 file source provider 实例
-    """
+    """Registry and lifecycle manager for file-source provider instances."""
 
     _providers: dict[FileSourceTypeEnum, type[BaseFileSourceProvider]] = {}
-    _instances: dict[int, BaseFileSourceProvider] = {}
+    _instances: dict[int, tuple[str, BaseFileSourceProvider]] = {}
     _locks: dict[int, asyncio.Lock] = {}
 
     @classmethod
     def register(cls, source_type: FileSourceTypeEnum, provider_class: type[BaseFileSourceProvider]) -> None:
-        """注册新的 file source provider"""
         if source_type in cls._providers:
-            logger.warning(f"Provider type {source_type.value} 已注册，将被覆盖")
+            raise ValueError(f"File-source provider already registered: {source_type.value}")
         cls._providers[source_type] = provider_class
-        logger.info(f"Registered file source provider: {source_type.value} -> {provider_class.__name__}")
 
     @classmethod
     async def create(cls, config: FileSource, use_cache: bool = True) -> BaseFileSourceProvider:
-        """创建 file source provider 实例"""
         if not config.is_enabled:
             raise ValueError(f"File source config is disabled: {config.name} (id={config.id})")
-
         provider_cls = cls._providers.get(config.type)
-        if not provider_cls:
-            available_types = ", ".join([t.value for t in cls._providers])
-            raise ValueError(f"Unsupported file source type: {config.type.value}, available: {available_types}")
+        if provider_cls is None:
+            supported = ", ".join(source_type.value for source_type in cls._providers)
+            raise ValueError(f"Unsupported file source type: {config.type.value}; available: {supported}")
 
         if not use_cache or not config._saved_in_db:
             return cls._create_instance(provider_cls, config)
 
-        if config.id in cls._instances:
-            return cls._instances[config.id]
-
-        if config.id not in cls._locks:
-            cls._locks[config.id] = asyncio.Lock()
-
-        async with cls._locks[config.id]:
-            if config.id in cls._instances:
-                return cls._instances[config.id]
-
+        config_id = config.id
+        fingerprint = cls._config_fingerprint(config)
+        lock = cls._locks.setdefault(config_id, asyncio.Lock())
+        async with lock:
+            cached = cls._instances.get(config_id)
+            if cached and cached[0] == fingerprint:
+                return cached[1]
+            if cached:
+                await cls._close_provider(cached[1])
             provider = cls._create_instance(provider_cls, config)
-            cls._instances[config.id] = provider
-
+            cls._instances[config_id] = (fingerprint, provider)
             return provider
 
-    @classmethod
+    @staticmethod
+    def _config_fingerprint(config: FileSource) -> str:
+        values = {
+            field: getattr(config, field, None)
+            for field in (
+                "type",
+                "access_key",
+                "secret_key",
+                "endpoint",
+                "region",
+                "storage_location",
+                "use_ssl",
+                "verify_ssl",
+                "timeout",
+                "max_retries",
+                "concurrent_limit",
+                "max_connections",
+                "extra_config",
+            )
+        }
+        values["type"] = getattr(values["type"], "value", values["type"])
+        payload = json.dumps(values, sort_keys=True, default=str, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    @staticmethod
     def _create_instance(
-        cls,
         provider_cls: type[BaseFileSourceProvider],
         config: FileSource,
     ) -> BaseFileSourceProvider:
-        """创建 provider 实例的内部方法"""
-        is_persisted = config._saved_in_db
+        persisted = config._saved_in_db
         source_type = getattr(config.type, "value", config.type)
         return provider_cls(
             access_key=(
                 decrypt_secret(config.access_key, purpose="file_source.access_key")
-                if is_persisted
+                if persisted
                 else config.access_key
             ),
             secret_key=(
                 decrypt_secret(config.secret_key, purpose="file_source.secret_key")
-                if is_persisted
+                if persisted
                 else config.secret_key
             ),
             endpoint=config.endpoint,
@@ -95,32 +110,35 @@ class FileSourceFactory:
             max_connections=config.max_connections,
             extra_config=(
                 decrypt_file_source_extra_config(source_type, config.extra_config)
-                if is_persisted
+                if persisted
                 else config.extra_config or {}
             ),
         )
 
+    @staticmethod
+    async def _close_provider(provider: BaseFileSourceProvider) -> None:
+        close = getattr(provider, "close", None)
+        if close is None:
+            return
+        result = close()
+        if inspect.isawaitable(result):
+            await result
+
     @classmethod
     async def close_all(cls) -> None:
-        """Close cached providers and release their network connections."""
-        providers = list(cls._instances.values())
+        cached = list(cls._instances.values())
         cls._instances.clear()
         cls._locks.clear()
-
-        for provider in providers:
-            close = getattr(provider, "close", None)
-            if close is None:
-                continue
+        for _, provider in cached:
             try:
-                result = close()
-                if inspect.isawaitable(result):
-                    await result
+                await cls._close_provider(provider)
             except Exception:
-                logger.exception("Failed to close cached file source provider")
+                # Continue closing remaining providers during application shutdown.
+                logger.exception("Failed to close cached file-source provider")
 
     @classmethod
     def clear_cache(cls, config_id: int | None = None) -> None:
-        """清除实例缓存"""
+        """Drop cached references; use close_all during shutdown to release clients."""
         if config_id is None:
             cls._instances.clear()
             cls._locks.clear()
@@ -130,64 +148,30 @@ class FileSourceFactory:
 
     @classmethod
     async def create_by_name(cls, name: str, use_cache: bool = True) -> BaseFileSourceProvider:
-        """根据配置名称创建实例"""
         config = await FileSource.filter(name=name, is_enabled=True, deleted_at=0).first()
-        if not config:
+        if config is None:
             raise ValueError(f"未找到名称为 '{name}' 的已启用 file source 配置")
-
         return await cls.create(config, use_cache=use_cache)
 
     @classmethod
     async def create_default(cls, use_cache: bool = True) -> BaseFileSourceProvider:
-        """创建默认的 file source 实例"""
         config = await FileSource.filter(is_enabled=True, is_default=True, deleted_at=0).first()
-
-        if not config:
+        if config is None:
             config = await FileSource.filter(is_enabled=True, deleted_at=0).first()
-
-        if not config:
+        if config is None:
             raise ValueError("未找到可用的 file source 配置")
-
         return await cls.create(config, use_cache=use_cache)
 
     @classmethod
     def get_cache_info(cls) -> dict[str, Any]:
-        """获取缓存信息"""
         return {
             "cached_count": len(cls._instances),
-            "cached_ids": list(cls._instances.keys()),
-            "registered_providers": [t.value for t in cls._providers],
+            "cached_ids": list(cls._instances),
+            "registered_providers": [source_type.value for source_type in cls._providers],
         }
 
 
-try:
-    from ext.file_source.providers.local import LocalFileSourceProvider
-
-    FileSourceFactory.register(FileSourceTypeEnum.local_file, LocalFileSourceProvider)
-    logger.info("Registered Local File Source provider")
-except Exception as e:
-    logger.warning(f"Failed to register Local provider: {e}")
-
-try:
-    from ext.file_source.providers.s3 import S3FileSourceProvider
-
-    FileSourceFactory.register(FileSourceTypeEnum.s3, S3FileSourceProvider)
-    logger.info("Registered S3 File Source provider")
-except Exception as e:
-    logger.warning(f"Failed to register S3 provider: {e}")
-
-try:
-    from ext.file_source.providers.minio import MinIOFileSourceProvider
-
-    FileSourceFactory.register(FileSourceTypeEnum.minio, MinIOFileSourceProvider)
-    logger.info("Registered MinIO File Source provider")
-except Exception as e:
-    logger.warning(f"Failed to register MinIO provider: {e}")
-
-try:
-    from ext.file_source.providers.aliyun_oss import AliyunOSSFileSourceProvider
-
-    FileSourceFactory.register(FileSourceTypeEnum.aliyun_oss, AliyunOSSFileSourceProvider)
-    logger.info("Registered Aliyun OSS File Source provider")
-except Exception as e:
-    logger.warning(f"Failed to register Aliyun OSS provider: {e}")
+FileSourceFactory.register(FileSourceTypeEnum.local_file, LocalFileSourceProvider)
+FileSourceFactory.register(FileSourceTypeEnum.s3, S3FileSourceProvider)
+FileSourceFactory.register(FileSourceTypeEnum.minio, MinIOFileSourceProvider)
+FileSourceFactory.register(FileSourceTypeEnum.aliyun_oss, AliyunOSSFileSourceProvider)
