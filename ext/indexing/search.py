@@ -96,8 +96,9 @@ class SearchStrategyFactory:
 
     @classmethod
     async def execute_cursor(cls, provider, model, query, filters, page_size, cursor):
+        strategy = cls._strategies.get(type(query))
         native_cursor = getattr(provider, "search_cursor_native", None)
-        if type(query) in {DenseSearchClause, SparseSearchClause, HybridSearchClause} and native_cursor:
+        if isinstance(strategy, (DenseSearchStrategy, SparseSearchStrategy, HybridSearchStrategy)) and native_cursor:
             return await native_cursor(model, query, filters, page_size, cursor)
         offset = int(cursor or 0)
         if offset < 0:
