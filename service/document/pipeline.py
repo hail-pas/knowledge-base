@@ -94,7 +94,7 @@ class DocumentPipeline:
                 "format": result.format.value,
                 "engine_used": result.engine_used,
             }
-        except Exception:
+        except BaseException:
             if not committed and new_uri:
                 try:
                     await self.storage.delete_managed_uri(new_uri)
