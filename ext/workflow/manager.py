@@ -397,8 +397,13 @@ class WorkflowManager:
     @staticmethod
     async def delete_workflow(workflow_uid: uuid.UUID, using_db: Any | None = None) -> None:
         """Delete a workflow and its activities as one lifecycle operation."""
-        await Activity.filter(workflow_uid=workflow_uid).using_db(using_db).delete()
-        await Workflow.filter(uid=workflow_uid).using_db(using_db).delete()
+        activities = Activity.filter(workflow_uid=workflow_uid)
+        workflows = Workflow.filter(uid=workflow_uid)
+        if using_db is not None:
+            activities = activities.using_db(using_db)
+            workflows = workflows.using_db(using_db)
+        await activities.delete()
+        await workflows.delete()
 
     @staticmethod
     async def reset_activities_from_task(
@@ -407,12 +412,18 @@ class WorkflowManager:
         using_db: Any | None = None,
     ) -> int:
         """Reset matching activities and their descendants for a new execution."""
-        workflow = await Workflow.filter(uid=workflow_uid).using_db(using_db).first()
+        workflow_query = Workflow.filter(uid=workflow_uid)
+        activity_query = Activity.filter(workflow_uid=workflow_uid)
+        if using_db is not None:
+            workflow_query = workflow_query.using_db(using_db)
+            activity_query = activity_query.using_db(using_db)
+
+        workflow = await workflow_query.first()
         if workflow is None:
             raise WorkflowNotFoundError(f"Workflow not found: {workflow_uid}")
 
         graph = WorkflowManager.build_graph(workflow)
-        activities = await Activity.filter(workflow_uid=workflow_uid).using_db(using_db)
+        activities = await activity_query
         target_names = {
             activity.name
             for activity in activities
@@ -425,10 +436,12 @@ class WorkflowManager:
         for name in target_names:
             affected_names.update(graph.get_node_info(name).descendants)
 
-        reset_count = await Activity.filter(
-            workflow_uid=workflow_uid,
-            name__in=affected_names,
-        ).using_db(using_db).update(
+        reset_query = Activity.filter(workflow_uid=workflow_uid, name__in=affected_names)
+        workflow_update = Workflow.filter(uid=workflow_uid)
+        if using_db is not None:
+            reset_query = reset_query.using_db(using_db)
+            workflow_update = workflow_update.using_db(using_db)
+        reset_count = await reset_query.update(
             status=ActivityStatusEnum.pending.value,
             retry_count=0,
             output={},
@@ -439,7 +452,7 @@ class WorkflowManager:
             canceled_at=None,
             celery_task_id=None,
         )
-        await Workflow.filter(uid=workflow_uid).using_db(using_db).update(
+        await workflow_update.update(
             status=WorkflowStatusEnum.pending.value,
             started_at=None,
             completed_at=None,
