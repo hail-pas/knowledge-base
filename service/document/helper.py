@@ -11,7 +11,7 @@ from core.exception import ApiException
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from ext.file_source.factory import FileSourceFactory
 from service.file_source.security import build_file_upload_uri, validate_public_source_uri
-from service.collection.helper import CollectionService
+from service.document.indexing import DocumentIndexer
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
     FileSource,
@@ -21,12 +21,16 @@ from ext.ext_tortoise.models.knowledge_base import (
 )
 
 
-class DocumentService(CollectionService):
+class DocumentService:
+    def __init__(self, collection):
+        self.collection = collection
+        self.indexer = DocumentIndexer(collection)
+
     async def delete(self, documents: list[Document]) -> None:
         assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
 
         document_ids = [doc.id for doc in documents]
-        await self.collection_index_helper.delete_by_documents(documents)
+        await self.indexer.delete_documents(documents)
         await self.delete_filesource_related(documents)
 
         await Document.filter(id__in=document_ids).delete()
