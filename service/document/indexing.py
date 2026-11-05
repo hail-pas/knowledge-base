@@ -1,7 +1,9 @@
 from uuid import UUID
 
 from loguru import logger
+from tortoise.transactions import in_transaction
 
+from ext.ext_tortoise.main import ConnectionNameEnum
 from ext.embedding import EmbeddingModelFactory
 from ext.ext_tortoise.models.knowledge_base import Collection, Document, DocumentChunk
 from ext.indexing.models import CollectionIndexModelHelper
@@ -88,25 +90,28 @@ class DocumentIndexer:
             sparse_docs.append(self.helper.sparse_model(**fields))
             dense_docs.append(dense_model(**fields, dense_vector=vector))
 
-        await self._ensure_current_workflow(document.id, workflow_uid)
-        try:
-            await self.delete_document(document.id)
-            await self.helper.sparse_model.bulk_insert(
-                sparse_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
-            )
-            await dense_model.bulk_insert(
-                dense_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
-            )
-        except BaseException:
-            if await Document.filter(
+        async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
+            current = await Document.filter(
                 id=document.id,
                 current_workflow_uid=workflow_uid,
-            ).exists():
+            ).using_db(conn).select_for_update().first()
+            if current is None:
+                raise RuntimeError("Workflow no longer owns this document")
+
+            try:
+                await self.delete_document(document.id)
+                await self.helper.sparse_model.bulk_insert(
+                    sparse_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
+                )
+                await dense_model.bulk_insert(
+                    dense_docs, batch_size=batch_size, concurrent_batches=concurrent_batches
+                )
+            except BaseException:
                 try:
                     await self.delete_document(document.id)
                 except Exception:
                     logger.exception("Failed to clean partial document index for {}", document.id)
-            raise
+                raise
         return {
             "indexed_chunks": len(chunks),
             "sparse_index_count": len(sparse_docs),
