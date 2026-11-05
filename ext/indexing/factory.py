@@ -45,10 +45,7 @@ class IndexingProviderFactory:
             cached = cls._instances.get(key)
             if cached:
                 return cached
-            # Close stale instances for the same configuration before replacing them.
-            for stale_key in [item for item in cls._instances if item[0] == config_id]:
-                stale = cls._instances.pop(stale_key)
-                await stale.disconnect()
+            # Keep older provider instances alive for in-flight requests; all are closed on shutdown.
             provider = provider_class(config)
             await provider.connect()
             cls._instances[key] = provider
@@ -76,6 +73,7 @@ class IndexingProviderFactory:
         providers = list(cls._instances.values())
         cls._instances.clear()
         cls._locks.clear()
+        IndexModelFactory.clear_cache()
         for provider in providers:
             await provider.disconnect()
 
