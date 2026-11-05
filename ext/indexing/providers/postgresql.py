@@ -76,9 +76,9 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                 kind = "BIGSERIAL PRIMARY KEY" if model.Meta.auto_generate_id else "TEXT PRIMARY KEY"
             elif name == model.Meta.dense_vector_field:
                 dimension = model.Meta.dense_vector_dimension
-                if not dimension or dimension > 2000:
-                    raise ValueError("pgvector vector requires a dimension between 1 and 2000")
-                kind = f"vector({dimension})"
+                if not dimension or dimension > 4000:
+                    raise ValueError("pgvector supports at most 4000 dimensions with halfvec")
+                kind = f"{'vector' if dimension <= 2000 else 'halfvec'}({dimension})"
             else:
                 annotation = field.annotation
                 origin, args = get_origin(annotation), get_args(annotation)
@@ -111,7 +111,8 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             await conn.execute(f"CREATE TABLE IF NOT EXISTS {table} ({', '.join(self._columns(model_class))})")
             vector_field = model_class.Meta.dense_vector_field
             if vector_field and model_class.Meta.dense_vector_dimension:
-                ops = {"cosine": "vector_cosine_ops", "l2": "vector_l2_ops", "ip": "vector_ip_ops"}
+                prefix = "vector" if model_class.Meta.dense_vector_dimension <= 2000 else "halfvec"
+                ops = {metric: f"{prefix}_{metric}_ops" for metric in ("cosine", "l2", "ip")}
                 idx = self._q(f"{model_class.Meta.index_name}_{model_class.Meta.dense_vector_dimension}_hnsw")
                 await conn.execute(
                     f"CREATE INDEX IF NOT EXISTS {idx} ON {table} USING hnsw "
@@ -188,7 +189,7 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                 if len(value) != model.Meta.dense_vector_dimension:
                     raise ValueError(f"Vector dimension mismatch for {key}")
                 values.append("[" + ",".join(str(float(v)) for v in value) + "]")
-                casts.append("::vector")
+                casts.append("::vector" if model.Meta.dense_vector_dimension <= 2000 else "::halfvec")
             elif isinstance(value, (dict, list)):
                 values.append(json.dumps(value, ensure_ascii=False))
                 casts.append("::jsonb")
@@ -253,10 +254,11 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             raise ValueError("Dense vector is missing or its dimension does not match the index")
         op = {"cosine": "<=>", "l2": "<->", "ip": "<#>"}[self.extra_config.vector_metric]
         vector = "[" + ",".join(str(float(v)) for v in query.vector) + "]"
+        vector_type = "vector" if model.Meta.dense_vector_dimension <= 2000 else "halfvec"
         where, args = self._where(filters, 2)
-        sql = f"SELECT *, {self._q(field)} {op} $1::vector AS distance FROM {self._table(model)}"
+        sql = f"SELECT *, {self._q(field)} {op} $1::{vector_type} AS distance FROM {self._table(model)}"
         sql += f" WHERE {where}" if where else ""
-        sql += f" ORDER BY {self._q(field)} {op} $1::vector LIMIT {int(limit)} OFFSET {int(offset)}"
+        sql += f" ORDER BY {self._q(field)} {op} $1::{vector_type} LIMIT {int(limit)} OFFSET {int(offset)}"
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(sql, vector, *args)
         return [(dict(row), float(1 - row["distance"]) if self.extra_config.vector_metric == "cosine"
