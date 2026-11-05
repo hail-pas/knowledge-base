@@ -37,7 +37,7 @@ class CollectionCreate(
         Collection,
         name="CollectionCreateBase",
         exclude_readonly=True,
-        exclude=("user_id",),
+        exclude=("user_id", "indexing_backend_config"),
     ),
 ):
     workflow_template: dict = Field(default_factory=dict, description="工作流DAG配置，非外部知识库时必需")
@@ -138,6 +138,7 @@ class CollectionList(
             "documents",
             "external_config",
             "workflow_template",
+            "indexing_backend_config",
         ),
     ),
 ):
