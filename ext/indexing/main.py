@@ -5,7 +5,6 @@ from loguru import logger
 from pydantic import ConfigDict
 
 from config.default import RegisterExtensionConfig
-from config.main import local_configs
 from ext.indexing.base import BaseProvider
 from ext.indexing.models import (
     DocumentFAQDenseIndex,
@@ -27,6 +26,8 @@ class ModelProviderConfig(RegisterExtensionConfig):
     @staticmethod
     def _default_postgresql_config() -> IndexingBackendConfig:
         """Reuse the knowledge-base PostgreSQL DSN when no explicit backend is configured."""
+        from config.main import local_configs
+
         dsn = urlsplit(str(local_configs.extensions.tortoise.knowledge_base.url))
         query = parse_qs(dsn.query)
         sslmode = query.get("sslmode", ["disable"])[0]
