@@ -18,11 +18,12 @@ from ext.ext_tortoise.models.knowledge_base import (
     DocumentChunk,
     DocumentPages,
     DocumentGeneratedFaq,
+    Collection,
 )
 
 
 class DocumentService:
-    def __init__(self, collection):
+    def __init__(self, collection: Collection) -> None:
         self.collection = collection
 
     async def start_processing(self, document: Document, workflow_uid: str | None = None) -> str:
