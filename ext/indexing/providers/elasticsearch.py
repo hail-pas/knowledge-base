@@ -26,9 +26,9 @@ class IndexMetadataEnum(StrEnum):
 
 
 class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
-    supports_native_hybrid = True
+    """Elasticsearch Provider 实现."""
 
-    """Elasticsearch Provider 实现"""
+    supports_native_hybrid = True
 
     def __init__(self, config: IndexingBackendConfig) -> None:
         super().__init__(config, ElasticsearchConfig)
