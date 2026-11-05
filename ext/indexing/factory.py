@@ -174,7 +174,23 @@ class IndexModelFactory:
         return _m
 
     @classmethod
-    def _get_model_key(cls, base_name: str, dimension: int, provider: BaseProvider | None = None) -> str:
+    async def create_for_provider(
+        cls,
+        base_model: type[BaseIndexModel],
+        provider: BaseProvider,
+    ) -> type[BaseIndexModel]:
+        """Create a provider-scoped model that does not require a dense vector dimension."""
+        model_key = cls._get_model_key(base_model.__name__, None, provider)
+        if model_key not in cls._model_registry:
+            cls._model_registry[model_key] = cls._create_dynamic_class(
+                base_model, None, model_key, provider
+            )
+        model = cls._model_registry[model_key]
+        await model.create_schema()
+        return model
+
+    @classmethod
+    def _get_model_key(cls, base_name: str, dimension: int | None, provider: BaseProvider | None = None) -> str:
         """生成唯一模型标识
 
         Args:
@@ -185,7 +201,7 @@ class IndexModelFactory:
             唯一标识字符串，如 "ChunkIndex_1536"
         """
         if provider is None:
-            return f"{base_name}_{dimension}"
+            return f"{base_name}_{dimension}" if dimension is not None else base_name
         config_id = getattr(provider.config, "id", None)
         provider_key = f"{type(provider).__name__}_{config_id or id(provider)}"
         return f"{base_name}_{dimension}_{provider_key}"
@@ -194,7 +210,7 @@ class IndexModelFactory:
     def _create_dynamic_class(
         cls,
         base_model: type[BaseIndexModel],
-        dimension: int,
+        dimension: int | None,
         class_name: str,
         provider: BaseProvider,
     ) -> type[BaseIndexModel]:
