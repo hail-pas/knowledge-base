@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
+from datetime import date, datetime
 from typing import Any, get_args, get_origin
 
 import asyncpg
@@ -22,6 +24,9 @@ class PostgreSQLConfig(ProviderConfig):
     text_search_config: str = "simple"
     pool_min_size: int = 1
     pool_max_size: int = 10
+    hnsw_m: int = 16
+    hnsw_ef_construction: int = 64
+    ivfflat_lists: int = 100
 
 
 class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
@@ -40,12 +45,18 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         self._pool: asyncpg.Pool | None = None
 
     async def connect(self) -> None:
+        ssl_context = None
+        if self.config.use_ssl:
+            ssl_context = ssl.create_default_context()
+            if not self.config.verify_ssl:
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
         self._pool = await asyncpg.create_pool(
             host=self.config.host, port=self.config.port or 5432, user=self.config.username,
             password=self.password, database=self.extra_config.database,
             min_size=self.extra_config.pool_min_size, max_size=self.extra_config.pool_max_size,
             timeout=self.config.timeout, command_timeout=self.config.timeout,
-            ssl=self.config.verify_ssl if self.config.use_ssl else False,
+            ssl=ssl_context or False,
         )
         async with self.pool.acquire() as conn:
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
@@ -115,9 +126,16 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             if vector_field and model_class.Meta.dense_vector_dimension:
                 prefix = "vector" if model_class.Meta.dense_vector_dimension <= 2000 else "halfvec"
                 ops = {metric: f"{prefix}_{metric}_ops" for metric in ("cosine", "l2", "ip")}
-                idx = self._q(f"{model_class.Meta.index_name}_{model_class.Meta.dense_vector_dimension}_hnsw")
                 index_type = self.extra_config.vector_index.lower()
-                options = " WITH (m = 16, ef_construction = 64)" if index_type == "hnsw" else " WITH (lists = 100)"
+                idx = self._q(
+                    f"{model_class.Meta.index_name}_{model_class.Meta.dense_vector_dimension}_{index_type}"
+                )
+                options = (
+                    f" WITH (m = {self.extra_config.hnsw_m}, "
+                    f"ef_construction = {self.extra_config.hnsw_ef_construction})"
+                    if index_type == "hnsw"
+                    else f" WITH (lists = {self.extra_config.ivfflat_lists})"
+                )
                 await conn.execute(
                     f"CREATE INDEX IF NOT EXISTS {idx} ON {table} USING {index_type} "
                     f"({self._q(vector_field)} {ops[self.extra_config.vector_metric]}){options}"
@@ -211,6 +229,15 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
                 values.append(json.dumps(value, ensure_ascii=False))
                 casts.append("::jsonb")
             else:
+                field = model.model_fields.get(key)
+                annotation = field.annotation if field else None
+                origin, args = get_origin(annotation), get_args(annotation)
+                if origin is not None and type(None) in args:
+                    annotation = next((arg for arg in args if arg is not type(None)), annotation)
+                if annotation is datetime and isinstance(value, str):
+                    value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                elif annotation is date and isinstance(value, str):
+                    value = date.fromisoformat(value)
                 values.append(value)
                 casts.append("")
         return names, values, casts
@@ -299,8 +326,17 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         sql += f" ORDER BY {self._q(field)} {op} $1::{vector_type} LIMIT {int(limit)} OFFSET {int(offset)}"
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(sql, vector, *args)
-        return [(self._decode(model, row), float(1 - row["distance"]) if self.extra_config.vector_metric == "cosine"
-                 else float(-row["distance"] if self.extra_config.vector_metric == "ip" else row["distance"])) for row in rows]
+        return [
+            (
+                self._decode(model, row),
+                float(1 - row["distance"])
+                if self.extra_config.vector_metric == "cosine"
+                else float(-row["distance"])
+                if self.extra_config.vector_metric == "ip"
+                else float(1 / (1 + row["distance"])),
+            )
+            for row in rows
+        ]
 
     async def _sparse(self, model: type[BaseIndexModel], query: SparseSearchClause, filters: FilterClause | None,
                       limit: int, offset: int) -> list[tuple[dict, float]]:
