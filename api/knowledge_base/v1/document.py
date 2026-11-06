@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 from fastapi import File, Form, Depends, Request, APIRouter, UploadFile
 from pydantic import BaseModel
+from loguru import logger
 from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
