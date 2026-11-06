@@ -38,20 +38,30 @@ class DocumentService:
             ).using_db(conn).select_for_update().first()
             if locked is None:
                 raise ApiException("Document不存在")
+
             if locked.current_workflow_uid:
-                raise ApiException("文档已关联工作流，不能重复启动", code=409)
-            if locked.status != DocumentStatusEnum.pending.value:
-                raise ApiException("当前文档状态不能启动处理", code=409)
+                if locked.status not in {
+                    DocumentStatusEnum.pending.value,
+                    DocumentStatusEnum.processing.value,
+                }:
+                    raise ApiException("当前文档状态不能启动处理", code=409)
+                workflow_uid = locked.current_workflow_uid
+            else:
+                if locked.status != DocumentStatusEnum.pending.value:
+                    raise ApiException("当前文档状态不能启动处理", code=409)
+                workflow = await WorkflowManager.create_workflow(
+                    config=locked.workflow_template,
+                    initial_inputs={"document_id": locked.id},
+                )
+                locked.current_workflow_uid = workflow.uid
+                await locked.save(using_db=conn, update_fields=["current_workflow_uid"])
+                workflow_uid = workflow.uid
 
-            workflow = await WorkflowManager.create_workflow(
-                config=locked.workflow_template,
-                initial_inputs={"document_id": locked.id},
-            )
-            locked.current_workflow_uid = workflow.uid
-            await locked.save(using_db=conn, update_fields=["current_workflow_uid"])
-
-        document.current_workflow_uid = workflow.uid
-        return await schedule_workflow(workflow_uid=str(workflow.uid), execute_mode="celery")
+        document.current_workflow_uid = workflow_uid
+        # Scheduling is idempotent: pending activities are claimed atomically by
+        # the scheduler, so retrying this operation can recover a committed
+        # workflow whose first broker publish failed.
+        return await schedule_workflow(workflow_uid=str(workflow_uid), execute_mode="celery")
 
     async def reprocess(self, document: Document) -> str:
         async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
@@ -61,21 +71,28 @@ class DocumentService:
             ).using_db(conn).select_for_update().first()
             if locked is None:
                 raise ApiException("Document不存在")
-            if locked.status not in {DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value}:
-                raise ApiException("当前状态不支持重新处理")
 
-            old_workflow_uid = locked.current_workflow_uid
-            workflow = await WorkflowManager.create_workflow(
-                config=locked.workflow_template,
-                initial_inputs={"document_id": locked.id},
-            )
-            locked.status = DocumentStatusEnum.pending
-            locked.current_workflow_uid = workflow.uid
-            await locked.save(using_db=conn, update_fields=["status", "current_workflow_uid"])
-            if old_workflow_uid:
-                await WorkflowManager.delete_workflow(old_workflow_uid, using_db=conn)
+            if locked.status in {
+                DocumentStatusEnum.pending.value,
+                DocumentStatusEnum.processing.value,
+            } and locked.current_workflow_uid:
+                workflow_uid = locked.current_workflow_uid
+            elif locked.status in {DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value}:
+                old_workflow_uid = locked.current_workflow_uid
+                workflow = await WorkflowManager.create_workflow(
+                    config=locked.workflow_template,
+                    initial_inputs={"document_id": locked.id},
+                )
+                locked.status = DocumentStatusEnum.pending
+                locked.current_workflow_uid = workflow.uid
+                await locked.save(using_db=conn, update_fields=["status", "current_workflow_uid"])
+                if old_workflow_uid:
+                    await WorkflowManager.delete_workflow(old_workflow_uid, using_db=conn)
+                workflow_uid = workflow.uid
+            else:
+                raise ApiException("当前状态不支持重新处理", code=409)
 
-        return await schedule_workflow(workflow_uid=str(workflow.uid), execute_mode="celery")
+        return await schedule_workflow(workflow_uid=str(workflow_uid), execute_mode="celery")
 
     async def rechunk(self, document: Document) -> str:
         async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
