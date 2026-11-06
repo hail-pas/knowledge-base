@@ -23,6 +23,7 @@ from ext.ext_tortoise.curd import (
 )
 from ext.ext_tortoise.enums import DocumentStatusEnum
 from service.document.service import DocumentService
+from service.document.indexing import DocumentIndexer
 from service.file_source.security import validate_public_source_uri
 from service.document.schema import (
     DocumentList,
@@ -332,6 +333,10 @@ async def list_document_chunks(
 async def create_document_chunk(request: Request, pk: int, schema: DocumentChunkCreate) -> Resp[DocumentChunkList]:
     document = await get_document_or_raise(request, pk)
 
+    if DocumentStatusEnum(document.status) not in {DocumentStatusEnum.success, DocumentStatusEnum.failure}:
+        raise ApiException("仅允许对已完成或失败的文档进行手动切块操作", code=409)
+
+    await document.collection.fetch_related("embedding_model_config", "indexing_backend_config")
     min_page = min(schema.pages)
     max_page = max(schema.pages)
     obj = await create_obj(
@@ -350,20 +355,101 @@ async def create_document_chunk(request: Request, pk: int, schema: DocumentChunk
             "manual_add": schema.manual_add,
         },
     )
+    try:
+        await DocumentIndexer(document.collection).index_chunks(document, [obj])
+    except Exception:
+        await obj.delete()
+        raise
 
     return Resp(data=DocumentChunkList.model_validate(obj))
 
 
 @router.put("/{pk}/chunks/{chunk_id}", summary="修改DocumentChunk")
-async def update_document_chunk(request: Request, pk: int, chunk_id: int, schema: DocumentChunkUpdate) -> Resp:
-    await get_document_or_raise(request, pk)
-    raise ApiException("DocumentChunk 更新功能尚未实现", code=501)
+async def update_document_chunk(
+    request: Request,
+    pk: int,
+    chunk_id: int,
+    schema: DocumentChunkUpdate,
+) -> Resp[DocumentChunkList]:
+    document = await get_document_or_raise(request, pk)
+    if DocumentStatusEnum(document.status) not in {DocumentStatusEnum.success, DocumentStatusEnum.failure}:
+        raise ApiException("仅允许对已完成或失败的文档进行手动切块操作", code=409)
+
+    chunk = await DocumentChunk.filter(
+        id=chunk_id,
+        document_id=document.id,
+        deleted_at=0,
+    ).get_or_none()
+    if chunk is None:
+        raise ApiException("DocumentChunk不存在", code=404)
+
+    await document.collection.fetch_related("embedding_model_config", "indexing_backend_config")
+    old_values = {
+        "content": chunk.content,
+        "pages": chunk.pages,
+        "min_page": chunk.min_page,
+        "max_page": chunk.max_page,
+        "start": chunk.start,
+        "end": chunk.end,
+        "overlap_start": chunk.overlap_start,
+        "overlap_end": chunk.overlap_end,
+        "metadata": chunk.metadata,
+        "manual_add": chunk.manual_add,
+    }
+    updates = schema.model_dump(exclude_unset=True)
+    if not updates:
+        return Resp(data=DocumentChunkList.model_validate(chunk))
+
+    new_values = {**old_values, **updates}
+    if "pages" in updates:
+        if not updates["pages"]:
+            raise ApiException("pages 不能为空", code=422)
+        new_values["min_page"] = min(new_values["pages"])
+        new_values["max_page"] = max(new_values["pages"])
+
+    indexer = DocumentIndexer(document.collection)
+    await indexer.delete_chunks(document.id, [chunk.id])
+    try:
+        for field, value in new_values.items():
+            setattr(chunk, field, value)
+        await chunk.save()
+        await indexer.index_chunks(document, [chunk])
+    except Exception:
+        for field, value in old_values.items():
+            setattr(chunk, field, value)
+        await chunk.save()
+        try:
+            await indexer.delete_chunks(document.id, [chunk.id])
+            await indexer.index_chunks(document, [chunk])
+        except Exception:
+            logger.exception("Failed to restore chunk index after update rollback: document={}, chunk={}",
+                             document.id, chunk.id)
+        raise
+
+    return Resp(data=DocumentChunkList.model_validate(chunk))
 
 
 @router.delete("/{pk}/chunks/{chunk_id}", summary="删除DocumentChunk")
 async def delete_document_chunk(request: Request, pk: int, chunk_id: int) -> Resp[DeleteResp]:
-    await get_document_or_raise(request, pk)
-    deleted = await DocumentChunk.filter(id=chunk_id, document_id=pk, deleted_at=0).delete()
+    document = await get_document_or_raise(request, pk)
+    if DocumentStatusEnum(document.status) not in {DocumentStatusEnum.success, DocumentStatusEnum.failure}:
+        raise ApiException("仅允许对已完成或失败的文档进行手动切块操作", code=409)
+
+    chunk = await DocumentChunk.filter(
+        id=chunk_id,
+        document_id=document.id,
+        deleted_at=0,
+    ).get_or_none()
+    if chunk is None:
+        return Resp(data=DeleteResp(deleted=0))
+
+    await document.collection.fetch_related("embedding_model_config", "indexing_backend_config")
+    await DocumentIndexer(document.collection).delete_chunks(document.id, [chunk.id])
+    deleted = await DocumentChunk.filter(
+        id=chunk.id,
+        document_id=document.id,
+        deleted_at=0,
+    ).delete()
     return Resp(data=DeleteResp(deleted=deleted))
 
 
