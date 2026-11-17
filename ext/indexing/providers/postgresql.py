@@ -361,14 +361,20 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
             raise ValueError("Sparse search requires a text field")
         cfg = self.extra_config.text_search_config
         where, args = self._where(filters, 3)
-        sql = (f"SELECT *, ts_rank_cd(to_tsvector('{cfg}', coalesce({self._q(field)}, '')), "
-               f"plainto_tsquery('{cfg}', $1)) AS score FROM {self._table(model)} "
-               f"WHERE to_tsvector('{cfg}', coalesce({self._q(field)}, '')) @@ plainto_tsquery('{cfg}', $1)")
+        rank_expression = (
+            f"ts_rank_cd(to_tsvector('{cfg}', coalesce({self._q(field)}, '')), "
+            f"plainto_tsquery('{cfg}', $1))"
+        )
+        sql = (
+            f"SELECT *, {rank_expression} AS score FROM {self._table(model)} "
+            f"WHERE to_tsvector('{cfg}', coalesce({self._q(field)}, '')) @@ plainto_tsquery('{cfg}', $1) "
+            f"AND {rank_expression} >= $2"
+        )
         sql += f" AND {where}" if where else ""
         sql += f" ORDER BY score DESC LIMIT {int(limit)} OFFSET {int(offset)}"
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(sql, query.query_text, *args)
-        return [(self._decode(model, row), float(row["score"])) for row in rows if row["score"] >= query.min_score]
+            rows = await conn.fetch(sql, query.query_text, query.min_score, *args)
+        return [(self._decode(model, row), float(row["score"])) for row in rows]
 
     async def search_native(self, model_class: type[BaseIndexModel],
                      query_clause: DenseSearchClause | SparseSearchClause,
