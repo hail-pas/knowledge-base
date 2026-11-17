@@ -1,6 +1,5 @@
 """Elasticsearch Provider 实现"""
 
-import json
 from enum import StrEnum
 from typing import Any, get_args, get_origin
 from datetime import datetime
@@ -12,7 +11,6 @@ from ext.indexing.base import BaseProvider, BaseIndexModel
 from ext.indexing.types import (
     FilterClause,
     DenseSearchClause,
-    HybridSearchClause,
     SparseSearchClause,
 )
 from ext.indexing.providers.types import ElasticsearchConfig
@@ -27,8 +25,6 @@ class IndexMetadataEnum(StrEnum):
 
 class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     """Elasticsearch Provider 实现."""
-
-    supports_native_hybrid = True
 
     def __init__(self, config: IndexingBackendConfig) -> None:
         super().__init__(config, ElasticsearchConfig)
@@ -474,7 +470,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     async def search_native(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
@@ -510,7 +506,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     def _build_search_body(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause | None,
     ) -> dict:
         """根据查询类型构建 ES Query DSL"""
@@ -519,8 +515,6 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             search_body = self._build_dense_search_body(model_class, query_clause)
         elif isinstance(query_clause, SparseSearchClause):
             search_body = self._build_sparse_search_body(model_class, query_clause)
-        elif isinstance(query_clause, HybridSearchClause):
-            search_body = self._build_hybrid_search_body(model_class, query_clause)
         else:
             raise RuntimeError(f"Not supported query clause: {query_clause}")
 
@@ -539,7 +533,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 "knn": {
                     "field": model_class.Meta.dense_vector_field,
                     "query_vector": query_clause.vector,
-                    "num_candidates": query_clause.top_k * 50,
+                    "num_candidates": min(max(query_clause.top_k * 5, 100), 10000),
                 },
             },
         }
@@ -552,53 +546,10 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             field_name = self._get_default_text_field(model_class)
 
         return {
+            "min_score": query_clause.min_score,
             "query": {
                 "match": {
-                    field_name: {
-                        "query": query_clause.query_text,
-                        "min_score": query_clause.min_score,
-                    },
-                },
-            },
-        }
-
-    def _build_hybrid_search_body(self, model_class: type[BaseIndexModel], query_clause: HybridSearchClause) -> dict:
-        """构建混合搜索 query body（带权重）"""
-        if not model_class.Meta.dense_vector_field:
-            raise RuntimeError("Not supported hybrid query without dense vector field")
-
-        field_name = getattr(query_clause.sparse, "field_name", None)
-        if not field_name:
-            field_name = self._get_default_text_field(model_class)
-
-        return {
-            "query": {
-                "bool": {
-                    "should": [
-                        {
-                            "knn": {
-                                "field": model_class.Meta.dense_vector_field,
-                                "query_vector": query_clause.dense.vector,
-                                "num_candidates": query_clause.dense.top_k * 50,
-                                "boost": query_clause.weight_dense,
-                            },
-                        },
-                        {
-                            "bool": {
-                                "must": [
-                                    {
-                                        "match": {
-                                            field_name: {
-                                                "query": query_clause.sparse.query_text,
-                                                "boost": query_clause.weight_sparse,
-                                            },
-                                        },
-                                    },
-                                ],
-                                "min_score": query_clause.sparse.min_score,
-                            },
-                        },
-                    ],
+                    field_name: {"query": query_clause.query_text},
                 },
             },
         }
@@ -607,23 +558,16 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         self,
         model_class: type[BaseIndexModel],
         search_body: dict,
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause,
     ) -> dict:
-        """应用过滤条件到搜索 body"""
-        if isinstance(query_clause, DenseSearchClause | HybridSearchClause):
-            converted_filter = self._convert_filter(model_class, filter_clause)
-            if "knn" in search_body["query"]:
-                search_body["query"]["knn"]["filter"] = converted_filter
-            elif "bool" in search_body["query"] and "should" in search_body["query"]["bool"]:
-                for clause in search_body["query"]["bool"]["should"]:
-                    if "knn" in clause:
-                        clause["knn"]["filter"] = converted_filter
+        """Apply filters to vector search and full-text search consistently."""
+        converted_filter = self._convert_filter(model_class, filter_clause)
+        if isinstance(query_clause, DenseSearchClause):
+            search_body["query"]["knn"]["filter"] = converted_filter
         else:
-            search_body["query"]["bool"] = {
-                "must": [search_body["query"], self._convert_filter(model_class, filter_clause)],
-            }
-
+            original_query = search_body["query"]
+            search_body["query"] = {"bool": {"must": [original_query, converted_filter]}}
         return search_body
 
     def _convert_filter(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> dict:
