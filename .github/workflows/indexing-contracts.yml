@@ -31,4 +31,4 @@ jobs:
       - name: Check indexing module syntax
         run: uv run python -m compileall -q ext/indexing
       - name: Run isolated indexing contracts
-        run: uv run pytest -q tests/ext/indexing/test_contract_refactor.py tests/ext/indexing/test_lifecycle_refactor.py tests/ext/indexing/test_indexing_factory.py
+        run: uv run pytest -q --confcutdir=tests/ext/indexing tests/ext/indexing/test_contract_refactor.py tests/ext/indexing/test_lifecycle_refactor.py tests/ext/indexing/test_indexing_factory.py
