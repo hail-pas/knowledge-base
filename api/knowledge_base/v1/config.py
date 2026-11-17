@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends, Query, Request, APIRouter
 from tortoise.queryset import QuerySet
+from tortoise.transactions import in_transaction
 from tortoise.expressions import Q
 
 from core.types import ApiException
@@ -252,6 +253,25 @@ async def create_indexing_backend(
         )  # type: ignore
 
     return Resp(data=IndexingBackendConfigList.model_validate(obj))
+
+
+@router.put("/indexing-backend/{pk}/default", summary="切换系统默认索引后端")
+async def set_default_indexing_backend(
+    request: Request, pk: int,
+) -> Resp[IndexingBackendConfigList]:
+    """Select one system-wide default backend; collections with explicit bindings are unchanged."""
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+    async with in_transaction("knowledge_base"):
+        # Serialize concurrent default-selection requests.
+        configs = await IndexingBackendConfig.filter(deleted_at=0).select_for_update().all()
+        selected = next((obj for obj in configs if obj.id == pk), None)
+        if selected is None or not selected.is_enabled:
+            raise ApiException("索引后端配置不存在或已停用", code=404)
+        await IndexingBackendConfig.filter(is_default=True, deleted_at=0).update(is_default=False)
+        selected.is_default = True
+        await selected.save(update_fields=["is_default"])
+    return Resp(data=IndexingBackendConfigList.model_validate(selected))
 
 
 @router.get("/indexing-backend", summary="索引后端配置列表")
