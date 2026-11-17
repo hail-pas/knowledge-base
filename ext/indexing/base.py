@@ -215,17 +215,18 @@ class BaseIndexModel(BaseModel):
         provider: Optional["BaseProvider"] = None
 
     def __init_subclass__(cls, **kwargs):
-        """自动合并父类 Meta 属性到子类 Meta"""
+        """为每个模型创建独立 Meta，避免父子模型配置相互污染。"""
         super().__init_subclass__(**kwargs)
-
-        # 遍历父类 MRO，合并 Meta 属性
-        # 优先级：子类 > 直接父类 > 间接父类
-        for parent_cls in reversed(cls.__mro__[:-1]):  # 排除 object
-            if hasattr(parent_cls, "Meta"):
-                for attr_name, attr_value in parent_cls.Meta.__dict__.items():
-                    # 跳过私有属性和已定义的属性
-                    if not attr_name.startswith("_") and not hasattr(cls.Meta, attr_name):
-                        setattr(cls.Meta, attr_name, attr_value)
+        own_meta = cls.__dict__.get("Meta")
+        parent_meta = next(
+            (base.Meta for base in cls.__mro__[1:] if "Meta" in base.__dict__),
+            BaseIndexModel.Meta,
+        )
+        overrides = {
+            name: value for name, value in vars(own_meta).items()
+            if not name.startswith("__")
+        } if own_meta is not None else {}
+        cls.Meta = type("Meta", (parent_meta,), overrides)
 
     id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={})  # type: ignore
     created_at: datetime = Field(
@@ -265,7 +266,8 @@ class BaseIndexModel(BaseModel):
     @classmethod
     def get_provider(cls) -> "BaseProvider":
         """获取绑定的 provider 实例（从工厂获取）"""
-        assert cls.Meta.provider, "Must specify provider"
+        if cls.Meta.provider is None:
+            raise RuntimeError(f"No indexing provider configured for {cls.__name__}")
         return cls.Meta.provider
 
     @classmethod
