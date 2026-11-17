@@ -55,7 +55,7 @@ class SearchStrategyFactory:
             return await provider.search_native(model, query, filters, limit, offset)
         if not isinstance(query, HybridSearchClause):
             raise TypeError(f"Unsupported search clause: {type(query).__name__}")
-        if provider.supports_native_hybrid:
+        if getattr(provider, "supports_native_hybrid", False):
             return await provider.search_native(model, query, filters, limit, offset)
         requested = offset + limit
         candidate_limit = max(requested, query.dense.top_k, query.sparse.top_k)
