@@ -528,35 +528,37 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         self,
         model_class: type[BaseIndexModel],
         documents: list[dict[str, Any]],
-    ) -> list[dict[str, Any]] | None:
-        """批量插入或更新（upsert）"""
+    ) -> list[dict[str, Any]]:
+        """Insert missing IDs and upsert existing IDs without fake primary keys.
+
+        Preserve input order and ensure auto-generated primary keys reach callers.
+        """
         if not documents:
-            return None
-        for doc in documents:
-            if not doc.get("id"):
-                doc["id"] = model_class._get_id_default()
-
-        collection_name = self.build_collection_name(model_class)
-
-        converted_documents = self._convert_datetime_for_write(documents, model_class)
-
-        result = await self._client.upsert(collection_name=collection_name, data=converted_documents)
-
-        if self.extra_config.auto_flush:
-            await self._client.flush(collection_name)
-
-        if result and result.get("upsert_count", 0) > 0:
+            return []
+        new_positions = [i for i, doc in enumerate(documents) if not doc.get("id")]
+        existing_positions = [i for i, doc in enumerate(documents) if doc.get("id")]
+        if new_positions and not model_class.Meta.auto_generate_id:
+            raise ValueError("An ID is required for this index")
+        output = [dict(doc) for doc in documents]
+        if new_positions:
+            created = await self.insert(model_class, [documents[i] for i in new_positions])
+            if created is None or len(created) != len(new_positions):
+                raise RuntimeError("Milvus insert did not return all generated IDs")
+            for i, row in zip(new_positions, created, strict=True):
+                output[i] = row
+        if existing_positions:
+            collection_name = self.build_collection_name(model_class)
+            updates = [documents[i] for i in existing_positions]
+            converted = self._convert_datetime_for_write(updates, model_class)
+            result = await self._client.upsert(collection_name=collection_name, data=converted)
+            if result.get("upsert_count", 0) != len(updates):
+                raise RuntimeError("Milvus upsert did not acknowledge all documents")
             ids = result.get("ids", [])
-            if ids:
-                result_docs = []
-                for i, doc in enumerate(documents):
-                    result_doc = doc.copy()
-                    if i < len(ids):
-                        result_doc["id"] = ids[i]
-                    result_docs.append(result_doc)
-                return result_docs
-
-        return None
+            for position, row_id in zip(existing_positions, ids, strict=False):
+                output[position]["id"] = row_id
+            if self.extra_config.auto_flush:
+                await self._client.flush(collection_name)
+        return output
 
     async def delete(self, model_class: type[BaseIndexModel], ids: list[str]) -> None:
         """删除文档（带 partition）"""
@@ -565,9 +567,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         collection_name = self.build_collection_name(model_class)
 
-        ids_str = [str(id_) for id_ in ids]
-
-        await self._client.delete(collection_name=collection_name, ids=ids_str)
+        await self._client.delete(collection_name=collection_name, ids=ids)
 
         if self.extra_config.auto_flush:
             await self._client.flush(collection_name)
