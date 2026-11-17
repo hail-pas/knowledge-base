@@ -137,10 +137,20 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
         if backend_id != obj.indexing_backend_config_id and await Document.filter(
             collection_id=pk, deleted_at=0
         ).exists():
-            raise ApiException(
-                "非空集合暂不支持切换索引后端，请新建集合并重新导入文档",
-                code=409,
+            current_default = await IndexingBackendConfig.filter(
+                is_default=True, is_enabled=True, deleted_at=0,
+            ).first()
+            # Pinning the currently used default does not move any index data.
+            pin_current = (
+                obj.indexing_backend_config_id is None
+                and current_default is not None
+                and backend_id == current_default.id
             )
+            if not pin_current:
+                raise ApiException(
+                    "非空集合切换索引后端需要先完成索引迁移与校验",
+                    code=409,
+                )
 
     if "embedding_model_config_id" in update_data:
         new_config_id = update_data["embedding_model_config_id"]
