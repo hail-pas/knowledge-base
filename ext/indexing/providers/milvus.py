@@ -57,7 +57,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
     async def connect(self) -> None:
         """建立连接"""
-        scheme = "https" if self.config.verify_ssl else "http"
+        scheme = "https" if self.config.use_ssl else "http"
         uri = (
             f"{scheme}://{self.config.host}:{self.config.port}"
             if self.config.port
@@ -66,7 +66,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         kwargs = {
             "uri": uri,
-            "secure": self.config.verify_ssl,
+            "secure": self.config.use_ssl,
             "timeout": self.config.timeout or 30,
         }
 
@@ -83,6 +83,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         """断开连接"""
         if self._client:
             await self._client.close()
+            self._client = None
 
     async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False) -> None:
         """创建集合"""
@@ -607,6 +608,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
     ) -> list[tuple[dict[str, Any], float]]:
         """搜索"""
         if filter_clause:
+            filter_clause = filter_clause.model_copy(deep=True)
             self._convert_filter_datetime(filter_clause, model_class)
 
         filter_expr = self._convert_filter(model_class, filter_clause) if filter_clause else None
@@ -826,49 +828,16 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         combined_results.sort(key=lambda x: x[1], reverse=True)
         return combined_results
 
-    async def search_cursor_native(
-        self,
-        model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        page_size: int = 100,
-        cursor: str | None = None,
-    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
-        """搜索（Cursor 方式）"""
-        if filter_clause:
-            self._convert_filter_datetime(filter_clause, model_class)
-
-        filter_expr = self._convert_filter(model_class, filter_clause) if filter_clause else None
-
-        offset = 0
-        if cursor:
-            try:
-                offset = int(cursor)
-            except (ValueError, TypeError):
-                offset = 0
-
-        results = await self._execute_search(model_class, query_clause, filter_expr, page_size)
-
-        if isinstance(query_clause, HybridSearchClause):
-            final_offset = offset % len(results) if results else 0
-            paginated_results = results[final_offset : final_offset + page_size]
-            next_cursor = str(final_offset + len(paginated_results)) if paginated_results else None
-            return paginated_results, next_cursor
-
-        final_results = []
-        if results and len(results) > 0:
-            for result in results[0]:
-                converted_docs = self._convert_datetime_for_read([result["entity"]], model_class)
-                final_results.append((converted_docs[0], result["distance"]))
-
-        next_cursor = str(offset + len(final_results)) if final_results else None
-
-        return final_results, next_cursor
-
     async def health_check(self) -> bool:
-        """健康检查"""
-        await self._client.list_databases()
-        return True
+        """Return false for a disconnected/unavailable backend."""
+        try:
+            if self._client is None:
+                return False
+            await self._client.list_databases()
+            return True
+        except Exception:
+            logger.exception("Milvus indexing health check failed")
+            return False
 
     async def exists(self, model_class: type[BaseIndexModel], id: str | int) -> bool:
         """检查文档是否存在"""
