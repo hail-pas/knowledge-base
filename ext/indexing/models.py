@@ -3,12 +3,13 @@ from typing import cast
 from pydantic import Field
 
 from core.types import StrEnum
-from ext.indexing.base import FilterClause, BaseIndexModel
-from ext.indexing.factory import IndexModelFactory
+from ext.indexing.base import FilterClause, BaseIndexModel, BaseProvider
+from ext.indexing.factory import IndexModelFactory, IndexingProviderFactory
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
     EmbeddingModelConfig,
+    IndexingBackendConfig,
 )
 
 
@@ -86,15 +87,38 @@ class CollectionIndexModelHelper:
         results = await dense_model.search(query_clause, ...)
     """
 
-    def __init__(self, collection: Collection) -> None:
+    def __init__(
+        self,
+        collection: Collection,
+        *,
+        dense_provider: BaseProvider | None = None,
+        sparse_provider: BaseProvider | None = None,
+    ) -> None:
         self.collection = collection
+        self._dense_provider = dense_provider
+        self._sparse_provider = sparse_provider
         assert self.collection.embedding_model_config
         assert isinstance(self.collection.embedding_model_config, EmbeddingModelConfig)
+
+    @classmethod
+    async def for_backends(
+        cls,
+        collection: Collection,
+        *,
+        dense_config: IndexingBackendConfig | None = None,
+        sparse_config: IndexingBackendConfig | None = None,
+    ) -> "CollectionIndexModelHelper":
+        """按请求/知识库选择连接配置；不影响其他知识库使用的后端。"""
+        dense = await IndexingProviderFactory.create(dense_config) if dense_config else None
+        sparse = await IndexingProviderFactory.create(sparse_config) if sparse_config else None
+        return cls(collection, dense_provider=dense, sparse_provider=sparse)
 
     @property
     def sparse_model(self) -> type[DocumentContentSparseIndex]:
         """获取稀疏索引模型（无需 embedding 维度）"""
-        return DocumentContentSparseIndex
+        if self._sparse_provider is None:
+            return DocumentContentSparseIndex
+        return cast(type[DocumentContentSparseIndex], IndexModelFactory.bind_provider(DocumentContentSparseIndex, self._sparse_provider))
 
     async def get_dense_model(self) -> type[DocumentContentDenseIndex]:
         """获取稠密索引模型（自动根据 collection embedding config 创建正确维度的模型）"""
@@ -106,6 +130,7 @@ class CollectionIndexModelHelper:
             await IndexModelFactory.create_for_embedding(
                 DocumentContentDenseIndex,
                 emb_config,
+                provider=self._dense_provider,
             ),
         )
 
@@ -119,6 +144,7 @@ class CollectionIndexModelHelper:
             await IndexModelFactory.create_for_embedding(
                 DocumentFAQDenseIndex,
                 emb_config,
+                provider=self._dense_provider,
             ),
         )
 
