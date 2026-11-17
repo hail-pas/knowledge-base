@@ -7,7 +7,7 @@ import pytest
 from ext.indexing.base import BaseIndexModel
 from ext.indexing.factory import IndexModelFactory, IndexingProviderFactory
 from ext.indexing.models import DocumentContentSparseIndex
-from ext.ext_tortoise.enums import IndexingBackendTypeEnum
+from ext.ext_tortoise.enums import IndexingBackendTypeEnum, EmbeddingModelTypeEnum
 from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig, IndexingBackendConfig
 
 
@@ -58,7 +58,7 @@ async def test_dynamic_model_distinguishes_providers():
             dense_vector_field = "vector"
 
     emb = EmbeddingModelConfig(
-        name="embedding-test", model_name="test", dimension=3,
+        name="embedding-test", type=EmbeddingModelTypeEnum.openai, model_name="test", dimension=3,
     )
     provider_a = type("Provider", (), {"create_collection": AsyncMock()})()
     provider_b = type("Provider", (), {"create_collection": AsyncMock()})()
