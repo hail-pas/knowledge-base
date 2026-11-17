@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from dataclasses import dataclass
 
-from pydantic import Field, BaseModel, field_validator
+from pydantic import Field, BaseModel, field_validator, model_validator
 
 
 class QueryTypeEnum(StrEnum):
@@ -25,9 +25,7 @@ class QueryClause(BaseModel):
         if "*" in value:
             return ["*"]
 
-        if "id" not in value:
-            value.append("id")
-        return value
+        return value if "id" in value else [*value, "id"]
 
 
 class DenseSearchClause(QueryClause):
@@ -53,6 +51,13 @@ class HybridSearchClause(QueryClause):
     sparse: SparseSearchClause
     weight_dense: float = Field(default=0.7, ge=0.0, le=1.0, description="稠密搜索权重")
     weight_sparse: float = Field(default=0.3, ge=0.0, le=1.0, description="稀疏搜索权重")
+
+    @model_validator(mode="after")
+    def validate_weights(self) -> "HybridSearchClause":
+        total = self.weight_dense + self.weight_sparse
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError("Hybrid search weights must add up to 1")
+        return self
 
 
 class FilterClause(QueryClause):
