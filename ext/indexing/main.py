@@ -23,7 +23,7 @@ class ModelProviderConfig(RegisterExtensionConfig):
 
     @override
     async def register(self) -> None:
-        """初始化 httpx.AsyncClient"""
+        """连接已启用的默认索引后端；缺失的后端在使用时明确报错。"""
 
         logger.info("Registering model provider")
 
@@ -38,22 +38,27 @@ class ModelProviderConfig(RegisterExtensionConfig):
             is_default=True,
         ).first()
 
-        assert es_config
-        assert milvus_config
-        es_provider = await IndexingProviderFactory.create(es_config, use_cache=False)
-        milvus_provider = await IndexingProviderFactory.create(milvus_config, use_cache=False)
-        self.es_provider = es_provider
-        self.milvus_provider = milvus_provider
-        DocumentContentDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
-        DocumentContentSparseIndex.Meta.provider = self.es_provider  # type: ignore
-        DocumentFAQDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
+        self.es_provider = await IndexingProviderFactory.create(es_config) if es_config else None
+        self.milvus_provider = await IndexingProviderFactory.create(milvus_config) if milvus_config else None
+
+        # 不改动公共基类 Meta；独立模型绑定，默认行为兼容既有调用。
+        DocumentContentDenseIndex.Meta.provider = self.milvus_provider
+        DocumentFAQDenseIndex.Meta.provider = self.milvus_provider
+        DocumentContentSparseIndex.Meta.provider = self.es_provider
+
+        if self.es_provider is None:
+            logger.warning("No default Elasticsearch backend; sparse indexing unavailable")
+        if self.milvus_provider is None:
+            logger.warning("No default Milvus backend; dense indexing unavailable")
 
     @override
     async def unregister(self) -> None:
         """关闭 httpx.AsyncClient"""
         logger.info("Unregistering model provider")
 
-        if self.es_provider:
-            await self.es_provider.disconnect()
-        if self.milvus_provider:
-            await self.milvus_provider.disconnect()
+        DocumentContentDenseIndex.Meta.provider = None
+        DocumentFAQDenseIndex.Meta.provider = None
+        DocumentContentSparseIndex.Meta.provider = None
+        await IndexingProviderFactory.clear_cache()
+        self.es_provider = None
+        self.milvus_provider = None
