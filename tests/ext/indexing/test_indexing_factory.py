@@ -61,7 +61,7 @@ class MockProvider(BaseProvider):
     async def count(self, model_class, filter_clause):
         return 0
 
-    async def search(self, model_class, query_clause, filter_clause=None, limit=10, offset=0):
+    async def search_native(self, model_class, query_clause, filter_clause=None, limit=10, offset=0):
         return []
 
     async def search_cursor(self, model_class, query_clause, filter_clause=None, page_size=100, cursor=None):
