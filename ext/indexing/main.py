@@ -21,7 +21,9 @@ class ModelProviderConfig(RegisterExtensionConfig):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+    # Keep the legacy attribute for callers that still reference it.
     postgresql_provider: BaseProvider | None = None
+    default_provider: BaseProvider | None = None
 
     @staticmethod
     def _default_postgresql_config() -> IndexingBackendConfig:
@@ -50,23 +52,26 @@ class ModelProviderConfig(RegisterExtensionConfig):
 
     @override
     async def register(self) -> None:
-        logger.info("Registering PostgreSQL indexing provider")
         config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum.postgresql,
             is_enabled=True,
             is_default=True,
+            deleted_at=None,
         ).first()
         if config is None:
             config = self._default_postgresql_config()
-            logger.info("No explicit PostgreSQL indexing config; reusing knowledge-base database")
+            logger.info("No default indexing backend; reusing knowledge-base PostgreSQL database")
         provider = await IndexingProviderFactory.create(config)
-        self.postgresql_provider = provider
-        DocumentContentDenseIndex.Meta.provider = provider
-        DocumentContentSparseIndex.Meta.provider = provider
-        DocumentFAQDenseIndex.Meta.provider = provider
+        self.default_provider = provider
+        self.postgresql_provider = provider if config.type == IndexingBackendTypeEnum.postgresql else None
+        for model in (DocumentContentDenseIndex, DocumentContentSparseIndex, DocumentFAQDenseIndex):
+            model.Meta.provider = provider
+        logger.info("Registered default indexing backend: {}", config.type)
 
     @override
     async def unregister(self) -> None:
-        logger.info("Unregistering PostgreSQL indexing provider")
+        logger.info("Unregistering indexing providers")
+        for model in (DocumentContentDenseIndex, DocumentContentSparseIndex, DocumentFAQDenseIndex):
+            model.Meta.provider = None
         await IndexingProviderFactory.clear_cache()
         self.postgresql_provider = None
+        self.default_provider = None
