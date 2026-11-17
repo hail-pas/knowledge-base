@@ -235,6 +235,8 @@ async def create_indexing_backend(
     schema.validate_extra_config()
 
     data = schema.model_dump(exclude_unset=True)
+    if data.get("is_default") and data.get("is_enabled") is False:
+        raise ApiException("Disabled indexing backend cannot be the default", code=400)
     data["password"] = encrypt_secret(data.get("password"), purpose="indexing_backend.password")
     data["extra_config"] = transform_extra_config_secrets(
         data.get("extra_config"),
@@ -244,7 +246,7 @@ async def create_indexing_backend(
 
     if obj.is_default:  # type: ignore
         await (
-            IndexingBackendConfig.filter(is_default=True, type=obj.type, deleted_at=0)  # type: ignore
+            IndexingBackendConfig.filter(is_default=True, deleted_at=0)  # type: ignore
             .exclude(pk=obj.id)  # type: ignore
             .update(is_default=False)
         )  # type: ignore
