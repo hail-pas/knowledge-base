@@ -332,96 +332,89 @@ class BaseIndexModel(BaseModel):
         return SearchCursor(results=converted, next_cursor=next_cursor)
 
     async def save(self) -> None:
-        """保存/更新当前实例"""
-        if self.__class__.Meta.auto_generate_id and self.id:
-            self.id = self.__class__._get_id_default()
-
-        if not self.__class__.Meta.auto_generate_id and not self.id:
-            raise RuntimeError("Must specify id")
-
+        """Insert new documents, upsert documents that already have a stable ID."""
+        cls = type(self)
         self.updated_at = datetime.now(UTC)
-
-        provider = self.get_provider()
-        doc_data = self.model_dump(mode="json")
-        if self.__class__.Meta.auto_generate_id:
-            doc_data.pop("id", None)
-
-        result = await provider.insert(self.__class__, documents=[doc_data])
-        if result and len(result) > 0:
-            self.id = result[0].get("id", self.id)
+        payload = self.model_dump(mode="json")
+        if not self.id:
+            if not cls.Meta.auto_generate_id:
+                raise ValueError("An ID is required when auto_generate_id is disabled")
+            payload.pop("id", None)
+            rows = await cls.get_provider().insert(cls, [payload])
+        else:
+            rows = await cls.get_provider().bulk_upsert(cls, [payload])
+        if rows and rows[0].get("id") is not None:
+            self.id = rows[0]["id"]
 
     @classmethod
-    async def bulk_insert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5) -> None:
-        """批量插入（自动并发）"""
+    async def _write_batches(
+        cls, documents: list[Self], *, upsert: bool,
+        batch_size: int = 100, concurrent_batches: int = 5,
+    ) -> None:
+        """One bounded batch pipeline for insert and upsert operations."""
+        if batch_size <= 0 or concurrent_batches <= 0:
+            raise ValueError("batch_size and concurrent_batches must be positive")
+        if not documents:
+            return
+        if any(not isinstance(doc, cls) for doc in documents):
+            raise TypeError("Every document must match the index model")
         provider = cls.get_provider()
-
-        batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
-
-        # Use semaphore to limit concurrent batch operations
         semaphore = asyncio.Semaphore(concurrent_batches)
 
-        async def insert_batch(batch: list[Self]) -> None:
+        async def run(batch: list[Self]) -> None:
             async with semaphore:
-                batch_docs = []
+                payloads = []
                 for doc in batch:
-                    doc_data = doc.model_dump(mode="json")
-                    if cls.Meta.auto_generate_id:
-                        doc_data.pop("id", None)
-                    batch_docs.append(doc_data)
+                    data = doc.model_dump(mode="json")
+                    if not doc.id:
+                        if not cls.Meta.auto_generate_id:
+                            raise ValueError("An ID is required when auto_generate_id is disabled")
+                        data.pop("id", None)
+                    elif not upsert and cls.Meta.auto_generate_id:
+                        data.pop("id", None)
+                    payloads.append(data)
+                if upsert:
+                    rows = await provider.bulk_upsert(cls, payloads)
+                else:
+                    rows = await provider.insert(cls, payloads)
+                if rows:
+                    for document, row in zip(batch, rows, strict=False):
+                        if row.get("id") is not None:
+                            document.id = row["id"]
 
-                result = await provider.bulk_upsert(cls, documents=batch_docs)
-                # Update each document with the actual id from the result
-                if result and len(result) > 0:
-                    for i, doc in enumerate(batch):
-                        if i < len(result) and "id" in result[i]:
-                            doc.id = result[i]["id"]
+        await asyncio.gather(
+            *(run(documents[i:i + batch_size]) for i in range(0, len(documents), batch_size))
+        )
 
-        await asyncio.gather(*[insert_batch(batch) for batch in batches])  # type: ignore
+    @classmethod
+    async def bulk_insert(
+        cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5,
+    ) -> None:
+        await cls._write_batches(
+            documents, upsert=False, batch_size=batch_size, concurrent_batches=concurrent_batches,
+        )
 
     @classmethod
     async def bulk_update(cls, documents: list[Self]) -> None:
-        """批量更新"""
-        assert all(isinstance(doc, cls) for doc in documents)
-
-        provider = cls.get_provider()
-        ids = await provider.update(cls, documents=[d.model_dump(mode="json") for d in documents])
-
-        # milvus 会更新id
-        for doc, id in zip(documents, ids, strict=False):
-            if id:
-                doc.id = id
+        if any(not isinstance(doc, cls) for doc in documents):
+            raise TypeError("Every document must match the index model")
+        if not documents:
+            return
+        ids = await cls.get_provider().update(
+            cls, [document.model_dump(mode="json") for document in documents],
+        )
+        if ids:
+            for document, new_id in zip(documents, ids, strict=False):
+                if new_id is not None:
+                    document.id = new_id
 
     @classmethod
-    async def bulk_upsert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5) -> None:
-        """批量插入或更新（upsert，自动并发）"""
-        provider = cls.get_provider()
-
-        batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
-
-        # Use semaphore to limit concurrent batch operations
-        semaphore = asyncio.Semaphore(concurrent_batches)
-
-        async def upsert_batch(batch: list[Self]) -> None:
-            async with semaphore:
-                batch_docs = []
-                for doc in batch:
-                    doc_data = doc.model_dump(mode="json")
-                    # 如果 auto_generate_id 为 True，只在 id 无效时移除（用于插入）
-                    # id 有效则保留（用于更新）
-                    if cls.Meta.auto_generate_id:
-                        doc_id = doc_data.get("id")
-                        if not doc_id:
-                            doc_data.pop("id", None)
-                    batch_docs.append(doc_data)
-
-                result = await provider.bulk_upsert(cls, documents=batch_docs)
-                # Update each document with the actual id from the result
-                if result and len(result) > 0:
-                    for i, doc in enumerate(batch):
-                        if i < len(result) and "id" in result[i]:
-                            doc.id = result[i]["id"]
-
-        await asyncio.gather(*[upsert_batch(batch) for batch in batches])
+    async def bulk_upsert(
+        cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5,
+    ) -> None:
+        await cls._write_batches(
+            documents, upsert=True, batch_size=batch_size, concurrent_batches=concurrent_batches,
+        )
 
     @classmethod
     async def bulk_delete(cls, ids: list[str]) -> None:
