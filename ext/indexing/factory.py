@@ -135,6 +135,8 @@ class IndexModelFactory:
     """
 
     _model_registry: dict[tuple[type[BaseIndexModel], int, int], type[BaseIndexModel]] = {}
+    _initialized_models: set[type[BaseIndexModel]] = set()
+    _schema_locks: dict[type[BaseIndexModel], asyncio.Lock] = {}
 
     @classmethod
     def bind_provider(
@@ -202,7 +204,11 @@ class IndexModelFactory:
 
         _m = cls._model_registry[model_key]
 
-        await _m.create_schema()
+        lock = cls._schema_locks.setdefault(_m, asyncio.Lock())
+        async with lock:
+            if _m not in cls._initialized_models:
+                await _m.create_schema()
+                cls._initialized_models.add(_m)
 
         return _m
 
@@ -269,6 +275,8 @@ class IndexModelFactory:
             IndexModelFactory.clear_cache()
         """
         cls._model_registry.clear()
+        cls._initialized_models.clear()
+        cls._schema_locks.clear()
 
     @classmethod
     def get_registered_models(cls) -> list[str]:
@@ -282,7 +290,7 @@ class IndexModelFactory:
             >>> models
             ['ChunkIndex_1536', 'ChunkIndex_3072']
         """
-        return [f"{base.__name__}_{dimension}" for base, dimension, _ in cls._model_registry]
+        return list(dict.fromkeys(f"{base.__name__}_{dimension}" for base, dimension, _ in cls._model_registry if dimension > 0))
 
     @classmethod
     def get_model(cls, base_name: str, dimension: int) -> type[BaseIndexModel] | None:
