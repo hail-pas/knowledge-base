@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from ext.indexing.base import BaseIndexModel
-from ext.indexing.search import SearchStrategyFactory
+from ext.indexing.search import IndexSearch
 from ext.indexing.types import DenseSearchClause, HybridSearchClause, SparseSearchClause
 
 
@@ -39,7 +39,7 @@ async def test_weighted_rrf_has_backend_independent_order_and_no_duplicate_hits(
         weight_dense=0.7,
         weight_sparse=0.3,
     )
-    rows = await SearchStrategyFactory.execute(provider, Note, query, None, 5, 0)
+    rows = await IndexSearch.execute(provider, Note, query, None, 5, 0)
     assert [row[0]["id"] for row in rows] == ["b", "a", "c"]
     assert len(provider.calls) == 2
 
@@ -48,8 +48,8 @@ async def test_weighted_rrf_has_backend_independent_order_and_no_duplicate_hits(
 async def test_portable_cursor_advances_without_repeat():
     provider = FakeSearch()
     query = DenseSearchClause(vector=[0.5])
-    first, cursor = await SearchStrategyFactory.execute_cursor(provider, Note, query, page_size=1)
-    second, final_cursor = await SearchStrategyFactory.execute_cursor(
+    first, cursor = await IndexSearch.execute_cursor(provider, Note, query, page_size=1)
+    second, final_cursor = await IndexSearch.execute_cursor(
         provider, Note, query, page_size=1, cursor=cursor,
     )
     assert [row[0]["id"] for row in first] == ["a"]
@@ -61,9 +61,9 @@ async def test_portable_cursor_advances_without_repeat():
 @pytest.mark.asyncio
 async def test_invalid_pagination_rejected():
     with pytest.raises(ValueError):
-        await SearchStrategyFactory.execute(FakeSearch(), Note, DenseSearchClause(vector=[1]), None, 0, 0)
+        await IndexSearch.execute(FakeSearch(), Note, DenseSearchClause(vector=[1]), None, 0, 0)
     with pytest.raises(ValueError):
-        await SearchStrategyFactory.execute_cursor(
+        await IndexSearch.execute_cursor(
             FakeSearch(), Note, DenseSearchClause(vector=[1]), page_size=2, cursor="-1",
         )
 
