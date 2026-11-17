@@ -8,10 +8,8 @@ from datetime import UTC, datetime, timezone
 from pymilvus import (
     DataType,
     Function,
-    RRFRanker,
     FieldSchema,
     FunctionType,
-    AnnSearchRequest,
     CollectionSchema,
     AsyncMilvusClient,
 )
@@ -21,7 +19,6 @@ from ext.indexing.base import BaseProvider, BaseIndexModel
 from ext.indexing.types import (
     FilterClause,
     DenseSearchClause,
-    HybridSearchClause,
     SparseSearchClause,
 )
 from ext.indexing.providers.types import MilvusConfig
@@ -40,8 +37,6 @@ class IndexMetadataEnum(StrEnum):
 
 class MilvusProvider(BaseProvider[MilvusConfig]):
     """Milvus Provider 实现."""
-
-    supports_native_hybrid = True
 
     def __init__(self, config: "IndexingBackendConfig") -> None:
         super().__init__(config, MilvusConfig)
@@ -601,7 +596,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
     async def search_native(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
@@ -615,13 +610,6 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         results = await self._execute_search(model_class, query_clause, filter_expr, limit + offset)
 
-        if isinstance(query_clause, HybridSearchClause):
-            converted_results = []
-            for doc, score in results[offset : offset + limit]:
-                converted_docs = self._convert_datetime_for_read([doc], model_class)
-                converted_results.append((converted_docs[0], score))
-            return converted_results
-
         final_results = []
         if results and len(results) > 0:
             for result in results[0][offset : offset + limit]:
@@ -633,7 +621,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
     async def _execute_search(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_expr: str | None,
         limit: int,
     ) -> Any:
@@ -645,9 +633,6 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         if isinstance(query_clause, SparseSearchClause):
             return await self._execute_sparse_search(collection_name, model_class, query_clause, filter_expr, limit)
-
-        if isinstance(query_clause, HybridSearchClause):
-            return await self._execute_hybrid_search(collection_name, model_class, query_clause, filter_expr)
 
         raise RuntimeError(f"Unsupported query clause type: {type(query_clause)}")
 
@@ -701,132 +686,6 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             filter=filter_expr or "",
             output_fields=["*"],
         )
-
-    async def _execute_hybrid_search(
-        self,
-        collection_name: str,
-        model_class: type[BaseIndexModel],
-        query_clause: HybridSearchClause,
-        filter_expr: str | None,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """执行混合向量搜索并合并结果"""
-        if not model_class.Meta.dense_vector_field:
-            raise RuntimeError("Hybrid search requires dense vector field")
-
-        if self.extra_config.enable_hybrid_search:
-            return await self._execute_native_hybrid_search(
-                collection_name,
-                model_class,
-                query_clause,
-                filter_expr,
-            )
-        return await self._execute_legacy_hybrid_search(
-            collection_name,
-            model_class,
-            query_clause,
-            filter_expr,
-        )
-
-    async def _execute_native_hybrid_search(
-        self,
-        collection_name: str,
-        model_class: type[BaseIndexModel],
-        query_clause: HybridSearchClause,
-        filter_expr: str | None,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """使用原生 hybrid_search 方法（RRFRanker）"""
-        if not model_class.Meta.dense_vector_field:
-            raise RuntimeError("Hybrid search requires dense vector field")
-
-        field_name = getattr(query_clause.sparse, "field_name", None)
-        if not field_name:
-            text_fields_info = self._get_text_search_fields_info(model_class)
-            if not text_fields_info:
-                raise RuntimeError("No text search fields configured")
-            field_name = text_fields_info[0][0]
-
-        sparse_field_name = self._get_sparse_vector_field_name(field_name)
-
-        sparse_data = [query_clause.sparse.query_text]
-
-        sparse_request = AnnSearchRequest(
-            data=sparse_data,
-            anns_field=sparse_field_name,
-            param={"metric_type": "BM25"},
-            limit=query_clause.sparse.top_k * 2,
-        )
-
-        dense_request = AnnSearchRequest(
-            data=[query_clause.dense.vector],
-            anns_field=model_class.Meta.dense_vector_field,
-            param={"metric_type": self.extra_config.metric_type, "params": {}},
-            limit=query_clause.dense.top_k * 2,
-        )
-
-        results = await self._client.hybrid_search(
-            collection_name=collection_name,
-            reqs=[sparse_request, dense_request],
-            ranker=RRFRanker(),
-            limit=query_clause.dense.top_k,
-            output_fields=["*"],
-        )
-
-        converted_results = []
-        for result in results[0]:
-            converted_results.append((result["entity"], result["distance"]))
-
-        return converted_results
-
-    async def _execute_legacy_hybrid_search(
-        self,
-        collection_name: str,
-        model_class: type[BaseIndexModel],
-        query_clause: HybridSearchClause,
-        filter_expr: str | None,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """执行传统混合向量搜索并合并结果"""
-        dense_results = await self._execute_dense_search(
-            collection_name,
-            model_class,
-            query_clause.dense,
-            filter_expr,
-            query_clause.dense.top_k * 2,
-        )
-
-        sparse_results = await self._execute_sparse_search(
-            collection_name,
-            model_class,
-            query_clause.sparse,
-            filter_expr,
-            query_clause.sparse.top_k * 2,
-        )
-
-        return self._merge_hybrid_results(dense_results[0], sparse_results[0], query_clause)
-
-    def _merge_hybrid_results(
-        self,
-        dense_results: list[dict[str, Any]],
-        sparse_results: list[dict[str, Any]],
-        query_clause: HybridSearchClause,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """合并混合搜索结果"""
-        dense_dict = {result["id"]: (result, result["distance"]) for result in dense_results}
-        sparse_dict = {result["id"]: (result, result["distance"]) for result in sparse_results}
-
-        all_ids = set(dense_dict.keys()) | set(sparse_dict.keys())
-
-        combined_results = []
-        for id_ in all_ids:
-            dense_doc, dense_score = dense_dict.get(id_, ({}, 0))
-            sparse_doc, sparse_score = sparse_dict.get(id_, ({}, 0))
-
-            final_doc = dense_doc if dense_doc else sparse_doc
-            final_score = query_clause.weight_dense * dense_score + query_clause.weight_sparse * sparse_score
-
-            combined_results.append((final_doc, final_score))
-
-        combined_results.sort(key=lambda x: x[1], reverse=True)
-        return combined_results
 
     async def health_check(self) -> bool:
         """Return false for a disconnected/unavailable backend."""
