@@ -20,6 +20,7 @@ from ext.indexing.types import (
     FilterClause,
     DenseSearchClause,
     SparseSearchClause,
+    parse_sort,
 )
 from ext.indexing.providers.types import MilvusConfig
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
@@ -449,15 +450,14 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         collection_name = self.build_collection_name(model_class)
 
         if filter_clause:
+            filter_clause = filter_clause.model_copy(deep=True)
             self._convert_filter_datetime(filter_clause, model_class)
 
         filter_expr = self._convert_filter(model_class, filter_clause) if filter_clause else ""
 
         order_by_field = None
         if sort:
-            parts = sort.split(":")
-            field_name = parts[0]
-            direction = parts[1] if len(parts) > 1 else "asc"
+            field_name, direction = parse_sort(sort)
             # If primary field is not id, add secondary sort by id desc
             order_by_field = f"{field_name} {direction}, id desc" if field_name != "id" else f"{field_name} {direction}"
 
@@ -573,7 +573,11 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         if not await self._client.has_collection(collection_name):
             return
 
-        filter_expr = self._convert_filter(model_class, filter_clause)
+        if not filter_clause.has_conditions():
+            raise ValueError("delete_by_query requires a non-empty filter")
+        safe_filter = filter_clause.model_copy(deep=True)
+        self._convert_filter_datetime(safe_filter, model_class)
+        filter_expr = self._convert_filter(model_class, safe_filter)
         await self._client.delete(collection_name=collection_name, filter=filter_expr)
 
         if self.extra_config.auto_flush:
