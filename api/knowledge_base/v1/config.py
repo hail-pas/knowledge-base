@@ -165,12 +165,6 @@ async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Re
     schema.validate_extra_config()
 
     data = schema.model_dump(exclude_unset=True)
-    if data.get("is_default") and await Document.filter(
-        deleted_at=0, collection__indexing_backend_config__isnull=True,
-    ).exists():
-        raise ApiException(
-            "存在使用默认后端的非空知识库；请先固定原后端并完成索引迁移", code=409,
-        )
     data["api_key"] = encrypt_secret(data.get("api_key"), purpose="llm_model.api_key")
     data["extra_config"] = transform_extra_config_secrets(
         data.get("extra_config"),
@@ -245,6 +239,12 @@ async def create_indexing_backend(
     data = schema.model_dump(exclude_unset=True)
     if data.get("is_default") and data.get("is_enabled") is False:
         raise ApiException("Disabled indexing backend cannot be the default", code=400)
+    if data.get("is_default") and await Document.filter(
+        deleted_at=0, collection__indexing_backend_config__isnull=True,
+    ).exists():
+        raise ApiException(
+            "存在使用默认后端的非空知识库；请先固定原后端并完成索引迁移", code=409,
+        )
     data["password"] = encrypt_secret(data.get("password"), purpose="indexing_backend.password")
     data["extra_config"] = transform_extra_config_secrets(
         data.get("extra_config"),
