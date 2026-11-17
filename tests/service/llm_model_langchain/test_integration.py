@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage
 from ext.ext_tortoise.enums import LLMModelTypeEnum
 from ext.ext_tortoise.models.knowledge_base import LLMModelConfig
 from service.llm_model_langchain.factory import LangChainLLMModelFactory
+from tests.helpers import create_llm_model_config
 
 
 def _pick_live_llm_config() -> dict:
@@ -51,7 +52,7 @@ async def test_live_langchain_model_can_chat():
     config_dict = _pick_live_llm_config()
 
     await LLMModelConfig.filter(name=config_dict["name"]).delete()
-    config = await LLMModelConfig.create(
+    config = await create_llm_model_config(
         **config_dict,
         max_tokens=128,
         temperature=0,

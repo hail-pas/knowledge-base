@@ -48,12 +48,17 @@ def test_create_file_source_s3(client):
             "region": "us-east-1",
             "extra_config": {
                 "signature_version": "s3v4",
+                "session_token": "test-session-token",
+                "config": {"proxies": {"https": "http://proxy-user:proxy-pass@proxy.example:8080"}},
             },
         },
     )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "access_key" not in data.get("data", {})
+    assert "secret_key" not in data.get("data", {})
+    STATE["file_source_id"] = data.get("data", {}).get("id")
 
 
 def test_list_file_sources(client):
@@ -75,6 +80,9 @@ def test_get_file_source_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "access_key" not in data.get("data", {})
+    assert "secret_key" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
 
 
 # =============================================================================
@@ -97,12 +105,14 @@ def test_create_llm_model_openai(client):
             "top_p": 0.9,
             "extra_config": {
                 "organization": "test-org",
+                "headers": {"Authorization": "Bearer test-llm-header"},
             },
         },
     )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
     STATE["llm_model_id"] = data.get("data", {}).get("id")
 
 
@@ -143,6 +153,8 @@ def test_get_llm_model_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
 
 
 # =============================================================================
@@ -164,12 +176,14 @@ def test_create_indexing_backend_elasticsearch(client):
             "extra_config": {
                 "number_of_shards": 3,
                 "number_of_replicas": 2,
+                "access_token": "test-indexing-extra-token",
             },
         },
     )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "password" not in data.get("data", {})
     STATE["indexing_backend_id"] = data.get("data", {}).get("id")
 
 
@@ -214,6 +228,8 @@ def test_get_indexing_backend_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "password" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
 
 
 # =============================================================================
@@ -235,12 +251,15 @@ def test_create_embedding_model_openai(client):
             "max_chunk_length": 8192,
             "extra_config": {
                 "encoding_format": "float",
+                "headers": {"Authorization": "Bearer test-embedding-header"},
+                "query_params": {"api_key": "test-query-key", "page": "1"},
             },
         },
     )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
     STATE["embedding_model_id"] = data.get("data", {}).get("id")
 
 
@@ -263,3 +282,42 @@ def test_get_embedding_model_detail(client):
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
+    assert "api_key" not in data.get("data", {})
+    assert "extra_config" not in data.get("data", {})
+
+
+@pytest.mark.asyncio
+async def test_credentials_are_encrypted_at_rest():
+    from ext.ext_tortoise.models.knowledge_base import (
+        EmbeddingModelConfig,
+        FileSource,
+        IndexingBackendConfig,
+        LLMModelConfig,
+    )
+
+    file_source = await FileSource.get(name="test-s3")
+    assert file_source.access_key.startswith("enc:v1:")
+    assert file_source.secret_key.startswith("enc:v1:")
+    assert file_source.extra_config["session_token"].startswith("enc:v1:")
+    assert file_source.extra_config["config"]["proxies"]["https"].startswith("enc:v1:")
+
+    from ext.file_source import FileSourceFactory
+
+    provider = await FileSourceFactory.create(file_source, use_cache=False)
+    assert provider.access_key == "test-access-key"
+    assert provider.secret_key == "test-secret-key"
+    assert provider.extra_config.session_token == "test-session-token"
+    assert provider.extra_config.config["proxies"]["https"] == "http://proxy-user:proxy-pass@proxy.example:8080"
+
+    llm_config = await LLMModelConfig.get(name="test-openai")
+    assert llm_config.api_key.startswith("enc:v1:")
+    assert llm_config.extra_config["headers"]["Authorization"].startswith("enc:v1:")
+
+    embedding_config = await EmbeddingModelConfig.get(name="test-openai-embedding")
+    assert embedding_config.api_key.startswith("enc:v1:")
+    assert embedding_config.extra_config["headers"]["Authorization"].startswith("enc:v1:")
+    assert embedding_config.extra_config["query_params"]["api_key"].startswith("enc:v1:")
+
+    indexing_config = await IndexingBackendConfig.get(name="test-es")
+    assert indexing_config.password.startswith("enc:v1:")
+    assert indexing_config.extra_config["access_token"].startswith("enc:v1:")

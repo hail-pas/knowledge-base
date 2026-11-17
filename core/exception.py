@@ -9,9 +9,9 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
 from core.types import ApiException, ValidationError
+from loguru import logger
 from config.main import local_configs
 from core.response import Resp, AesResponse, ResponseCodeEnum
-from config.default import EnvironmentEnum
 from constant.validate import (
     ValidationErrorMsgTemplates,
     DirectValidateErrorMsgTemplates,
@@ -37,14 +37,11 @@ async def unexpected_exception_handler(
     request: Request | WebSocket,
     exc: Exception,
 ) -> AesResponse | HTMLResponse:
-    if local_configs.project.environment in [
-        EnvironmentEnum.local,
-        EnvironmentEnum.development,
-        EnvironmentEnum.test,
-    ]:
+    logger.opt(exception=exc).error("Unhandled API exception")
+    if local_configs.project.debug:
         return HTMLResponse(
             status_code=500,
-            content=traceback.format_exc(),
+            content="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
             headers=local_configs.server.cors.headers,
         )
 
@@ -94,14 +91,14 @@ async def validation_exception_handler(
         field_name, message = DirectValidateErrorMsgTemplates[error_type]
         message = message.format(**ctx)
     else:
-        message = ValidationErrorMsgTemplates[error_type]
+        message = ValidationErrorMsgTemplates.get(error_type, "参数格式不正确")
         message = message.format(**ctx)
 
     return AesResponse(
         content=Resp(
             code=ResponseCodeEnum.failed,
             message=f"{field_name}: {message}",
-            data=repr(exc.errors()),  # {"data": exc.body, "errors": error_list},
+            data=None,
         ).model_dump_json(),
         status_code=422,
     )
@@ -118,7 +115,7 @@ def get_validation_text(exc: RequestValidationError, pyd: BaseModel) -> str:
         field_name, message = DirectValidateErrorMsgTemplates[error_type]
         message = message.format(**ctx)
     else:
-        message = ValidationErrorMsgTemplates[error_type]
+        message = ValidationErrorMsgTemplates.get(error_type, "参数格式不正确")
         message = message.format(**ctx)
     field_info = pyd.model_fields.get(field_name)
     if hasattr(field_info, "description"):

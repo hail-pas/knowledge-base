@@ -1,3 +1,7 @@
-"""创建菜单"""
+"""Optional initial menu/resource definitions.
 
-MenuAndPerm = []
+API permissions are synchronized from protected FastAPI routes. MenuAndPerm
+can be populated with menu trees that bind those permission codes to resources.
+"""
+
+MenuAndPerm: list[dict] = []

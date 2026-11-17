@@ -241,8 +241,8 @@ class TestIndexModelFactory:
 
         registered = IndexModelFactory.get_registered_models()
 
-        assert "ChunkIndex_1536" in registered
-        assert "ChunkIndex_3072" in registered
+        assert any(key.startswith("ChunkIndex_1536_") for key in registered)
+        assert any(key.startswith("ChunkIndex_3072_") for key in registered)
 
     async def test_get_model(self, mock_provider, embedding_configs):
         """测试通过基础模型名和维度获取模型"""

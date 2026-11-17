@@ -1,7 +1,4 @@
-from json import load
-from posixpath import split
-
-from core.types import IntEnum, StrEnum
+from core.types import StrEnum
 
 
 class StatusEnum(StrEnum):
@@ -34,28 +31,19 @@ class SystemResourceSubTypeEnum(StrEnum):
     link = ("link", "链接")
 
 
-class TokenSceneTypeEnum(StrEnum):
-    """token场景"""
+class ClientSceneEnum(StrEnum):
+    """资源适用的客户端场景"""
 
     general = ("General", "通用")
     web = ("Web", "网页端")
-    ios = ("Ios", "Ios")
+    ios = ("Ios", "iOS")
     android = ("Android", "Android")
     wmp = ("WMP", "微信小程序")
     unknown = ("Unknown", "未知")
 
 
-class SendCodeScene(StrEnum):
-    """发送短信场景"""
-
-    login = ("login", "登录")
-    reset_password = ("reset_password", "重置密码")
-    change_account_phone = ("change_account_phone", "修改账户手机号")
-
-
-# =============================================================================
-# RAG 平台 - 文件源相关枚举
-# =============================================================================
+# Backward-compatible name used by existing menu seed data.
+TokenSceneTypeEnum = ClientSceneEnum
 
 
 class FileSourceTypeEnum(StrEnum):
@@ -98,32 +86,17 @@ class WorkflowStatusEnum(StrEnum):
 
 class ActivityStatusEnum(StrEnum):
     pending = ("pending", "待执行")
-    running = ("running", "运行中")  # activity 实际执行时设置
+    running = ("running", "运行中")
     completed = ("completed", "已完成")
     failed = ("failed", "失败")
     canceled = ("canceled", "已取消")
     retrying = ("retrying", "重试中")
 
 
-# =============================================================================
-# RAG 平台 - Embedding 模型相关枚举
-# =============================================================================
-
-
 class EmbeddingModelTypeEnum(StrEnum):
     """Embedding 模型类型"""
 
     openai = ("openai", "OpenAI")
-
-
-# =============================================================================
-# RAG 平台 - Indexing 相关枚举
-# =============================================================================
-
-
-# =============================================================================
-# RAG 平台 - LLM 模型相关枚举
-# =============================================================================
 
 
 class LLMModelTypeEnum(StrEnum):
@@ -138,6 +111,7 @@ class LLMModelTypeEnum(StrEnum):
 class IndexingBackendTypeEnum(StrEnum):
     """Indexing 后端类型"""
 
+    postgresql = ("postgresql", "PostgreSQL")
     elasticsearch = ("elasticsearch", "Elasticsearch")
     milvus = ("milvus", "Milvus")
 

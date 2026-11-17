@@ -1,7 +1,6 @@
 import sys
 import asyncio
 import argparse
-from uuid import UUID
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))  # type: ignore
@@ -14,23 +13,21 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from core.api import ApiApplication
 from util.route import gte_all_uris
 from core.context import ctx
-from service.depend import token_required, api_permission_check
-from ext.ext_tortoise import enums
+from service.depend import api_permission_check
+from ext.ext_tortoise.enums import PermissionTypeEnum, TokenSceneTypeEnum
 from api.entrypoint.main import import_app
 from deploy.bin.permission.data import MenuAndPerm
-from ext.ext_tortoise.models.user_center import Account, Resource, Permission
+from ext.ext_tortoise.models.authorization import Permission, Resource
 
 
-def filter_uri(r: Route | WebSocketRoute | Mount) -> bool:
-    if isinstance(r, Mount):
+def filter_uri(route: Route | WebSocketRoute | Mount) -> bool:
+    if isinstance(route, Mount):
         return True
-
-    if isinstance(r, Route | WebSocketRoute):
-        if not hasattr(r, "dependant"):
+    if isinstance(route, (Route, WebSocketRoute)):
+        if not hasattr(route, "dependant"):
             return False
-        dependencies = r.dependant.dependencies  # type: ignore
-        return any(i.call in [token_required, api_permission_check] for i in dependencies)
-    return None
+        return any(dependency.call is api_permission_check for dependency in route.dependant.dependencies)
+    return False
 
 
 class UriItem(BaseModel):
@@ -40,30 +37,27 @@ class UriItem(BaseModel):
     tags: list[str | None]
 
 
-async def update_or_create_perm_code(app: ApiApplication) -> None:
-    latest_codes = set()
-    url_list = gte_all_uris(app, _filter=filter_uri)
-    unique_code = app.code
-    for url_info in url_list:
+async def update_or_create_permission_codes(app: ApiApplication) -> None:
+    latest_codes: set[str] = set()
+    for url_info in gte_all_uris(app, _filter=filter_uri):
         uri_item = UriItem(**url_info)
         if not uri_item.method:
             continue
-        code = f"{unique_code}:{uri_item.method}:{uri_item.path}"
-        logger.info(f"{code}, {uri_item.name}")
+        code = f"{app.code}:{uri_item.method}:{uri_item.path}"
         await Permission.update_or_create(
             code=code,
             defaults={
-                "label": uri_item.name,
-                "permission_type": enums.PermissionTypeEnum.api,  # type: ignore
+                "label": uri_item.name or uri_item.path,
+                "permission_type": PermissionTypeEnum.api,
                 "is_deprecated": False,
             },
         )
         latest_codes.add(code)
+        logger.info("Synced permission {}", code)
 
-    # 清理过期的权限
     for permission in await Permission.filter(
-        permission_type=enums.PermissionTypeEnum.api,  # type: ignore
-        code__startswith=unique_code,
+        permission_type=PermissionTypeEnum.api,
+        code__startswith=f"{app.code}:",
     ):
         if permission.code not in latest_codes:
             permission.is_deprecated = True
@@ -73,72 +67,41 @@ async def update_or_create_perm_code(app: ApiApplication) -> None:
 async def permission_init(app: FastAPI) -> None:
     for route in app.routes:
         if isinstance(route, Mount):
-            await update_or_create_perm_code(route.app)  # type: ignore
+            await update_or_create_permission_codes(route.app)  # type: ignore[arg-type]
 
 
-async def create_single_menu_and_perm(
-    *,
-    menu_item: dict,
-    parent_id: int | UUID | None = None,
-    parent_id_dict: dict = None,
-) -> None:
-    if parent_id_dict is None:
-        parent_id_dict = {}
-    code = menu_item.pop("code", None)
+async def create_single_menu_and_perm(menu_item: dict, parent_id: int | None = None) -> None:
+    item = dict(menu_item)
+    code = item.pop("code", None)
     if not code:
-        logger.warning(f"Menu {code} has no code, skip it.")
+        logger.warning("Skip a menu item without code")
         return
 
-    children = menu_item.pop("children", [])
-    permissions = menu_item.pop("permissions", [])
-    logger.info(f"Creating menu {code}")
-    r, _ = await Resource.update_or_create(
-        scene=enums.TokenSceneTypeEnum.web,
+    children = item.pop("children", [])
+    permission_codes = item.pop("permissions", [])
+    resource, _ = await Resource.update_or_create(
+        scene=TokenSceneTypeEnum.web,
         code=code,
         parent_id=parent_id,
-        defaults=menu_item,
+        defaults=item,
     )
-    parent_id_dict[code] = r.id
-    perm_count = len(permissions)
-    if perm_count > 0:
-        for perm in permissions:
-            if not await Permission.filter(code=perm).exists():
-                logger.error(f"请先初始化权限：{perm}")
-                raise Exception(f"请先初始化权限：{perm}")
-        perms = await Permission.filter(code__in=permissions)
-        logger.info(f"Created menu {code} with {perm_count} permissions.")
-        await r.permissions.add(*perms)
 
-    logger.info("-" * 40)
-    if len(children) > 0:
-        for child in children:
-            await create_single_menu_and_perm(
-                menu_item=child,
-                parent_id=r.id,
-                parent_id_dict=parent_id_dict,
-            )
+    if permission_codes:
+        permissions = await Permission.filter(code__in=permission_codes, is_deprecated=False)
+        if len(permissions) != len(set(permission_codes)):
+            missing = set(permission_codes) - {permission.code for permission in permissions}
+            raise RuntimeError(f"请先初始化权限：{sorted(missing)}")
+        await resource.permissions.clear()
+        await resource.permissions.add(*permissions)
+
+    for child in children:
+        await create_single_menu_and_perm(child, parent_id=resource.id)
 
 
 async def create_menu_and_perm() -> None:
-    parent_id_dict = {}
-
+    # An empty seed file must never delete manually maintained resources.
     for menu_item in MenuAndPerm:
-        await create_single_menu_and_perm(
-            menu_item=menu_item,
-            parent_id=None,
-            parent_id_dict=parent_id_dict,
-        )
-    logger.info("Cleaning up extra resources")
-    count = await Resource.exclude(id__in=parent_id_dict.values()).delete()
-    logger.info(f"Deleted {count} extra resources")
-
-
-async def refresh_permissions() -> None:
-    accounts = await Account.filter(deleted_at=0)
-    for acc in accounts:
-        acc: Account
-        logger.info(f"Refreshing permissions for {acc.username}")
-        await acc.update_cache_permissions()
+        await create_single_menu_and_perm(menu_item)
 
 
 async def main(app_path: str) -> None:
@@ -146,18 +109,10 @@ async def main(app_path: str) -> None:
     async with ctx():
         await permission_init(app=app)
         await create_menu_and_perm()
-        await refresh_permissions()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Update menu and permissions for the application",
-    )
-    parser.add_argument(
-        "app_path",
-        type=str,
-        help="Path to the application module (e.g., 'api.entrypoint.main')",
-    )
-
+    parser = argparse.ArgumentParser(description="Sync Knowledge Base API permissions and menu resources")
+    parser.add_argument("app_path", type=str, help="ASGI application import path")
     args = parser.parse_args()
     asyncio.run(main(args.app_path))

@@ -4,7 +4,7 @@ Embedding 类型定义
 定义 extra_config 的基础类型和转换方法
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import Field, BaseModel
 

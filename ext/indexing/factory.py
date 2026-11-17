@@ -1,5 +1,6 @@
 """Indexing Provider 工厂（管理连接池缓存）"""
 
+import asyncio
 from typing import ClassVar
 
 from ext.indexing.base import BaseProvider, BaseIndexModel
@@ -14,7 +15,8 @@ class IndexingProviderFactory:
     """Indexing Provider 工厂"""
 
     _providers: dict[str, type[BaseProvider]] = {}
-    _instances: dict[int, BaseProvider] = {}
+    _instances: dict[tuple[int, str], BaseProvider] = {}
+    _locks: dict[tuple[int, str], asyncio.Lock] = {}
 
     @classmethod
     def register(cls, backend_type: str, provider_class: type[BaseProvider]) -> None:
@@ -24,20 +26,30 @@ class IndexingProviderFactory:
     @classmethod
     async def create(cls, config: IndexingBackendConfig, use_cache: bool = True) -> BaseProvider:
         """创建 provider 实例（带连接池缓存）"""
-        if use_cache and config.id in cls._instances:
-            return cls._instances[config.id]
-
         provider_class = cls._providers.get(config.type)
         if not provider_class:
             raise RuntimeError(f"Provider not found: {config.type}")
 
-        provider = provider_class(config)  # type: ignore
-        await provider.connect()
+        if not use_cache:
+            provider = provider_class(config)
+            await provider.connect()
+            return provider
 
-        if use_cache:
-            cls._instances[config.id] = provider
-
-        return provider
+        config_id = int(config.id) if config.id is not None else id(config)
+        version = str(getattr(config, "updated_at", None) or hash(
+            (config.host, config.port, config.username, config.password, str(config.extra_config))
+        ))
+        key = (config_id, version)
+        lock = cls._locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            cached = cls._instances.get(key)
+            if cached:
+                return cached
+            # Keep older provider instances alive for in-flight requests; all are closed on shutdown.
+            provider = provider_class(config)
+            await provider.connect()
+            cls._instances[key] = provider
+            return provider
 
     @classmethod
     async def get_config(cls, backend_type: str) -> IndexingBackendConfig:
@@ -58,14 +70,19 @@ class IndexingProviderFactory:
     @classmethod
     async def clear_cache(cls) -> None:
         """清空缓存"""
-        for provider in cls._instances.values():
-            await provider.disconnect()
+        providers = list(cls._instances.values())
         cls._instances.clear()
+        cls._locks.clear()
+        IndexModelFactory.clear_cache()
+        for provider in providers:
+            await provider.disconnect()
 
 
 from ext.indexing.providers.milvus import MilvusProvider
 from ext.indexing.providers.elasticsearch import ElasticsearchProvider
+from ext.indexing.providers.postgresql import PostgreSQLProvider
 
+IndexingProviderFactory.register(IndexingBackendTypeEnum.postgresql.value, PostgreSQLProvider)
 IndexingProviderFactory.register(IndexingBackendTypeEnum.elasticsearch.value, ElasticsearchProvider)
 IndexingProviderFactory.register(IndexingBackendTypeEnum.milvus.value, MilvusProvider)
 
@@ -110,6 +127,7 @@ class IndexModelFactory:
         cls,
         base_model: type[BaseIndexModel],
         embedding_config: "EmbeddingModelConfig",
+        provider: BaseProvider | None = None,
     ) -> type[BaseIndexModel]:
         """根据 embedding 配置动态创建 IndexModel 类
 
@@ -133,17 +151,19 @@ class IndexModelFactory:
         if not dimension or dimension <= 0:
             raise ValueError(f"Invalid dimension: {dimension}")
 
-        if not base_model.Meta.provider:
+        selected_provider = provider or base_model.Meta.provider
+        if not selected_provider:
             raise RuntimeError(
-                f"base_model.Meta.provider is not bound. "
-                "Please bind provider in register.py first: "
-                f"{base_model.__name__}.Meta.provider = await IndexingProviderFactory.create(...)",
+                f"{base_model.__name__}.Meta.provider is not bound; "
+                "pass provider= or bind Meta.provider before creating the index model."
             )
 
-        model_key = cls._get_model_key(base_model.__name__, dimension)
+        model_key = cls._get_model_key(base_model.__name__, dimension, selected_provider)
 
         if model_key not in cls._model_registry:
-            cls._model_registry[model_key] = cls._create_dynamic_class(base_model, dimension, model_key)
+            cls._model_registry[model_key] = cls._create_dynamic_class(
+                base_model, dimension, model_key, selected_provider
+            )
 
         _m = cls._model_registry[model_key]
 
@@ -152,7 +172,23 @@ class IndexModelFactory:
         return _m
 
     @classmethod
-    def _get_model_key(cls, base_name: str, dimension: int) -> str:
+    async def create_for_provider(
+        cls,
+        base_model: type[BaseIndexModel],
+        provider: BaseProvider,
+    ) -> type[BaseIndexModel]:
+        """Create a provider-scoped model that does not require a dense vector dimension."""
+        model_key = cls._get_model_key(base_model.__name__, None, provider)
+        if model_key not in cls._model_registry:
+            cls._model_registry[model_key] = cls._create_dynamic_class(
+                base_model, None, model_key, provider
+            )
+        model = cls._model_registry[model_key]
+        await model.create_schema()
+        return model
+
+    @classmethod
+    def _get_model_key(cls, base_name: str, dimension: int | None, provider: BaseProvider | None = None) -> str:
         """生成唯一模型标识
 
         Args:
@@ -162,14 +198,19 @@ class IndexModelFactory:
         Returns:
             唯一标识字符串，如 "ChunkIndex_1536"
         """
-        return f"{base_name}_{dimension}"
+        if provider is None:
+            return f"{base_name}_{dimension}" if dimension is not None else base_name
+        config_id = getattr(provider.config, "id", None)
+        provider_key = f"{type(provider).__name__}_{config_id or 'transient'}_{id(provider)}"
+        return f"{base_name}_{dimension}_{provider_key}"
 
     @classmethod
     def _create_dynamic_class(
         cls,
         base_model: type[BaseIndexModel],
-        dimension: int,
+        dimension: int | None,
         class_name: str,
+        provider: BaseProvider,
     ) -> type[BaseIndexModel]:
         """动态创建 IndexModel 子类
 
@@ -184,13 +225,11 @@ class IndexModelFactory:
             动态创建的 IndexModel 子类
         """
 
-        class DynamicMeta(base_model.Meta):
-            """动态 Meta 类
-
-            继承 base_model.Meta 的所有配置，只覆盖 dense_vector_dimension
-            """
-
-            dense_vector_dimension = dimension
+        DynamicMeta = type(
+            "DynamicMeta",
+            (base_model.Meta,),
+            {"dense_vector_dimension": dimension, "provider": provider},
+        )
 
         namespace = {
             "Meta": DynamicMeta,
@@ -227,20 +266,15 @@ class IndexModelFactory:
         return list(cls._model_registry.keys())
 
     @classmethod
-    def get_model(cls, base_name: str, dimension: int) -> type[BaseIndexModel] | None:
-        """根据基础模型名和维度获取已注册的动态模型
-
-        Args:
-            base_name: 基础模型名称，如 "ChunkIndex"
-            dimension: 向量维度
-
-        Returns:
-            动态模型类，如果不存在返回 None
-
-        Example:
-            >>> model_cls = IndexModelFactory.get_model("ChunkIndex", 1536)
-            >>> if model_cls:
-            ...     print(model_cls.Meta.dense_vector_dimension)
-        """
-        model_key = cls._get_model_key(base_name, dimension)
-        return cls._model_registry.get(model_key)
+    def get_model(
+        cls, base_name: str, dimension: int, provider: BaseProvider | None = None
+    ) -> type[BaseIndexModel] | None:
+        """Return a cached model, optionally scoped to a specific provider."""
+        if provider is not None:
+            return cls._model_registry.get(cls._get_model_key(base_name, dimension, provider))
+        default_key = cls._get_model_key(base_name, dimension)
+        if default_key in cls._model_registry:
+            return cls._model_registry[default_key]
+        prefix = f"{base_name}_{dimension}_"
+        matches = [model for key, model in cls._model_registry.items() if key.startswith(prefix)]
+        return matches[0] if len(matches) == 1 else None

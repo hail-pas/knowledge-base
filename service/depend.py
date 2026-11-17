@@ -1,323 +1,164 @@
-import time
+"""External identity validation and local RBAC authorization.
+
+Pero owns user accounts and access tokens. Knowledge Base stores only role,
+permission and resource definitions plus UUID-to-role assignments.
+"""
+
+from dataclasses import dataclass
+from typing import Annotated, Any
 from uuid import UUID
-from typing import Annotated
 
-from loguru import logger
-from fastapi import Header, Depends, Request, WebSocket
-from cachetools import TTLCache
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.security.utils import get_authorization_scheme_param
+import httpx
+from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.types import ApiException, RequestHeaderKeyEnum
 from config.main import local_configs
-from util.encrypt import HashUtil
-from core.response import ResponseCodeEnum
-from ext.ext_redis import keys
-from ext.ext_tortoise.models.user_center import Account
+from core.types import ApiException
+
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
-class TheBearer(HTTPBearer):
-    async def __call__(
-        self: "TheBearer",
-        request: Request,  # WebSocket
-    ) -> HTTPAuthorizationCredentials:  # _authorization: Annotated[Optional[str], Depends(oauth2_scheme)]
-        authorization: str | None = request.headers.get("Authorization")
-        if not authorization:
-            raise ApiException(
-                code=ResponseCodeEnum.unauthorized,
-                message="授权头部缺失",
-            )
-        scheme, credentials = get_authorization_scheme_param(authorization)
-        if not (authorization and scheme and credentials):
-            raise ApiException(
-                code=ResponseCodeEnum.unauthorized,
-                message="授权头无效",
-            )
-        if scheme != "Bearer" and self.auto_error:
-            raise ApiException(
-                code=ResponseCodeEnum.unauthorized,
-                message="授权头类型错误",
-            )
-        return HTTPAuthorizationCredentials(
-            scheme=scheme,
-            credentials=credentials,
+@dataclass(frozen=True)
+class CurrentUser:
+    """The only identity attribute Knowledge Base needs."""
+
+    id: UUID
+
+
+async def _fetch_userinfo(access_token: str) -> dict[str, Any]:
+    """Validate the access token through Pero's OIDC UserInfo endpoint."""
+
+    config = local_configs.user_center
+    url = f"{str(config.base_url).rstrip('/')}{config.userinfo_path}"
+    try:
+        response = await local_configs.extensions.httpx.instance.get(
+            url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=config.timeout_seconds,
         )
+    except httpx.TimeoutException as exc:
+        raise ApiException("用户中心认证超时，请稍后重试", code=503) from exc
+    except httpx.HTTPError as exc:
+        raise ApiException("用户中心认证服务暂不可用", code=503) from exc
+
+    if response.status_code == 401:
+        raise ApiException("访问令牌无效或已过期", code=401)
+    if response.status_code == 403:
+        raise ApiException("访问令牌缺少 openid scope", code=403)
+    if response.status_code >= 500:
+        raise ApiException("用户中心认证服务暂不可用", code=503)
+    if response.status_code != 200:
+        raise ApiException("用户中心无法验证当前访问令牌", code=401)
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ApiException("用户中心返回了无效的身份信息", code=502) from exc
+    if not isinstance(payload, dict):
+        raise ApiException("用户中心返回了无效的身份信息", code=502)
+    return payload
 
 
-auth_schema = TheBearer()
+async def require_user(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
+) -> CurrentUser:
+    """Resolve the current Pero UUID and attach it to request scope."""
 
-_account_cache = TTLCache(maxsize=256, ttl=60)
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise ApiException("缺少有效的 Bearer Token", code=401)
 
+    claims = await _fetch_userinfo(credentials.credentials)
+    try:
+        user_id = UUID(str(claims.get("sub")))
+    except (TypeError, ValueError) as exc:
+        raise ApiException("用户中心未返回有效的 UUID subject", code=401) from exc
 
-def _apply_authenticated_scope(scope: dict, account: Account, scene: str) -> None:
-    scope["user"] = account
-    scope["scene"] = scene
-    scope["is_staff"] = account.is_staff
-    scope["is_super_admin"] = account.is_super_admin
-
-
-def _build_credentials_from_authorization(authorization: str | None) -> HTTPAuthorizationCredentials:
-    if not authorization:
-        raise ApiException(
-            code=ResponseCodeEnum.unauthorized,
-            message="授权头部缺失",
-        )
-
-    scheme, credentials = get_authorization_scheme_param(authorization)
-    if not (scheme and credentials):
-        raise ApiException(
-            code=ResponseCodeEnum.unauthorized,
-            message="授权头无效",
-        )
-    if scheme != "Bearer":
-        raise ApiException(
-            code=ResponseCodeEnum.unauthorized,
-            message="授权头类型错误",
-        )
-    return HTTPAuthorizationCredentials(scheme=scheme, credentials=credentials)
+    user = CurrentUser(id=user_id)
+    request.scope["user"] = user
+    request.scope["user_id"] = user_id
+    return user
 
 
-async def _get_account_by_id(account_id: int) -> Account:
-    if account_id in _account_cache:
-        return _account_cache[account_id]
-    acc = await Account.get_or_none(id=account_id, deleted_at=0)
-    if not acc:
-        raise ApiException(
-            code=ResponseCodeEnum.unauthorized,
-            message="Invalid Account",
-        )
-    _account_cache[account_id] = acc
-    return acc
+async def _get_user_permission_codes(user_id: UUID) -> set[str]:
+    """Resolve API permission codes through user-role-resource-permission links."""
+
+    from ext.ext_tortoise.models.authorization import Permission, Resource, Role, UserRole
+
+    role_ids = await UserRole.filter(user_id=user_id, deleted_at=0).values_list("role_id", flat=True)
+    if not role_ids:
+        return set()
+
+    roles = await Role.filter(id__in=role_ids, deleted_at=0)
+    active_role_ids = [role.id for role in roles]
+    if not active_role_ids:
+        return set()
+    if any(role.is_super_admin for role in roles):
+        return {"*"}
+
+    resource_ids = await Resource.filter(
+        roles__id__in=active_role_ids,
+        enabled=True,
+        assignable=True,
+    ).values_list("id", flat=True)
+    if not resource_ids:
+        return set()
+
+    codes = await Permission.filter(
+        resources__id__in=resource_ids,
+        is_deprecated=False,
+    ).distinct().values_list("code", flat=True)
+    return set(codes)
 
 
-async def _validate_jwt_token(request: Request, token: HTTPAuthorizationCredentials) -> Account:
-    # async with local_configs.extensions.redis.instance as r:
-    #     token_identifier = await r.get(
-    #         keys.UserCenterKey.Token2AccountKey.format(  # type: ignore
-    #             token=token.credentials,
-    #         ),
-    #     )
+async def is_super_admin_user(user_id: UUID) -> bool:
+    """Check the local super-admin role flag for a verified Pero UUID."""
 
-    # if not token_identifier:
-    #     logger.warning("token缓存失效")
-    #     raise ApiException(
-    #         code=ResponseCodeEnum.unauthorized.value,
-    #         message="登录失效或已在其他地方登录",
-    #     )
+    from ext.ext_tortoise.models.authorization import Role, UserRole
 
-    # account_id, scene = token_identifier.split(":")
-
-    account_id = 1
-    scene = "Web"
-
-    # if request.headers.get(RequestHeaderKeyEnum.front_scene.value) and scene != request.headers.get(
-    #     RequestHeaderKeyEnum.front_scene.value,
-    # ):
-    #     logger.warning("token场景不匹配")
-    #     raise ApiException(
-    #         code=ResponseCodeEnum.unauthorized.value,
-    #         message="token异常使用",
-    #     )
-
-    account = await _get_account_by_id(account_id)
-
-    if not account:
-        logger.warning("token账户不存在")
-        raise ApiException(
-            code=ResponseCodeEnum.unauthorized.value,
-            message="授权头无效",
-        )
-
-    # set scope
-    _apply_authenticated_scope(request.scope, account, scene)
-    return account
+    role_ids = await UserRole.filter(user_id=user_id, deleted_at=0).values_list("role_id", flat=True)
+    if not role_ids:
+        return False
+    return await Role.filter(id__in=role_ids, deleted_at=0, is_super_admin=True).exists()
 
 
-class TokenRequired:
-    async def __call__(
-        self,
-        request: Request,  # WebSocket
-        token: Annotated[HTTPAuthorizationCredentials, Depends(auth_schema)],
-    ) -> Account:
-        return await _validate_jwt_token(
-            request,
-            token,
-        )
+async def ensure_super_admin(user_id: UUID) -> None:
+    """Require the root RBAC role for authorization-model mutations."""
+    if not await is_super_admin_user(user_id):
+        raise ApiException("只有系统超级管理员可以管理 RBAC 配置", code=403)
 
 
-token_required = TokenRequired()
+def required_permission_code(request: Request) -> str:
+    """Build the permission code from the mounted application's local route path.
+
+    Permission synchronization walks each mounted application independently,
+    so runtime checks must use the same route path without the ASGI root_path.
+    """
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", request.url.path)
+    method = "GET" if request.method == "HEAD" else request.method
+    return f"{request.app.code}:{method}:{route_path}"
 
 
 class ApiPermissionCheck:
-    def __init__(
-        self,
-    ) -> None:
-        pass
+    """Require a valid Pero identity and a matching locally assigned permission."""
 
     async def __call__(
         self,
         request: Request,
-        token: Annotated[HTTPAuthorizationCredentials, Depends(auth_schema)],
-    ) -> Account:
-        account: Account | None = request.scope.get("user")  # type: ignore
-        if not account:
-            account = await token_required(request, token)
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
+    ) -> CurrentUser:
+        user = request.scope.get("user")
+        if not isinstance(user, CurrentUser):
+            user = await require_user(request, credentials)
 
-        if account.is_super_admin:
-            return account
+        required_code = required_permission_code(request)
 
-        method = request.method
-        root_path: str = request.scope["root_path"]
-        path: str = request.scope["route"].path
+        permissions = await _get_user_permission_codes(user.id)
+        if "*" in permissions or f"{request.app.code}:*" in permissions or required_code in permissions:
+            return user
 
-        if await account.has_permission(
-            [
-                "*",
-                f"{request.app.code}:*",
-                f"{request.app.code}:{method}:{root_path}{path}",
-            ],
-        ):
-            return account
-
-        raise ApiException(
-            code=ResponseCodeEnum.forbidden.value,
-            message=ResponseCodeEnum.forbidden.label,
-        )
+        raise ApiException("当前用户没有访问该接口的权限", code=403)
 
 
 api_permission_check = ApiPermissionCheck()
-
-
-async def authenticate_websocket(websocket: WebSocket) -> Account:
-    authorization = websocket.headers.get("Authorization")
-    if not authorization:
-        token = websocket.query_params.get("token", "").strip()
-        if token:
-            authorization = token if token.startswith("Bearer ") else f"Bearer {token}"
-
-    credentials = _build_credentials_from_authorization(authorization)
-    return await _validate_jwt_token(websocket, credentials)  # type: ignore[arg-type]
-
-
-class SuperAdminRequired:
-    def __init__(
-        self,
-    ) -> None:
-        pass
-
-    async def __call__(
-        self,
-        request: Request,
-        token: Annotated[HTTPAuthorizationCredentials, Depends(auth_schema)],
-    ) -> Account:
-        account: Account | None = request.scope.get("user")  # type: ignore
-        if not account:
-            account = await token_required(request, token)
-
-        if not account.is_super_admin:
-            raise ApiException(
-                code=ResponseCodeEnum.forbidden.value,
-                message=ResponseCodeEnum.forbidden.label,
-            )
-        return account
-
-
-super_admin_required = SuperAdminRequired()
-
-
-class StaffAdminRequired:
-    def __init__(
-        self,
-    ) -> None:
-        pass
-
-    async def __call__(
-        self,
-        request: Request,
-        token: Annotated[HTTPAuthorizationCredentials, Depends(auth_schema)],
-    ):
-        account: Account | None = request.scope.get("user")  # type: ignore
-        if not account:
-            account = await token_required(request, token)
-
-        if not account.is_staff:
-            raise ApiException(
-                code=ResponseCodeEnum.forbidden.value,
-                message=ResponseCodeEnum.forbidden.label,
-            )
-        return account
-
-
-staff_admin_required = StaffAdminRequired()
-
-
-class ApiKeyPermissionCheck:
-    """外部api key权限校验"""
-
-    async def __call__(
-        self,
-        request: Request,
-        x_api_key: str = Header(
-            description="ApiKey",
-        ),
-        x_timestamp: int = Header(
-            description="请求时间戳, 秒级时间戳, 允许误差+30s",
-        ),
-        x_sign: str = Header(
-            description='签名, 生成: hmac_sha256(secret_key, "api_key&timestamp")',
-        ),
-    ) -> bool:
-        if abs(int(time.time()) - int(x_timestamp)) > 30:
-            raise ApiException(
-                message="请求时间戳过期",
-                code=ResponseCodeEnum.unauthorized.value,
-            )
-
-        redis_api_secret_key = keys.RedisCacheKey.ApiSecretKey.format(  # type: ignore
-            api_key=x_api_key,
-        )
-        redis_perm_key = keys.RedisCacheKey.ApiKeyPermissionSet.format(  # type: ignore
-            api_key=x_api_key,
-        )
-
-        async with local_configs.extensions.redis.instance as r, r.pipeline() as pipe:
-            pipe.get(redis_api_secret_key)
-            pipe.smismember(
-                name=redis_perm_key,
-                values=[
-                    f"{request.app.code}:*",
-                    f'{request.app.code}:{request.method}:{request.scope["root_path"]}{request.scope["route"].path}',
-                ],
-            )
-            secret_key, is_ok = await pipe.execute()
-        if not secret_key:
-            raise ApiException(
-                message="无效的ApiKey",
-                code=ResponseCodeEnum.unauthorized.value,
-            )
-
-        result_sign = HashUtil.hmac_sha256_encode(
-            k=secret_key,
-            s=f"{x_api_key}&{x_timestamp}",
-        )
-        if result_sign != x_sign:
-            raise ApiException(
-                message="签名错误",
-                code=ResponseCodeEnum.unauthorized.value,
-            )
-
-        # 如果请求的接口，不在权限集合里
-        if not any(is_ok):
-            raise ApiException(
-                message="禁止访问",
-                code=ResponseCodeEnum.forbidden.value,
-            )
-        request.scope["scene"] = "ApiCall"
-        request.scope["is_staff"] = False
-        request.scope["is_super_admin"] = False
-        request.scope["is_trial"] = False
-
-        return True
-
-
-external_api_key_permission_check = ApiKeyPermissionCheck()

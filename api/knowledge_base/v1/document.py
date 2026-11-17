@@ -2,16 +2,17 @@ import mimetypes
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import Body, File, Form, Depends, Request, APIRouter, UploadFile
+from fastapi import File, Form, Depends, Request, APIRouter, UploadFile
 from pydantic import BaseModel
+from loguru import logger
 from fastapi.responses import StreamingResponse
 from tortoise.queryset import QuerySet
-from tortoise.transactions import in_transaction
+from tortoise.expressions import Q
 
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import api_permission_check
+from service.depend import CurrentUser, api_permission_check
 from ext.file_source import FileSourceFactory
 from ext.ext_tortoise.curd import (
     DeleteResp,
@@ -21,9 +22,10 @@ from ext.ext_tortoise.curd import (
     detail_view,
     pagination_factory,
 )
-from ext.ext_tortoise.main import ConnectionNameEnum
-from ext.ext_tortoise.enums import ActivityStatusEnum, DocumentStatusEnum
-from service.document.helper import DocumentService
+from ext.ext_tortoise.enums import DocumentStatusEnum
+from service.document.service import DocumentService
+from service.document.indexing import DocumentIndexer
+from service.file_source.security import validate_public_source_uri
 from service.document.schema import (
     DocumentList,
     DocumentDetail,
@@ -36,13 +38,9 @@ from service.document.schema import (
     DocumentGeneratedFaqCreate,
     DocumentGeneratedFaqUpdate,
 )
-from service.collection.helper import WorkflowTemplateValidator
-from service.workflow.document import process_document
-from ext.ext_tortoise.models.user_center import Account
+from ext.workflow.validator import WorkflowTemplateValidator
 from ext.ext_tortoise.models.knowledge_base import (
-    Activity,
     Document,
-    Workflow,
     Collection,
     FileSource,
     DocumentChunk,
@@ -52,8 +50,10 @@ from ext.ext_tortoise.models.knowledge_base import (
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
 
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024
 
-def get_document_queryset(request: Request, user: Account) -> QuerySet[Document]:
+
+def get_document_queryset(request: Request, user: CurrentUser) -> QuerySet[Document]:
     """
     Permission-based queryset:
     - Staff: see all
@@ -61,18 +61,20 @@ def get_document_queryset(request: Request, user: Account) -> QuerySet[Document]
     """
     queryset = Document.filter(deleted_at=0)
 
-    if not user.is_staff:
-        queryset = queryset.filter(collection__user_id=user.id)
+    queryset = queryset.filter(collection__user_id=user.id)
 
     return queryset
 
 
 async def get_document_or_raise(request: Request, pk: int) -> Document:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
-    obj = await queryset.prefetch_related("file_source").get_or_none(pk=pk)
+    obj = await queryset.prefetch_related("file_source", "collection").get_or_none(pk=pk)
     if not obj:
         raise ApiException("Document不存在")
+    validate_public_source_uri(obj.file_source, obj.collection, obj.uri)
+    if obj.parsed_uri:
+        validate_public_source_uri(obj.file_source, obj.collection, obj.parsed_uri)
     return obj
 
 
@@ -95,9 +97,9 @@ async def create_document(
     - file 和 uri 二选一
     - display_name 未指定则使用原始文件名
     - HTTP URI 跳过 metadata 获取
-    - 创建后状态为 pending，不自动触发 workflow
+    - 创建后自动启动文档处理 workflow
     """
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
 
     # 1. 验证 collection
     collection = await Collection.get_or_none(id=collection_id, deleted_at=0).prefetch_related(
@@ -107,11 +109,16 @@ async def create_document(
         raise ApiException("Collection不存在")
 
     # 权限检查
-    if not user.is_staff and collection.user_id != user.id:
+    if collection.user_id != user.id:
         raise ApiException("无权访问该Collection")
 
     # 2. 验证 file_source
-    file_source = await FileSource.get_or_none(id=file_source_id, is_enabled=True, deleted_at=0)
+    file_source = await FileSource.filter(
+        Q(user_id=None) | Q(user_id=user.id),
+        id=file_source_id,
+        is_enabled=True,
+        deleted_at=0,
+    ).get_or_none()
     if not file_source:
         raise ApiException("文件源不存在或未启用")
 
@@ -127,8 +134,10 @@ async def create_document(
 
     if file is not None:
         # 文件上传方式
-        file_content = await file.read()
-        file_name = file.filename
+        file_content = await file.read(MAX_UPLOAD_SIZE + 1)
+        if len(file_content) > MAX_UPLOAD_SIZE:
+            raise ApiException("上传文件不能超过 100 MiB", code=413)
+        file_name = file.filename or ""
 
         document = await service.create_from_upload(
             file_content=file_content,
@@ -146,15 +155,7 @@ async def create_document(
             config_flag=config_flag,
         )
 
-    workflow_id = await process_document(
-        workflow_uid=None,
-        document_id=document.id,
-        workflow_template=document.workflow_template,
-        execute_mode="direct",
-    )
-
-    document.current_workflow_uid = workflow_id  # type: ignore
-    await document.save(update_fields=["current_workflow_uid"])
+    await service.start_processing(document)
 
     return Resp(data=DocumentList.model_validate(document))
 
@@ -165,7 +166,7 @@ async def delete_document(request: Request, pk: int) -> Resp[DeleteResp]:
     删除文档
     仅允许删除状态为 success/failed 的文档
     """
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
 
     obj = await queryset.prefetch_related("collection__embedding_model_config").get_or_none(pk=pk)
@@ -190,7 +191,7 @@ async def update_document(
     pk: int,
     schema: DocumentUpdate,
 ) -> Resp:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
 
     obj = await queryset.get_or_none(pk=pk)
@@ -224,7 +225,7 @@ async def list_documents(
         max_limit=100,
     ),
 ) -> Resp[PageData[DocumentList]]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
 
     # 应用过滤
@@ -244,88 +245,30 @@ async def list_documents(
 
 @router.get("/{pk}", summary="Document详情")
 async def get_document_detail(request: Request, pk: int) -> Resp[DocumentDetail]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_document_queryset(request, user)
     return await detail_view(queryset, pk, DocumentDetail)
 
 
 @router.post("/{pk}/re-process", summary="Document 重新处理")
 async def re_process_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
-    user: Account = request.scope["user"]
-    queryset = get_document_queryset(request, user)
-    async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
-        obj = await queryset.filter(pk=pk).select_for_update().first()
-        if not obj:
-            raise ApiException("Document不存在")
-
-        if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
-            raise ApiException("当前状态不支持重新处理")
-
-        obj.status = DocumentStatusEnum.pending
-        await obj.save(using_db=conn, update_fields=["status"])
-
-        if obj.current_workflow_uid:
-            await Activity.filter(workflow_uid=obj.current_workflow_uid).delete()
-            await Workflow.filter(uid=obj.current_workflow_uid).delete()
-
-    workflow_id = await process_document(
-        workflow_uid=None,
-        document_id=obj.id,
-        workflow_template=obj.workflow_template,
-        execute_mode="direct",
-    )
-
-    obj.current_workflow_uid = workflow_id  # type: ignore
-    await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
-
+    user: CurrentUser = request.scope["user"]
+    document = await get_document_queryset(request, user).get_or_none(pk=pk)
+    if not document:
+        raise ApiException("Document不存在")
+    collection = await document.collection
+    workflow_id = await DocumentService(collection).reprocess(document)
     return Resp(data={"workflow_id": workflow_id})
 
 
 @router.post("/{pk}/re-chunk", summary="Document 重新切块")
 async def re_chunk_document(request: Request, pk: int) -> Resp[dict[Literal["workflow_id"], str]]:
-    user: Account = request.scope["user"]
-    queryset = get_document_queryset(request, user)
-    async with in_transaction(connection_name=ConnectionNameEnum.knowledge_base.value) as conn:
-        obj = await queryset.filter(id=pk).select_for_update().first()
-        if not obj:
-            raise ApiException("Document不存在")
-
-        if obj.status not in [DocumentStatusEnum.success.value, DocumentStatusEnum.failure.value]:
-            raise ApiException("当前状态不支持")
-
-        workflow_uid = str(obj.current_workflow_uid) if obj.current_workflow_uid else None
-
-        if workflow_uid:
-            chunk_activity_uids = []
-            activities = await Activity.filter(workflow_uid=workflow_uid)
-            for activity in activities:
-                task_name = (activity.execute_params or {}).get("task_name")
-                if task_name == "workflow_document.DocumentChunkTask":
-                    chunk_activity_uids.append(activity.uid)
-
-            if chunk_activity_uids:
-                await Activity.filter(uid__in=chunk_activity_uids).update(
-                    status=ActivityStatusEnum.pending.value,
-                    started_at=None,
-                    completed_at=None,
-                    error_message=None,
-                    stack_trace=None,
-                    canceled_at=None,
-                )
-
-        obj.status = DocumentStatusEnum.pending
-        await obj.save(using_db=conn, update_fields=["status"])
-
-    workflow_id = await process_document(
-        workflow_uid=str(obj.current_workflow_uid),
-        document_id=obj.id,
-        workflow_template=obj.workflow_template,
-        execute_mode="direct",
-    )
-    if not obj.current_workflow_uid or str(obj.current_workflow_uid) != workflow_id:
-        obj.current_workflow_uid = workflow_id  # type: ignore
-        await obj.save(using_db=conn, update_fields=["current_workflow_uid"])
-
+    user: CurrentUser = request.scope["user"]
+    document = await get_document_queryset(request, user).get_or_none(pk=pk)
+    if not document:
+        raise ApiException("Document不存在")
+    collection = await document.collection
+    workflow_id = await DocumentService(collection).rechunk(document)
     return Resp(data={"workflow_id": workflow_id})
 
 
@@ -391,6 +334,10 @@ async def list_document_chunks(
 async def create_document_chunk(request: Request, pk: int, schema: DocumentChunkCreate) -> Resp[DocumentChunkList]:
     document = await get_document_or_raise(request, pk)
 
+    if DocumentStatusEnum(document.status) not in {DocumentStatusEnum.success, DocumentStatusEnum.failure}:
+        raise ApiException("仅允许对已完成或失败的文档进行手动切块操作", code=409)
+
+    await document.collection.fetch_related("embedding_model_config", "indexing_backend_config")
     min_page = min(schema.pages)
     max_page = max(schema.pages)
     obj = await create_obj(
@@ -409,21 +356,101 @@ async def create_document_chunk(request: Request, pk: int, schema: DocumentChunk
             "manual_add": schema.manual_add,
         },
     )
+    try:
+        await DocumentIndexer(document.collection).index_chunks(document, [obj])
+    except Exception:
+        await obj.delete()
+        raise
 
     return Resp(data=DocumentChunkList.model_validate(obj))
 
 
 @router.put("/{pk}/chunks/{chunk_id}", summary="修改DocumentChunk")
-async def update_document_chunk(request: Request, pk: int, chunk_id: int, schema: DocumentChunkUpdate) -> Resp:
-    await get_document_or_raise(request, pk)
-    _ = (chunk_id, schema)
-    # Placeholder endpoint: current implementation intentionally performs no update yet.
-    return Resp()
+async def update_document_chunk(
+    request: Request,
+    pk: int,
+    chunk_id: int,
+    schema: DocumentChunkUpdate,
+) -> Resp[DocumentChunkList]:
+    document = await get_document_or_raise(request, pk)
+    if DocumentStatusEnum(document.status) not in {DocumentStatusEnum.success, DocumentStatusEnum.failure}:
+        raise ApiException("仅允许对已完成或失败的文档进行手动切块操作", code=409)
+
+    chunk = await DocumentChunk.filter(
+        id=chunk_id,
+        document_id=document.id,
+        deleted_at=0,
+    ).get_or_none()
+    if chunk is None:
+        raise ApiException("DocumentChunk不存在", code=404)
+
+    await document.collection.fetch_related("embedding_model_config", "indexing_backend_config")
+    old_values = {
+        "content": chunk.content,
+        "pages": chunk.pages,
+        "min_page": chunk.min_page,
+        "max_page": chunk.max_page,
+        "start": chunk.start,
+        "end": chunk.end,
+        "overlap_start": chunk.overlap_start,
+        "overlap_end": chunk.overlap_end,
+        "metadata": chunk.metadata,
+        "manual_add": chunk.manual_add,
+    }
+    updates = schema.model_dump(exclude_unset=True)
+    if not updates:
+        return Resp(data=DocumentChunkList.model_validate(chunk))
+
+    new_values = {**old_values, **updates}
+    if "pages" in updates:
+        if not updates["pages"]:
+            raise ApiException("pages 不能为空", code=422)
+        new_values["min_page"] = min(new_values["pages"])
+        new_values["max_page"] = max(new_values["pages"])
+
+    indexer = DocumentIndexer(document.collection)
+    await indexer.delete_chunks(document.id, [chunk.id])
+    try:
+        for field, value in new_values.items():
+            setattr(chunk, field, value)
+        await chunk.save()
+        await indexer.index_chunks(document, [chunk])
+    except Exception:
+        for field, value in old_values.items():
+            setattr(chunk, field, value)
+        await chunk.save()
+        try:
+            await indexer.delete_chunks(document.id, [chunk.id])
+            await indexer.index_chunks(document, [chunk])
+        except Exception:
+            logger.exception("Failed to restore chunk index after update rollback: document={}, chunk={}",
+                             document.id, chunk.id)
+        raise
+
+    return Resp(data=DocumentChunkList.model_validate(chunk))
 
 
 @router.delete("/{pk}/chunks/{chunk_id}", summary="删除DocumentChunk")
 async def delete_document_chunk(request: Request, pk: int, chunk_id: int) -> Resp[DeleteResp]:
-    deleted = await DocumentChunk.filter(id=chunk_id, document_id=pk, deleted_at=0).delete()
+    document = await get_document_or_raise(request, pk)
+    if DocumentStatusEnum(document.status) not in {DocumentStatusEnum.success, DocumentStatusEnum.failure}:
+        raise ApiException("仅允许对已完成或失败的文档进行手动切块操作", code=409)
+
+    chunk = await DocumentChunk.filter(
+        id=chunk_id,
+        document_id=document.id,
+        deleted_at=0,
+    ).get_or_none()
+    if chunk is None:
+        return Resp(data=DeleteResp(deleted=0))
+
+    await document.collection.fetch_related("embedding_model_config", "indexing_backend_config")
+    await DocumentIndexer(document.collection).delete_chunks(document.id, [chunk.id])
+    deleted = await DocumentChunk.filter(
+        id=chunk.id,
+        document_id=document.id,
+        deleted_at=0,
+    ).delete()
     return Resp(data=DeleteResp(deleted=deleted))
 
 
@@ -479,5 +506,6 @@ async def update_document_generated_faq(
 
 @router.delete("/{pk}/faqs/{faq_id}", summary="删除DocumentGeneratedFaq")
 async def delete_document_generated_faq(request: Request, pk: int, faq_id: int) -> Resp[DeleteResp]:
+    await get_document_or_raise(request, pk)
     deleted = await DocumentGeneratedFaq.filter(id=faq_id, document_id=pk, deleted_at=0).delete()
     return Resp(data=DeleteResp(deleted=deleted))

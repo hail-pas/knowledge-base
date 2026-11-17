@@ -2,6 +2,7 @@
 AWS S3 Provider (async with aiobotocore)
 """
 
+import inspect
 from typing import Any
 from collections.abc import AsyncIterator
 
@@ -20,6 +21,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
         self._session = None
+        self._client_context = None
         self._client = None
 
     @property
@@ -50,7 +52,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             session = AioSession()  # type: ignore[name-defined]
             self._session = session
 
-            client_creator = session.create_client(  # type: ignore[misc]
+            self._client_context = session.create_client(
                 "s3",
                 region_name=self.region or "us-east-1",
                 aws_secret_access_key=self.secret_key,
@@ -61,7 +63,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
                 use_ssl=self.use_ssl,
                 verify=self.verify_ssl,
             )
-            self._client = await client_creator.__aenter__()
+            self._client = await self._client_context.__aenter__()
         return self._client
 
     def _validate_config(self) -> None:
@@ -129,22 +131,24 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
 
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
-        key = self._extract_key(uri)
-        client = await self.client
-        response = await client.get_object(Bucket=self.storage_location, Key=key)
-        return await response["Body"].read()  # type: ignore[no-any-return]
+        return b"".join([chunk async for chunk in self.get_file_stream(uri)])
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
         client = await self.client
         response = await client.get_object(Bucket=self.storage_location, Key=key)
-
-        while True:
-            chunk = await response["Body"].read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+        body = response["Body"]
+        try:
+            while True:
+                chunk = await body.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            result = body.close()
+            if inspect.isawaitable(result):
+                await result
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""
@@ -167,7 +171,7 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             await self.get_file_metadata(uri)
             return True
         except ClientError as e:
-            if e.response["Error"]["Code"] == "404":
+            if e.response["Error"]["Code"] in {"404", "NoSuchKey"}:
                 return False
             raise
 
@@ -188,23 +192,31 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
             mpu = await client.create_multipart_upload(Bucket=self.storage_location, Key=key, **extra_args)
             parts = []
 
-            for part_num, start in enumerate(range(0, len(content), chunk_size), 1):
-                end = min(start + chunk_size, len(content))
-                part = await client.upload_part(
+            upload_id = mpu["UploadId"]
+            try:
+                for part_num, start in enumerate(range(0, len(content), chunk_size), 1):
+                    end = min(start + chunk_size, len(content))
+                    part = await client.upload_part(
+                        Bucket=self.storage_location,
+                        Key=key,
+                        PartNumber=part_num,
+                        UploadId=upload_id,
+                        Body=content[start:end],
+                    )
+                    parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
+
+                await client.complete_multipart_upload(
                     Bucket=self.storage_location,
                     Key=key,
-                    PartNumber=part_num,
-                    UploadId=mpu["UploadId"],
-                    Body=content[start:end],
+                    UploadId=upload_id,
+                    MultipartUpload={"Parts": parts},
                 )
-                parts.append({"PartNumber": part_num, "ETag": part["ETag"]})
-
-            await client.complete_multipart_upload(
-                Bucket=self.storage_location,
-                Key=key,
-                UploadId=mpu["UploadId"],
-                MultipartUpload={"Parts": parts},
-            )
+            except BaseException:
+                try:
+                    await client.abort_multipart_upload(Bucket=self.storage_location, Key=key, UploadId=upload_id)
+                except Exception:
+                    logger.exception("Failed to abort multipart upload for %s", key)
+                raise
         else:
             await client.put_object(Bucket=self.storage_location, Key=key, Body=content, **extra_args)
 
@@ -212,23 +224,25 @@ class S3FileSourceProvider(BaseFileSourceProvider[S3ExtraConfig]):
 
     async def delete_file(self, uri: str) -> bool:
         """删除文件"""
+        key = self._extract_key(uri)
+        client = await self.client
         try:
-            key = self._extract_key(uri)
-            client = await self.client
-            await client.delete_object(Bucket=self.storage_location, Key=key)
-            return True
-        except Exception:
-            return False
+            await client.head_object(Bucket=self.storage_location, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise
+        await client.delete_object(Bucket=self.storage_location, Key=key)
+        return True
 
     async def close(self) -> None:
         """关闭连接"""
-        if self._client:
-            await self._client.__aexit__(None, None, None)
-            self._client = None
-            self._session = None
+        if self._client_context:
+            await self._client_context.__aexit__(None, None, None)
+        self._client_context = None
+        self._client = None
+        self._session = None
 
     def _extract_key(self, uri: str) -> str:
         """从 URI 提取 object key"""
-        if uri.startswith(f"s3://{self.storage_location}/"):
-            return uri[len(f"s3://{self.storage_location}/") :]
-        return uri
+        return parse_object_key(uri, scheme="s3", bucket=self.storage_location)

@@ -99,7 +99,7 @@ async def test_document_parser_routes_urls_to_url_engine(monkeypatch: pytest.Mon
 
     monkeypatch.setattr("ext.document_parser.core.parser.get_engine", lambda name: FakeURLEngine() if name == "url" else None)
 
-    result = await parser.parse("https://example.test/data", options={"x": 1})
+    result = await parser.parse("https://example.test/data", engine="markitdown", options={"x": 1})
 
     assert result.engine_used == "url"
     assert result.content == "url content"

@@ -151,6 +151,7 @@ def test_create_external_collection(client):
     data = response.json()
     assert data["code"] == 0
     assert data["data"]["is_external"] is True
+    assert "authorization" not in data["data"].get("external_config", {})
     STATE["external_collection_id"] = data.get("data", {}).get("id")
 
 
@@ -199,6 +200,13 @@ def test_get_collection_detail(client):
     assert data["data"]["id"] == collection_id
     assert data["data"]["name"] == "test-collection"
     assert "embedding_model_config" in data["data"]
+
+    external_collection_id = STATE["external_collection_id"]
+    if external_collection_id:
+        external_response = client.get(f"/v1/collection/{external_collection_id}")
+        assert external_response.status_code == 200
+        external_data = external_response.json()
+        assert "authorization" not in external_data["data"].get("external_config", {})
 
 
 def test_update_collection_basic(client):
@@ -438,13 +446,13 @@ def test_create_collection_minimal(client):
     assert data["data"]["name"] == "minimal-collection"
 
 
-def test_create_public_collection_with_empty_user_id(client):
-    """测试创建公开 Collection 且 user_id 为空"""
+def test_create_public_collection_owned_by_authenticated_user(client):
+    """测试公开 Collection 仍由当前 Pero 用户作为所有者"""
     response = client.post(
         "/v1/collection",
         json={
             "name": "public-collection-no-user",
-            "description": "公共知识库，无特定用户",
+            "description": "公共知识库，创建者身份由 Pero 用户中心确定",
             "is_public": True,
             "is_external": False,
             "embedding_model_config_id": STATE["embedding_model_id"],
@@ -461,3 +469,16 @@ def test_create_public_collection_with_empty_user_id(client):
     data = response.json()
     assert data["code"] == 0
     assert data["data"]["is_public"] is True
+
+
+@pytest.mark.asyncio
+async def test_external_collection_authorization_is_encrypted_at_rest():
+    from ext.ext_tortoise.models.knowledge_base import Collection
+
+    collection_id = STATE["external_collection_id"]
+    if not collection_id:
+        pytest.skip("未创建外部 Collection")
+
+    collection = await Collection.get(id=collection_id)
+    authorization = collection.external_config["authorization"]
+    assert authorization.startswith("enc:v1:")

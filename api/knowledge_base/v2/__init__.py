@@ -1,5 +1,6 @@
-from fastapi import Depends, APIRouter
+from fastapi import APIRouter, Depends
 
-# from api.depend import api_permission_check
+from service.depend import api_permission_check
 
-router = APIRouter(prefix="/v2")  # dependencies=[Depends(api_permission_check)])
+# All v2 endpoints require a verified Pero identity and local RBAC permission.
+router = APIRouter(prefix="/v2", dependencies=[Depends(api_permission_check)])

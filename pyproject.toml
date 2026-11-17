@@ -1,28 +1,25 @@
 [project]
-name = "fastapi-starter"
-description = "FastApi Start Kit"
+name = "knowledge-base-service"
+description = "Knowledge Base lifecycle management and RAG service"
 authors = [
     { name = "phoenix", email = "hypofiasco@gmail.co" },
 ]
 requires-python = ">=3.13.0"
 version = "0.1.0"
 dependencies = [
-    "fastapi==0.135.1",
-    "python-multipart==0.0.22",
-    "starlette-context==0.5.1",
-    "pydantic-settings==2.13.1",
-    "orjson==3.11.7",
-    "pycryptodomex==3.23.0",
-    "passlib==1.7.4",
-    "bcrypt==3.2.2", # pin
-    "gunicorn==25.1.0",
-    "uvicorn[standard]==0.41.0",
-    "uvloop==0.22.1; sys_platform == 'linux'",  # uvicorn
-    "httptools==0.7.1",    # uvicorn
+    "fastapi>=0.135.1,<1.0",
+    "python-multipart>=0.0.22,<1",
+    "starlette>=1.10.0,<2",
+    "starlette-context>=0.5.1,<1",
+    "pydantic-settings>=2.13.1,<3",
+    "orjson>=3.11.7,<4",
+    "pycryptodomex>=3.23.0,<4",
+    "gunicorn>=25.1.0,<26",
+    "uvicorn[standard]>=0.41.0,<1",
+    "uvloop>=0.22.1,<1; sys_platform == 'linux'",  # uvicorn
+    "httptools>=0.7.1,<1",    # uvicorn
     # >>>>>>>
-    "python-jose[cryptography]==3.5.0",
-    "cachetools==7.0.4",
-    "captcha==0.7.1",
+    "cachetools>=7.0.4,<8",
     # ext workspace members
     "document-parser[all]",
     "embedding",
@@ -36,7 +33,7 @@ dependencies = [
     "workflow",
 
     # llm
-    "pydantic-ai-slim[openai,anthropic]==1.68.0",
+    "pydantic-ai-slim[openai,anthropic]>=1.68.0,<2",
 ]
 
 
@@ -52,7 +49,6 @@ members = [
     "ext/indexing",
     "ext/text_chunker",
     "ext/workflow",
-    "agents/chat",
 ]
 
 [tool.uv.sources]
@@ -73,9 +69,9 @@ ipython = [
     "ipython==8.15.0",
 ]
 langchain = [
-    "langchain-core>=1.2.19",
-    "langchain-openai>=1.1.11",
-    "langchain-anthropic>=1.3.5",
+    "langchain-core>=1.2.19,<2",
+    "langchain-openai>=1.1.11,<2",
+    "langchain-anthropic>=1.3.5,<2",
 ]
 
 [dependency-groups]
@@ -273,8 +269,3 @@ disable_error_code = [
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
-
-[tool.aerich]
-tortoise_orm = "ext.ext_tortoise.migrate.env.TORTOISE_ORM_CONFIG"
-location = "ext/ext_tortoise/migrate"
-src_folder = "./."

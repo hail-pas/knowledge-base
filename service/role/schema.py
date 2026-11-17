@@ -1,8 +1,7 @@
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field
 from tortoise.contrib.pydantic import pydantic_model_creator
 
-from enhance.epydantic import as_query, optional
-from ext.ext_tortoise.models.user_center import Role
+from ext.ext_tortoise.models.authorization import Role
 
 
 class OverridePydanticMeta:
@@ -10,46 +9,39 @@ class OverridePydanticMeta:
 
 
 class RoleList(
-    pydantic_model_creator(  # type: ignore
+    pydantic_model_creator(
         Role,
         name="RoleList",
-        exclude=("resources",),
+        exclude=("resources", "user_assignments"),
         meta_override=OverridePydanticMeta,
     ),
 ): ...
 
 
 class RoleDetail(
-    pydantic_model_creator(Role, name="RoleDetail", meta_override=OverridePydanticMeta),  # type: ignore
-):
-    resources: list = Field([], description="系统资源")
-
-
-class RoleCreate(
-    pydantic_model_creator(  # type: ignore
+    pydantic_model_creator(
         Role,
-        name="RoleCreate",
-        include=("label", "remark"),
-        # exclude_readonly=True,
+        name="RoleDetail",
+        exclude=("user_assignments",),
+        meta_override=OverridePydanticMeta,
     ),
 ):
-    resources: list[int] = Field(..., description="系统资源")
+    resources: list = Field(default_factory=list, description="关联资源树")
 
 
-@optional()
-class RoleUpdate(
-    pydantic_model_creator(  # type: ignore
-        Role,
-        name="RoleUpdate",
-        include=("label", "remark"),
-        # exclude_readonly=True,
-    ),
-):
-    resources: list[int] = Field([], description="系统资源")
+class RoleCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=50, description="角色名称")
+    remark: str | None = Field(default=None, max_length=200, description="备注")
+    is_super_admin: bool = Field(default=False, description="是否为系统超级管理员")
+    resources: list[int] = Field(default_factory=list, description="资源ID列表")
 
 
-@as_query
+class RoleUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=50)
+    remark: str | None = Field(default=None, max_length=200)
+    is_super_admin: bool | None = None
+    resources: list[int] | None = None
+
+
 class RoleFilterSchema(BaseModel):
-    label: str = Field(None, description="名称")  # type: ignore
-    accounts__phone: str = Field(None, max_length=11, description="电话")  # type: ignore
-    accounts__username: str = Field(None, max_length=20, description="账号")  # type: ignore
+    label: str | None = Field(default=None, description="角色名称")

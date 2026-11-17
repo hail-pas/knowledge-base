@@ -393,6 +393,73 @@ class WorkflowManager:
 
             logger.warning(f"Workflow {workflow_uid} failed: {reason}")
 
+
+    @staticmethod
+    async def delete_workflow(workflow_uid: uuid.UUID, using_db: Any | None = None) -> None:
+        """Delete a workflow and its activities as one lifecycle operation."""
+        activities = Activity.filter(workflow_uid=workflow_uid)
+        workflows = Workflow.filter(uid=workflow_uid)
+        if using_db is not None:
+            activities = activities.using_db(using_db)
+            workflows = workflows.using_db(using_db)
+        await activities.delete()
+        await workflows.delete()
+
+    @staticmethod
+    async def reset_activities_from_task(
+        workflow_uid: uuid.UUID,
+        task_name: str,
+        using_db: Any | None = None,
+    ) -> int:
+        """Reset matching activities and their descendants for a new execution."""
+        workflow_query = Workflow.filter(uid=workflow_uid)
+        activity_query = Activity.filter(workflow_uid=workflow_uid)
+        if using_db is not None:
+            workflow_query = workflow_query.using_db(using_db)
+            activity_query = activity_query.using_db(using_db)
+
+        workflow = await workflow_query.first()
+        if workflow is None:
+            raise WorkflowNotFoundError(f"Workflow not found: {workflow_uid}")
+
+        graph = WorkflowManager.build_graph(workflow)
+        activities = await activity_query
+        target_names = {
+            activity.name
+            for activity in activities
+            if (activity.execute_params or {}).get("task_name") == task_name
+        }
+        if not target_names:
+            return 0
+
+        affected_names = set(target_names)
+        for name in target_names:
+            affected_names.update(graph.get_node_info(name).descendants)
+
+        reset_query = Activity.filter(workflow_uid=workflow_uid, name__in=affected_names)
+        workflow_update = Workflow.filter(uid=workflow_uid)
+        if using_db is not None:
+            reset_query = reset_query.using_db(using_db)
+            workflow_update = workflow_update.using_db(using_db)
+        reset_count = await reset_query.update(
+            status=ActivityStatusEnum.pending.value,
+            retry_count=0,
+            output={},
+            started_at=None,
+            completed_at=None,
+            error_message=None,
+            stack_trace=None,
+            canceled_at=None,
+            celery_task_id=None,
+        )
+        await workflow_update.update(
+            status=WorkflowStatusEnum.pending.value,
+            started_at=None,
+            completed_at=None,
+            canceled_at=None,
+        )
+        return reset_count
+
     @staticmethod
     def build_graph(workflow: Workflow) -> GraphUtil:
         """Build DAG graph from workflow config

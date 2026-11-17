@@ -6,7 +6,7 @@ import warnings
 import traceback
 from enum import Enum
 from types import FrameType
-from typing import Any, TextIO, cast
+from typing import Any, cast
 from itertools import chain
 from collections.abc import Callable
 
@@ -167,7 +167,7 @@ def setup_loguru(
     #     enqueue=True,  # 默认是线程安全的，enqueue=True使得多进程安全
     #     serialize=True,
     #     backtrace=True,
-    #     diagnose=True,
+    #     diagnose=False,
     # )
     logger.add(
         sink=sys.stdout,  # type: ignore
@@ -176,7 +176,7 @@ def setup_loguru(
         enqueue=True,  # 默认是线程安全的，enqueue=True使得多进程安全
         serialize=False,
         backtrace=True,
-        diagnose=True,
+        diagnose=False,
         colorize=None,
     )
 

@@ -16,10 +16,13 @@ from oss2.exceptions import OssError, NoSuchKey
 
 from ext.file_source.base import FileMetadata, BaseFileSourceProvider
 from ext.file_source.types import AliyunOSSExtraConfig
+from ext.file_source.keys import parse_object_key
 
 
 class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
     """阿里云 OSS Provider（支持 CryptoBucket）"""
+
+    extra_config_type = AliyunOSSExtraConfig
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
@@ -162,23 +165,22 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
 
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
-        key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
-        return result.read()  # type: ignore[no-any-return]
+        return b"".join([chunk async for chunk in self.get_file_stream(uri)])
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         result = await loop.run_in_executor(None, lambda: self.bucket.get_object(key))
-
-        while True:
-            chunk = result.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+        try:
+            while True:
+                chunk = await asyncio.to_thread(result.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            await asyncio.to_thread(result.close)
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""
@@ -223,16 +225,15 @@ class AliyunOSSFileSourceProvider(BaseFileSourceProvider[AliyunOSSExtraConfig]):
 
     async def delete_file(self, uri: str) -> bool:
         """删除文件"""
+        key = self._extract_key(uri)
+        loop = asyncio.get_running_loop()
         try:
-            key = self._extract_key(uri)
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: self.bucket.delete_object(key))
-            return True
-        except Exception:
+            await loop.run_in_executor(None, lambda: self.bucket.head_object(key))
+        except NoSuchKey:
             return False
+        await loop.run_in_executor(None, lambda: self.bucket.delete_object(key))
+        return True
 
     def _extract_key(self, uri: str) -> str:
         """从 URI 提取 object key"""
-        if uri.startswith(f"oss://{self.storage_location}/"):
-            return uri[len(f"oss://{self.storage_location}/") :]
-        return uri
+        return parse_object_key(uri, scheme="oss", bucket=self.storage_location)

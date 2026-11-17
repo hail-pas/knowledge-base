@@ -28,8 +28,6 @@ class Collection(BaseModel):
     name = fields.CharField(max_length=100, description="集合名称")
     description = fields.TextField(description="描述", null=True)
     user_id = fields.UUIDField(description="用户ID", null=True)
-    tenant_id = fields.UUIDField(description="租户ID", null=True)
-    role_id = fields.UUIDField(description="角色ID", null=True)
     is_public = fields.BooleanField(default=False, description="是否公开")
     is_temp = fields.BooleanField(default=False, description="是否临时")
     is_external = fields.BooleanField(default=False, description="是否外部")
@@ -42,6 +40,13 @@ class Collection(BaseModel):
         null=True,
         on_delete=fields.RESTRICT,
         description="关联嵌入模型",
+    )
+    indexing_backend_config = fields.ForeignKeyField(
+        f"{_KBConnectionName}.IndexingBackendConfig",
+        related_name="collections",
+        null=True,
+        on_delete=fields.RESTRICT,
+        description="关联索引后端配置；为空时使用系统默认后端",
     )
 
     class Meta:  # type: ignore
@@ -68,10 +73,16 @@ class FileSource(BaseModel):
     type = fields.CharEnumField(FileSourceTypeEnum, description="文件源类型")
 
     # ========== 认证信息（S3 兼容 providers）==========
-    access_key = fields.CharField(max_length=500, null=True, description="访问密钥")
-    secret_key = fields.CharField(max_length=500, null=True, description="密钥（加密存储）")
+    access_key = fields.CharField(max_length=2048, null=True, description="访问密钥（AES-256-GCM 加密存储）")
+    secret_key = fields.CharField(max_length=2048, null=True, description="密钥（AES-256-GCM 加密存储）")
 
     # ========== 连接信息（合并字段）==========
+    allowed_prefix_template = fields.CharField(
+        max_length=500,
+        null=True,
+        description="公共文件源对象路径隔离模板，支持 {user_id} 和 {collection_id}",
+    )
+
     storage_location = fields.CharField(
         max_length=1000,
         null=True,
@@ -344,7 +355,7 @@ class EmbeddingModelConfig(BaseModel):
     model_name = fields.CharField(max_length=255, description="模型标识符")
 
     # API配置（必填）
-    api_key = fields.CharField(max_length=500, null=True, description="API密钥")
+    api_key = fields.CharField(max_length=2048, null=True, description="API密钥（AES-256-GCM 加密存储）")
     base_url = fields.CharField(max_length=500, null=True, description="API基础URL")
 
     # 模型配置（必填）
@@ -391,7 +402,7 @@ class IndexingBackendConfig(BaseModel):
     host = fields.CharField(max_length=255, null=True, description="主机地址")
     port = fields.IntField(null=True, description="端口号")
     username = fields.CharField(max_length=255, null=True, description="用户名")
-    password = fields.CharField(max_length=500, null=True, description="密码（加密）")
+    password = fields.CharField(max_length=2048, null=True, description="密码（AES-256-GCM 加密存储）")
 
     # 安全配置（公共）
     use_ssl = fields.BooleanField(default=True, description="是否使用SSL/TLS")
@@ -436,7 +447,7 @@ class LLMModelConfig(BaseModel):
     model_name = fields.CharField(max_length=255, description="模型标识符")
 
     # API配置
-    api_key = fields.CharField(max_length=500, null=True, description="API密钥（加密）")
+    api_key = fields.CharField(max_length=2048, null=True, description="API密钥（AES-256-GCM 加密存储）")
     base_url = fields.CharField(max_length=500, null=True, description="API基础URL")
 
     # ModelSettings 对齐字段

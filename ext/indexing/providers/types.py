@@ -1,7 +1,5 @@
 """Provider 配置类型定义"""
 
-from typing import Optional
-
 from pydantic import Field, BaseModel
 
 

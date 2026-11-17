@@ -12,10 +12,13 @@ from minio.error import S3Error
 
 from ext.file_source.base import FileMetadata, BaseFileSourceProvider
 from ext.file_source.types import MinIOExtraConfig
+from ext.file_source.keys import parse_object_key
 
 
 class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
     """MinIO Provider（S3 兼容）"""
+
+    extra_config_type = MinIOExtraConfig
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[misc]  # noqa: ANN401
         super().__init__(*args, **kwargs)
@@ -95,26 +98,30 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
 
     async def get_file(self, uri: str) -> bytes:
         """获取文件内容"""
-        key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, lambda: self.client.get_object(self.storage_location or "", key))  # type: ignore[arg-type]
-        return response.read()
+        return b"".join([chunk async for chunk in self.get_file_stream(uri)])
 
     async def get_file_stream(self, uri: str, chunk_size: int = 8192) -> AsyncIterator[bytes]:
         """获取文件流"""
         key = self._extract_key(uri)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def get_object() -> Any:  # noqa: ANN401
             return self.client.get_object(self.storage_location or "", key)  # type: ignore[arg-type]
 
         response = await loop.run_in_executor(None, get_object)
-
-        while True:
-            chunk = response.read(chunk_size)
-            if not chunk:
-                break
-            yield chunk
+        try:
+            while True:
+                chunk = await asyncio.to_thread(response.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            close = getattr(response, "close", None)
+            if close:
+                await asyncio.to_thread(close)
+            release_conn = getattr(response, "release_conn", None)
+            if release_conn:
+                await asyncio.to_thread(release_conn)
 
     async def get_file_metadata(self, uri: str) -> FileMetadata:
         """获取文件元数据"""
@@ -136,8 +143,10 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
         try:
             await self.get_file_metadata(uri)
             return True
-        except Exception:
-            return False
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                return False
+            raise
 
     async def upload_file(self, uri: str, content: bytes, content_type: str | None = None) -> FileMetadata:
         """上传文件"""
@@ -145,12 +154,22 @@ class MinIOFileSourceProvider(BaseFileSourceProvider[MinIOExtraConfig]):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
             None,
-            lambda: self.client.put_object(self.storage_location or "", key, content, len(content)),  # type: ignore[arg-type]
+            lambda: self.client.put_object(
+                self.storage_location or "", key, content, len(content), content_type=content_type or "application/octet-stream"
+            ),  # type: ignore[arg-type]
         )
         return await self.get_file_metadata(uri)
 
+    async def delete_file(self, uri: str) -> bool:
+        key = self._extract_key(uri)
+        try:
+            await asyncio.to_thread(self.client.stat_object, self.storage_location, key)
+        except S3Error as exc:
+            if exc.code in {"NoSuchKey", "NoSuchObject"}:
+                return False
+            raise
+        await asyncio.to_thread(self.client.remove_object, self.storage_location, key)
+        return True
+
     def _extract_key(self, uri: str) -> str:
-        """从 URI 提取 object key"""
-        if uri.startswith(f"minio://{self.storage_location}/"):
-            return uri[len(f"minio://{self.storage_location}/") :]
-        return uri
+        return parse_object_key(uri, scheme="minio", bucket=self.storage_location)

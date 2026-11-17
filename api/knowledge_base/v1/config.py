@@ -1,13 +1,13 @@
 from typing import Annotated
 
-from fastapi import Depends, Request, APIRouter
+from fastapi import Depends, Query, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
 
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import api_permission_check
+from service.depend import CurrentUser, api_permission_check, ensure_super_admin, is_super_admin_user
 from ext.ext_tortoise.curd import (
     list_view,
     create_obj,
@@ -41,7 +41,8 @@ from service.indexing_backend.schema import (
     IndexingBackendConfigDetail,
     IndexingBackendConfigFilterSchema,
 )
-from ext.ext_tortoise.models.user_center import Account
+from util.secret import encrypt_secret, transform_extra_config_secrets
+from ext.file_source.secrets import encrypt_file_source_extra_config
 from ext.ext_tortoise.models.knowledge_base import (
     FileSource,
     LLMModelConfig,
@@ -57,24 +58,42 @@ router = APIRouter(dependencies=[Depends(api_permission_check)])
 # =============================================================================
 
 
-def get_file_source_queryset(request: Request) -> QuerySet[FileSource]:
-    user: Account = request.scope["user"]
+def get_file_source_queryset(request: Request, *, writable: bool = False) -> QuerySet[FileSource]:
+    user: CurrentUser = request.scope["user"]
     queryset = FileSource.filter(deleted_at=0)
-
-    if not user.is_staff:
-        queryset = queryset.filter(Q(user_id=None) | Q(user_id=user.id))
-
-    return queryset
+    if writable:
+        return queryset.filter(user_id=user.id)
+    return queryset.filter(Q(user_id=None) | Q(user_id=user.id))
 
 
 @router.post("/file-source", summary="创建文件源")
 async def create_file_source(request: Request, schema: FileSourceCreate) -> Resp[FileSourceList]:
-    # user: Account = request.state.user
+    user: CurrentUser = request.scope["user"]
 
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
-    obj: FileSource = await create_obj(FileSource, schema.model_dump(exclude_unset=True))  # type: ignore
+    source_type = getattr(schema.type, "value", schema.type)
+    is_super_admin = await is_super_admin_user(user.id)
+    if not is_super_admin:
+        if source_type in {"local_file", "minio", "aliyun_oss"} or (
+            source_type == "s3" and schema.endpoint
+        ):
+            raise ApiException("本地或自定义存储端点仅允许系统超级管理员配置", code=403)
+        if not schema.use_ssl or not schema.verify_ssl:
+            raise ApiException("非超级管理员配置的对象存储必须启用 TLS 和证书验证", code=403)
+
+        provider_config = (schema.extra_config or {}).get("config", {})
+        if source_type == "s3" and isinstance(provider_config, dict) and provider_config.get("proxies"):
+            raise ApiException("自定义对象存储代理仅允许系统超级管理员配置", code=403)
+
+    data = schema.model_dump(exclude_unset=True)
+    data["user_id"] = user.id
+    data["access_key"] = encrypt_secret(data.get("access_key"), purpose="file_source.access_key")
+    data["secret_key"] = encrypt_secret(data.get("secret_key"), purpose="file_source.secret_key")
+    data["extra_config"] = encrypt_file_source_extra_config(source_type, data.get("extra_config"))
+
+    obj: FileSource = await create_obj(FileSource, data)  # type: ignore
 
     if schema.is_default:  # type: ignore
         await (
@@ -88,14 +107,11 @@ async def create_file_source(request: Request, schema: FileSourceCreate) -> Resp
 
 @router.put("/file-source/{pk}", summary="更新文件源")
 async def update_file_source(request: Request, pk: int, schema: FileSourceUpdate) -> Resp:
-    queryset = get_file_source_queryset(request)
+    queryset = get_file_source_queryset(request, writable=True)
 
     obj = await queryset.get_or_none(pk=pk)
     if not obj:
         raise ApiException("文件源不存在")
-
-    if schema.extra_config is not None:  # type: ignore
-        FileSourceCreate.validate_extra_config_by_type(obj.type, schema.extra_config)  # type: ignore
 
     await update_obj(obj, queryset, schema.model_dump(exclude_unset=True))
 
@@ -112,7 +128,7 @@ async def update_file_source(request: Request, pk: int, schema: FileSourceUpdate
 @router.get("/file-source", summary="文件源列表")
 async def list_file_sources(
     request: Request,
-    filter_: Annotated[FileSourceFilterSchema, Depends(FileSourceFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[FileSourceFilterSchema, Query()],
     pager: CRUDPager = pagination_factory(
         db_model=FileSource,
         search_fields={"name"},
@@ -140,10 +156,19 @@ def get_llm_config_queryset(request: Request) -> QuerySet[LLMModelConfig]:
 
 @router.post("/llm-model", summary="创建LLM模型配置")
 async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Resp[LLMModelConfigList]:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
-    obj = await create_obj(LLMModelConfig, schema.model_dump(exclude_unset=True))
+    data = schema.model_dump(exclude_unset=True)
+    data["api_key"] = encrypt_secret(data.get("api_key"), purpose="llm_model.api_key")
+    data["extra_config"] = transform_extra_config_secrets(
+        data.get("extra_config"),
+        purpose="llm_model.extra_config",
+    )
+    obj = await create_obj(LLMModelConfig, data)
 
     if schema.is_default:  # type: ignore
         await LLMModelConfig.filter(is_default=True, deleted_at=0).exclude(pk=obj.id).update(is_default=False)  # type: ignore
@@ -153,14 +178,14 @@ async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Re
 
 @router.put("/llm-model/{pk}", summary="更新LLM模型配置")
 async def update_llm_model(request: Request, pk: int, schema: LLMModelConfigUpdate) -> Resp:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     queryset = get_llm_config_queryset(request)
 
     obj = await queryset.get_or_none(pk=pk)
     if not obj:
         raise ApiException("LLM模型配置不存在")
-
-    if schema.extra_config is not None:  # type: ignore
-        LLMModelConfigCreate.validate_extra_config_by_type(obj.type, schema.extra_config)  # type: ignore
 
     await update_obj(obj, queryset, schema.model_dump(exclude_unset=True))
     if schema.is_default:  # type: ignore
@@ -172,7 +197,7 @@ async def update_llm_model(request: Request, pk: int, schema: LLMModelConfigUpda
 @router.get("/llm-model", summary="LLM模型配置列表")
 async def list_llm_models(
     request: Request,
-    filter_: Annotated[LLMModelConfigFilterSchema, Depends(LLMModelConfigFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[LLMModelConfigFilterSchema, Query()],
     pager: CRUDPager = pagination_factory(
         db_model=LLMModelConfig,
         search_fields={"name"},
@@ -203,10 +228,19 @@ async def create_indexing_backend(
     request: Request,
     schema: IndexingBackendConfigCreate,
 ) -> Resp[IndexingBackendConfigList]:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
-    obj = await create_obj(IndexingBackendConfig, schema.model_dump(exclude_unset=True))
+    data = schema.model_dump(exclude_unset=True)
+    data["password"] = encrypt_secret(data.get("password"), purpose="indexing_backend.password")
+    data["extra_config"] = transform_extra_config_secrets(
+        data.get("extra_config"),
+        purpose="indexing_backend.extra_config",
+    )
+    obj = await create_obj(IndexingBackendConfig, data)
 
     if obj.is_default:  # type: ignore
         await (
@@ -221,7 +255,7 @@ async def create_indexing_backend(
 @router.get("/indexing-backend", summary="索引后端配置列表")
 async def list_indexing_backends(
     request: Request,
-    filter_: Annotated[IndexingBackendConfigFilterSchema, Depends(IndexingBackendConfigFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[IndexingBackendConfigFilterSchema, Query()],
     pager: CRUDPager = pagination_factory(
         db_model=IndexingBackendConfig,
         search_fields={"name"},
@@ -252,10 +286,19 @@ async def create_embedding_model(
     request: Request,
     schema: EmbeddingModelConfigCreate,
 ) -> Resp[EmbeddingModelConfigList]:
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+
     schema.validate_required_fields_by_type()
     schema.validate_extra_config()
 
-    obj = await create_obj(EmbeddingModelConfig, schema.model_dump(exclude_unset=True))
+    data = schema.model_dump(exclude_unset=True)
+    data["api_key"] = encrypt_secret(data.get("api_key"), purpose="embedding_model.api_key")
+    data["extra_config"] = transform_extra_config_secrets(
+        data.get("extra_config"),
+        purpose="embedding_model.extra_config",
+    )
+    obj = await create_obj(EmbeddingModelConfig, data)
 
     if obj.is_default:  # type: ignore
         await (
@@ -270,7 +313,7 @@ async def create_embedding_model(
 @router.get("/embedding-model", summary="Embedding模型配置列表")
 async def list_embedding_models(
     request: Request,
-    filter_: Annotated[EmbeddingModelConfigFilterSchema, Depends(EmbeddingModelConfigFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[EmbeddingModelConfigFilterSchema, Query()],
     pager: CRUDPager = pagination_factory(
         db_model=EmbeddingModelConfig,
         search_fields={"name"},

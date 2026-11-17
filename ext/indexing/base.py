@@ -18,17 +18,12 @@ from datetime import UTC, datetime
 
 from pydantic import Field, BaseModel
 
-from ext.indexing.types import (
-    FilterClause,
-    SearchCursor,
-    DenseSearchClause,
-    HybridSearchClause,
-    SparseSearchClause,
-)
+from ext.indexing.types import QueryClause, FilterClause, SearchCursor
 from ext.ext_tortoise.models.knowledge_base import (
     EmbeddingModelConfig,
     IndexingBackendConfig,
 )
+from util.secret import decrypt_secret, transform_extra_config_secrets
 
 if TYPE_CHECKING:
     from ext.indexing.base import BaseIndexModel
@@ -42,7 +37,21 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
 
     def __init__(self, config: IndexingBackendConfig, extra_config_type: type[ExtraConfigT]) -> None:
         self.config = config
-        self.extra_config = extra_config_type.model_validate(config.extra_config or {})
+        self.password = (
+            decrypt_secret(config.password, purpose="indexing_backend.password")
+            if config._saved_in_db
+            else config.password
+        )
+        extra_config = (
+            transform_extra_config_secrets(
+                config.extra_config,
+                purpose="indexing_backend.extra_config",
+                decrypt=True,
+            )
+            if config._saved_in_db
+            else config.extra_config or {}
+        )
+        self.extra_config = extra_config_type.model_validate(extra_config)
         self._client = None
 
     def _validate_model_config(self, model_class: type["BaseIndexModel"]) -> None:
@@ -129,28 +138,6 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
     @abstractmethod
     async def count(self, model_class: type["BaseIndexModel"], filter_clause: FilterClause | None) -> int:
         """统计文档数量"""
-
-    @abstractmethod
-    async def search(
-        self,
-        model_class: type["BaseIndexModel"],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        limit: int = 10,
-        offset: int = 0,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """搜索（返回 [(文档, 分数)]）"""
-
-    @abstractmethod
-    async def search_cursor(
-        self,
-        model_class: type["BaseIndexModel"],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        page_size: int = 100,
-        cursor: str | None = None,
-    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
-        """搜索（返回 [(文档, 分数)], next_cursor）"""
 
     @abstractmethod
     async def bulk_upsert(
@@ -304,43 +291,37 @@ class BaseIndexModel(BaseModel):
     @classmethod
     async def search(
         cls,
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: QueryClause,
         filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> list[tuple[Self, float]]:
-        """搜索（Provider 自动转换）"""
+        """Execute a backend-neutral retrieval strategy."""
+        from ext.indexing.search import SearchStrategyFactory
+
         provider = cls.get_provider()
-        results = await provider.search(
-            cls,
-            query_clause=query_clause,
-            filter_clause=filter_clause,
-            limit=limit,
-            offset=offset,
+        results = await SearchStrategyFactory.execute(
+            provider, cls, query_clause, filter_clause, limit, offset
         )
-        return [(cls.model_validate(r), score) for r, score in results]  # type: ignore
+        return [(cls.model_validate(document), score) for document, score in results]
 
     @classmethod
     async def search_cursor(
         cls,
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: QueryClause,
         filter_clause: FilterClause | None = None,
         page_size: int = 100,
         cursor: str | None = None,
     ) -> SearchCursor:
-        """搜索（Cursor 方式）"""
+        """Cursor pagination is handled by the strategy layer."""
+        from ext.indexing.search import SearchStrategyFactory
+
         provider = cls.get_provider()
-        results, next_cursor = await provider.search_cursor(
-            cls,
-            query_clause=query_clause,
-            filter_clause=filter_clause,
-            page_size=page_size,
-            cursor=cursor,
+        results, next_cursor = await SearchStrategyFactory.execute_cursor(
+            provider, cls, query_clause, filter_clause, page_size, cursor
         )
-
-        converted_results = [(cls.model_validate(r), score) for r, score in results]
-
-        return SearchCursor(results=converted_results, next_cursor=next_cursor)
+        converted = [(cls.model_validate(document), score) for document, score in results]
+        return SearchCursor(results=converted, next_cursor=next_cursor)
 
     async def save(self) -> None:
         """保存/更新当前实例"""

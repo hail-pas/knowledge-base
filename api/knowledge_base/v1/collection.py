@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, Request, APIRouter
+from fastapi import Depends, Query, Request, APIRouter
 from tortoise.queryset import QuerySet
 from tortoise.expressions import Q
 from tortoise.functions import Count
@@ -8,17 +8,17 @@ from tortoise.functions import Count
 from core.types import ApiException
 from core.schema import CRUDPager
 from core.response import Resp, PageData
-from service.depend import api_permission_check
+from service.depend import CurrentUser, api_permission_check
 from ext.ext_tortoise.curd import (
     DeleteResp,
     list_view,
     create_obj,
     update_obj,
-    detail_view,
     pagination_factory,
 )
 from service.document.helper import DocumentService
 from service.collection.helper import CollectionService
+from util.secret import encrypt_secret
 from service.collection.schema import (
     CollectionList,
     CollectionCreate,
@@ -26,11 +26,11 @@ from service.collection.schema import (
     CollectionUpdate,
     CollectionFilterSchema,
 )
-from ext.ext_tortoise.models.user_center import Account
 from ext.ext_tortoise.models.knowledge_base import (
     Document,
     Collection,
     EmbeddingModelConfig,
+    IndexingBackendConfig,
 )
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
@@ -58,23 +58,41 @@ async def _enrich_collections_with_doc_count(data: list[CollectionList]) -> list
     return data
 
 
-def get_collection_queryset(request: Request, user: Account) -> QuerySet[Collection]:
-    """
-    Permission-based queryset:
-    - Staff: see all
-    - Non-staff: see own + public
+def get_collection_queryset(
+    request: Request,
+    user: CurrentUser,
+    *,
+    writable: bool = False,
+) -> QuerySet[Collection]:
+    """Return collections visible to this identity.
+
+    Public and legacy ownerless collections are readable; mutations are restricted
+    to the collection owner.
     """
     queryset = Collection.filter(deleted_at=0)
-
-    if not user.is_staff:
-        queryset = queryset.filter(Q(user_id=None) | Q(user_id=user.id) | Q(is_public=True))
-
-    return queryset
+    if writable:
+        return queryset.filter(user_id=user.id)
+    return queryset.filter(Q(user_id=None) | Q(user_id=user.id) | Q(is_public=True))
 
 
 @router.post("", summary="创建Collection")
 async def create_collection(request: Request, schema: CollectionCreate) -> Resp[CollectionList]:
+    user: CurrentUser = request.scope["user"]
     schema_dict = schema.model_dump(exclude_unset=True)
+    schema_dict["user_id"] = user.id
+    external_config = schema_dict.get("external_config")
+    backend_config_id = schema_dict.get("indexing_backend_config_id")
+    if schema.is_external and backend_config_id is not None:
+        raise ApiException("外部知识库不能设置索引后端")
+    if backend_config_id is not None and not await IndexingBackendConfig.filter(
+        id=backend_config_id, deleted_at=0, is_enabled=True
+    ).exists():
+        raise ApiException("索引后端配置不存在或已停用")
+    if external_config and external_config.get("authorization"):
+        external_config["authorization"] = encrypt_secret(
+            external_config["authorization"],
+            purpose="collection.external_config.authorization",
+        )
 
     obj: Collection = await create_obj(Collection, schema_dict)  # type: ignore
 
@@ -85,38 +103,65 @@ async def create_collection(request: Request, schema: CollectionCreate) -> Resp[
 
 @router.put("/{pk}", summary="更新Collection")
 async def update_collection(request: Request, pk: int, schema: CollectionUpdate) -> Resp:
-    user: Account = request.scope["user"]
-    queryset = get_collection_queryset(request, user)
+    user: CurrentUser = request.scope["user"]
+    queryset = get_collection_queryset(request, user, writable=True)
 
     obj = await queryset.get_or_none(pk=pk)
     if not obj:
         raise ApiException("Collection不存在")
 
     update_data = schema.model_dump(exclude_unset=True)
+    external_config = update_data.get("external_config")
+    if external_config and external_config.get("authorization"):
+        external_config["authorization"] = encrypt_secret(
+            external_config["authorization"],
+            purpose="collection.external_config.authorization",
+        )
+
+    if obj.is_external:
+        if update_data.get("indexing_backend_config_id") is not None:
+            raise ApiException("外部知识库不能设置索引后端")
+        if "workflow_template" in update_data:
+            raise ApiException("外部知识库不能配置 workflow_template")
+        if "external_config" in update_data and not update_data["external_config"]:
+            raise ApiException("外部知识库必须保留 external_config")
+    elif "external_config" in update_data and update_data["external_config"] is not None:
+        raise ApiException("普通知识库不能设置 external_config")
+
+    if "indexing_backend_config_id" in update_data:
+        backend_id = update_data["indexing_backend_config_id"]
+        if backend_id is not None and not await IndexingBackendConfig.filter(
+            id=backend_id, deleted_at=0, is_enabled=True
+        ).exists():
+            raise ApiException("索引后端配置不存在或已停用")
+        if backend_id != obj.indexing_backend_config_id and await Document.filter(
+            collection_id=pk, deleted_at=0
+        ).exists():
+            raise ApiException(
+                "非空集合暂不支持切换索引后端，请新建集合并重新导入文档",
+                code=409,
+            )
 
     if "embedding_model_config_id" in update_data:
         new_config_id = update_data["embedding_model_config_id"]
-        new_config = await EmbeddingModelConfig.get_or_none(id=new_config_id, deleted_at=0)
+        new_config = await EmbeddingModelConfig.get_or_none(
+            id=new_config_id,
+            deleted_at=0,
+            is_enabled=True,
+        )
         if not new_config:
-            raise ApiException("Embedding模型配置不存在")
+            raise ApiException("Embedding模型配置不存在或已停用")
 
-        del update_data["embedding_model_config_id"]
-        old_config_id = obj.embedding_model_config_id  # type: ignore
+        if new_config_id != obj.embedding_model_config_id and await Document.filter(
+            collection_id=pk,
+            deleted_at=0,
+        ).exists():
+            raise ApiException(
+                "非空集合暂不支持切换 Embedding 模型，请新建集合并重新导入文档",
+                code=409,
+            )
 
-        if update_data:
-            await update_obj(obj, queryset, update_data)
-
-        await obj.fetch_related("embedding_model_config")
-
-        service = CollectionService(obj)
-        try:
-            await service.switch_embedding_model(new_config)
-        except Exception as e:
-            await queryset.filter(pk=pk).update(embedding_model_config_id=old_config_id)
-            raise e
-            raise ApiException(f"切换Embedding模型失败: {str(e)}") from e
-    else:
-        await update_obj(obj, queryset, update_data)
+    await update_obj(obj, queryset, update_data)
 
     return Resp()
 
@@ -124,7 +169,7 @@ async def update_collection(request: Request, pk: int, schema: CollectionUpdate)
 @router.get("", summary="Collection列表")
 async def list_collections(
     request: Request,
-    filter_: Annotated[CollectionFilterSchema, Depends(CollectionFilterSchema.as_query)],  # type: ignore
+    filter_: Annotated[CollectionFilterSchema, Query()],
     pager: CRUDPager = pagination_factory(
         db_model=Collection,
         search_fields={"name"},
@@ -133,22 +178,30 @@ async def list_collections(
         max_limit=100,
     ),
 ) -> Resp[PageData[CollectionList]]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_collection_queryset(request, user)
     return await list_view(queryset, filter_, pager, post_process=_enrich_collections_with_doc_count)
 
 
 @router.get("/{pk}", summary="Collection详情")
 async def get_collection_detail(request: Request, pk: int) -> Resp[CollectionDetail]:
-    user: Account = request.scope["user"]
+    user: CurrentUser = request.scope["user"]
     queryset = get_collection_queryset(request, user)
-    return await detail_view(queryset, pk, CollectionDetail)
+    obj = await queryset.prefetch_related("embedding_model_config").get_or_none(pk=pk)
+    if not obj:
+        raise ApiException("Collection不存在")
+
+    data = CollectionDetail.model_validate(obj)
+    if obj.user_id != user.id:
+        data.workflow_template = {}
+        data.embedding_model_config = None
+    return Resp(data=data)
 
 
 @router.delete("/{pk}", summary="删除Collection")
 async def delete_collection(request: Request, pk: int) -> Resp[DeleteResp]:
-    user: Account = request.scope["user"]
-    queryset = get_collection_queryset(request, user)
+    user: CurrentUser = request.scope["user"]
+    queryset = get_collection_queryset(request, user, writable=True)
 
     obj = await queryset.prefetch_related("embedding_model_config").get_or_none(pk=pk)
     if not obj:

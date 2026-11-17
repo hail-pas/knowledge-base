@@ -40,10 +40,7 @@ class ResponseCodeEnum(IntEnum):
 
 class AesResponse(JSONResponse):
     def render(self, content: dict) -> bytes:
-        """AES加密响应体"""
-        # if not get_settings().DEBUG:
-        # content = AESUtil(local_configs.AES.SECRET).encrypt_data(
-        #       orjson.dumps(content, option=orjson.OPT_NON_STR_KEYS).decode())
+        """Serialize the API response as JSON."""
         if isinstance(content, str):
             dump_content = content.encode()
 

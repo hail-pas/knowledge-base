@@ -39,7 +39,9 @@ class IndexMetadataEnum(StrEnum):
 
 
 class MilvusProvider(BaseProvider[MilvusConfig]):
-    """Milvus Provider 实现"""
+    """Milvus Provider 实现."""
+
+    supports_native_hybrid = True
 
     def __init__(self, config: "IndexingBackendConfig") -> None:
         super().__init__(config, MilvusConfig)
@@ -68,9 +70,9 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             "timeout": self.config.timeout or 30,
         }
 
-        if self.config.username and self.config.password:
+        if self.config.username and self.password:
             kwargs["user"] = self.config.username
-            kwargs["password"] = self.config.password
+            kwargs["password"] = self.password
 
         if self.extra_config.db_name:
             kwargs["db_name"] = self.extra_config.db_name
@@ -529,8 +531,6 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         """批量插入或更新（upsert）"""
         if not documents:
             return None
-        import time
-
         for doc in documents:
             if not doc.get("id"):
                 doc["id"] = model_class._get_id_default()
@@ -574,9 +574,10 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
     async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> None:
         """根据条件删除（带 partition）"""
         collection_name = self.build_collection_name(model_class)
+        if not await self._client.has_collection(collection_name):
+            return
 
         filter_expr = self._convert_filter(model_class, filter_clause)
-
         await self._client.delete(collection_name=collection_name, filter=filter_expr)
 
         if self.extra_config.auto_flush:
@@ -596,7 +597,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         return result[0]["count(*)"]
 
-    async def search(
+    async def search_native(
         self,
         model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
@@ -825,7 +826,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         combined_results.sort(key=lambda x: x[1], reverse=True)
         return combined_results
 
-    async def search_cursor(
+    async def search_cursor_native(
         self,
         model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,

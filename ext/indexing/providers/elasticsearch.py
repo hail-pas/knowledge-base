@@ -26,7 +26,9 @@ class IndexMetadataEnum(StrEnum):
 
 
 class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
-    """Elasticsearch Provider 实现"""
+    """Elasticsearch Provider 实现."""
+
+    supports_native_hybrid = True
 
     def __init__(self, config: IndexingBackendConfig) -> None:
         super().__init__(config, ElasticsearchConfig)
@@ -46,7 +48,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             if self.config.port
             else f"{scheme}://{self.config.host}"
         )
-        basic_auth = (self.config.username, self.config.password) if self.config.username else None
+        basic_auth = (self.config.username, self.password) if self.config.username else None
 
         self._client = AsyncElasticsearch(
             hosts=hosts,
@@ -287,10 +289,9 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 if routing_value:
                     op["index"]["routing"] = routing_value  # type: ignore
 
-            # 如果 auto_generate_id=True，从文档中移除空的 id 字段
+            # The ID is stored in Elasticsearch _id, not as a document field.
             doc_to_insert = doc.copy()
-            if model_class.Meta.auto_generate_id:
-                doc_to_insert.pop("id", None)
+            doc_to_insert.pop("id", None)
 
             bulk_data.append(op)
             bulk_data.append(doc_to_insert)
@@ -348,15 +349,13 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 if routing_value:
                     op["update"]["routing"] = routing_value
 
-            # 移除 doc 中的空 id 字段，避免覆盖 ES 的 _id
-            doc_to_update = {k: v for k, v in doc.items() if k != "id" or v}
+            # The ID is stored in Elasticsearch _id, not in the document body.
+            doc_to_update = {k: v for k, v in doc.items() if k != "id"}
             bulk_data.append(op)
             bulk_data.append({"doc": doc_to_update})
         response = await self._client.bulk(operations=bulk_data, refresh=self.extra_config.auto_flush)
-        return []
-
         self._log_bulk_errors(response, "update")
-        return None
+        return []
 
     async def bulk_upsert(
         self,
@@ -383,11 +382,13 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 if routing_value:
                     op["index"]["routing"] = routing_value
 
+            doc_to_upsert = doc.copy()
+            doc_to_upsert.pop("id", None)
             bulk_data.append(op)
-            bulk_data.append(doc)
+            bulk_data.append(doc_to_upsert)
 
         response = await self._client.bulk(operations=bulk_data, refresh=self.extra_config.auto_flush)
-
+        self._log_bulk_errors(response, "upsert")
         return self._extract_bulk_results(response, documents, "index")
 
     async def delete(self, model_class: type[BaseIndexModel], ids: list[str]) -> None:  # type: ignore
@@ -433,7 +434,12 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         query = self._convert_filter(model_class, filter_clause)
 
         if not model_class.Meta.partition_key:
-            await self._client.delete_by_query(index=index_name, query=query)
+            await self._client.delete_by_query(
+                index=index_name,
+                query=query,
+                ignore_unavailable=True,
+                allow_no_indices=True,
+            )
             return
 
         # 如果有 partition_key，必须从 filter_clause 中获取 routing 值
@@ -449,6 +455,8 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             query=query,
             routing=routing_value,
             refresh=self.extra_config.auto_flush,
+            ignore_unavailable=True,
+            allow_no_indices=True,
         )
 
     async def count(self, model_class: type[BaseIndexModel], filter_clause: FilterClause | None) -> int:
@@ -462,7 +470,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         result = await self._client.count(index=index_name, query=query)
         return result["count"]
 
-    async def search(
+    async def search_native(
         self,
         model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
@@ -499,7 +507,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return results
 
-    async def search_cursor(
+    async def search_cursor_native(
         self,
         model_class: type[BaseIndexModel],
         query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,

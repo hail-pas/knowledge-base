@@ -1,4 +1,5 @@
 from typing import override
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from loguru import logger
 from pydantic import ConfigDict
@@ -16,44 +17,56 @@ from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 
 class ModelProviderConfig(RegisterExtensionConfig):
+    """Own the shared indexing provider lifecycle."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    es_provider: BaseProvider | None = None
-    milvus_provider: BaseProvider | None = None
+    postgresql_provider: BaseProvider | None = None
+
+    @staticmethod
+    def _default_postgresql_config() -> IndexingBackendConfig:
+        """Reuse the knowledge-base PostgreSQL DSN when no explicit backend is configured."""
+        from config.main import local_configs
+
+        dsn = urlsplit(str(local_configs.extensions.tortoise.knowledge_base.url))
+        query = parse_qs(dsn.query)
+        sslmode = query.get("sslmode", ["disable"])[0]
+        return IndexingBackendConfig(
+            name="default-postgresql",
+            type=IndexingBackendTypeEnum.postgresql,
+            host=dsn.hostname or "127.0.0.1",
+            port=dsn.port or 5432,
+            username=unquote(dsn.username or ""),
+            password=unquote(dsn.password or ""),
+            use_ssl=sslmode not in {"disable", "allow"},
+            verify_ssl=sslmode in {"verify-ca", "verify-full"},
+            timeout=30,
+            max_retries=3,
+            max_connections=10,
+            extra_config={"database": (dsn.path or "/postgres").lstrip("/")},
+            is_enabled=True,
+            is_default=True,
+        )
 
     @override
     async def register(self) -> None:
-        """初始化 httpx.AsyncClient"""
-
-        logger.info("Registering model provider")
-
-        es_config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum.elasticsearch,
+        logger.info("Registering PostgreSQL indexing provider")
+        config = await IndexingBackendConfig.filter(
+            type=IndexingBackendTypeEnum.postgresql,
             is_enabled=True,
             is_default=True,
         ).first()
-        milvus_config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum.milvus,
-            is_enabled=True,
-            is_default=True,
-        ).first()
-
-        assert es_config
-        assert milvus_config
-        es_provider = await IndexingProviderFactory.create(es_config, use_cache=False)
-        milvus_provider = await IndexingProviderFactory.create(milvus_config, use_cache=False)
-        self.es_provider = es_provider
-        self.milvus_provider = milvus_provider
-        DocumentContentDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
-        DocumentContentSparseIndex.Meta.provider = self.es_provider  # type: ignore
-        DocumentFAQDenseIndex.Meta.provider = self.milvus_provider  # type: ignore
+        if config is None:
+            config = self._default_postgresql_config()
+            logger.info("No explicit PostgreSQL indexing config; reusing knowledge-base database")
+        provider = await IndexingProviderFactory.create(config)
+        self.postgresql_provider = provider
+        DocumentContentDenseIndex.Meta.provider = provider
+        DocumentContentSparseIndex.Meta.provider = provider
+        DocumentFAQDenseIndex.Meta.provider = provider
 
     @override
     async def unregister(self) -> None:
-        """关闭 httpx.AsyncClient"""
-        logger.info("Unregistering model provider")
-
-        if self.es_provider:
-            await self.es_provider.disconnect()
-        if self.milvus_provider:
-            await self.milvus_provider.disconnect()
+        logger.info("Unregistering PostgreSQL indexing provider")
+        await IndexingProviderFactory.clear_cache()
+        self.postgresql_provider = None

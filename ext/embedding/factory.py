@@ -12,6 +12,7 @@ from loguru import logger
 from ext.embedding.base import BaseEmbeddingModel
 from ext.ext_tortoise.enums import EmbeddingModelTypeEnum
 from ext.ext_tortoise.models.knowledge_base import EmbeddingModelConfig
+from util.secret import decrypt_secret, transform_extra_config_secrets
 
 
 class EmbeddingModelFactory:
@@ -129,14 +130,26 @@ class EmbeddingModelFactory:
             model_name=config.model_name,
             model_type=config.type.value,
             dimension=config.dimension,
-            api_key=config.api_key,
+            api_key=(
+                decrypt_secret(config.api_key, purpose="embedding_model.api_key")
+                if config._saved_in_db
+                else config.api_key
+            ),
             base_url=config.base_url,
             max_chunk_length=config.max_chunk_length,
             batch_size=config.batch_size,
             max_retries=config.max_retries,
             timeout=config.timeout,
             rate_limit=config.rate_limit,
-            extra_config=config.extra_config or {},  # 传入 dict
+            extra_config=(
+                transform_extra_config_secrets(
+                    config.extra_config,
+                    purpose="embedding_model.extra_config",
+                    decrypt=True,
+                )
+                if config._saved_in_db
+                else config.extra_config or {}
+            ),  # 传入 dict
         )
 
     @classmethod

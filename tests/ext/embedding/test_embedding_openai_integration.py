@@ -10,6 +10,7 @@ import pytest
 import ext.embedding.providers
 
 from ext.embedding import EmbeddingModelFactory
+from tests.helpers import create_embedding_model_config
 
 @pytest.mark.needs_api_key
 class TestOpenAIEmbeddingIntegration:
@@ -125,7 +126,7 @@ class TestOpenAIEmbeddingIntegration:
         # 清理可能存在的旧配置
         await EmbeddingModelConfig.filter(name="test-invalid-api-key").delete()
 
-        config = await EmbeddingModelConfig.create(
+        config = await create_embedding_model_config(
             name="test-invalid-api-key",
             type=openai_embedding_config.type,
             model_name=openai_embedding_config.model_name,
