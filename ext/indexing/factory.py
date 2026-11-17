@@ -74,20 +74,18 @@ class IndexingProviderFactory:
             return provider
 
     @classmethod
-    async def get_config(cls, backend_type: str) -> IndexingBackendConfig:
-        """获取配置（从数据库）"""
-        from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
+    async def get_default(cls) -> BaseProvider:
+        """Resolve default backend at call time so switching requires no restart."""
+        configs = await IndexingBackendConfig.filter(
+            is_enabled=True, is_default=True, deleted_at=0,
+        ).limit(2)
+        if len(configs) > 1:
+            raise RuntimeError("Multiple default indexing backends configured")
+        if configs:
+            return await cls.create(configs[0])
+        from ext.indexing.main import default_postgresql_config
 
-        config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum(backend_type),
-            is_enabled=True,
-            is_default=True,
-        ).first()
-
-        if not config:
-            raise RuntimeError(f"No active config found for backend: {backend_type}")
-
-        return config
+        return await cls.create(default_postgresql_config())
 
     @classmethod
     async def clear_cache(cls) -> None:
@@ -185,12 +183,9 @@ class IndexModelFactory:
         if not dimension or dimension <= 0:
             raise ValueError(f"Invalid dimension: {dimension}")
 
-        selected_provider = provider or base_model.Meta.provider
-        if not selected_provider:
-            raise RuntimeError(
-                f"{base_model.__name__}.Meta.provider is not bound; "
-                "pass provider= or bind Meta.provider before creating the index model."
-            )
+        if provider is None:
+            raise ValueError("provider= is required; model definitions must not own connection state")
+        selected_provider = provider
 
         model_key = cls._get_model_key(base_model.__name__, dimension, selected_provider)
 
