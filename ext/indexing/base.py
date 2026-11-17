@@ -316,10 +316,10 @@ class BaseIndexModel(BaseModel):
         offset: int = 0,
     ) -> list[tuple[Self, float]]:
         """Execute a backend-neutral retrieval strategy."""
-        from ext.indexing.search import SearchStrategyFactory
+        from ext.indexing.search import IndexSearch
 
         provider = cls.get_provider()
-        results = await SearchStrategyFactory.execute(
+        results = await IndexSearch.execute(
             provider, cls, query_clause, filter_clause, limit, offset
         )
         return [(cls.model_validate(document), score) for document, score in results]
@@ -333,10 +333,10 @@ class BaseIndexModel(BaseModel):
         cursor: str | None = None,
     ) -> SearchCursor:
         """Cursor pagination is handled by the strategy layer."""
-        from ext.indexing.search import SearchStrategyFactory
+        from ext.indexing.search import IndexSearch
 
         provider = cls.get_provider()
-        results, next_cursor = await SearchStrategyFactory.execute_cursor(
+        results, next_cursor = await IndexSearch.execute_cursor(
             provider, cls, query_clause, filter_clause, page_size, cursor
         )
         converted = [(cls.model_validate(document), score) for document, score in results]
