@@ -205,14 +205,22 @@ class BaseIndexModel(BaseModel):
         """自动合并父类 Meta 属性到子类 Meta"""
         super().__init_subclass__(**kwargs)
 
-        # 遍历父类 MRO，合并 Meta 属性
-        # 优先级：子类 > 直接父类 > 间接父类
-        for parent_cls in reversed(cls.__mro__[:-1]):  # 排除 object
-            if hasattr(parent_cls, "Meta"):
-                for attr_name, attr_value in parent_cls.Meta.__dict__.items():
-                    # 跳过私有属性和已定义的属性
-                    if not attr_name.startswith("_") and not hasattr(cls.Meta, attr_name):
-                        setattr(cls.Meta, attr_name, attr_value)
+        # Always give subclasses their own Meta object. Mutating an inherited
+        # Meta leaks provider/dimension changes into sibling model classes.
+        declared_meta = cls.__dict__.get("Meta")
+        inherited = next(
+            (parent.Meta for parent in cls.__mro__[1:] if hasattr(parent, "Meta")),
+            BaseIndexModel.Meta,
+        )
+        if declared_meta is None:
+            cls.Meta = type("Meta", (inherited,), {})
+        elif not issubclass(declared_meta, inherited):
+            overrides = {
+                name: value
+                for name, value in vars(declared_meta).items()
+                if not name.startswith("__")
+            }
+            cls.Meta = type("Meta", (inherited,), overrides)
 
     id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={})  # type: ignore
     created_at: datetime = Field(
