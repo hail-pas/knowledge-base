@@ -38,5 +38,4 @@ class MilvusConfig(ProviderConfig):
         default={"tokenizer": "standard", "filter": ["lowercase"]},
         description="默认文本分析器配置",
     )
-    enable_hybrid_search: bool = Field(default=True, description="是否使用原生混合搜索（RRFRanker）")
     auto_flush: bool = Field(default=True, description="是否自动flush")
