@@ -49,6 +49,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     LLMModelConfig,
     EmbeddingModelConfig,
     IndexingBackendConfig,
+    Document,
 )
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
@@ -164,6 +165,12 @@ async def create_llm_model(request: Request, schema: LLMModelConfigCreate) -> Re
     schema.validate_extra_config()
 
     data = schema.model_dump(exclude_unset=True)
+    if data.get("is_default") and await Document.filter(
+        deleted_at=0, collection__indexing_backend_config__isnull=True,
+    ).exists():
+        raise ApiException(
+            "存在使用默认后端的非空知识库；请先固定原后端并完成索引迁移", code=409,
+        )
     data["api_key"] = encrypt_secret(data.get("api_key"), purpose="llm_model.api_key")
     data["extra_config"] = transform_extra_config_secrets(
         data.get("extra_config"),
@@ -268,6 +275,12 @@ async def set_default_indexing_backend(
         selected = next((obj for obj in configs if obj.id == pk), None)
         if selected is None or not selected.is_enabled:
             raise ApiException("索引后端配置不存在或已停用", code=404)
+        if not selected.is_default and await Document.filter(
+            deleted_at=0, collection__indexing_backend_config__isnull=True,
+        ).exists():
+            raise ApiException(
+                "存在使用默认后端的非空知识库；请先固定原后端并完成索引迁移", code=409,
+            )
         await IndexingBackendConfig.filter(is_default=True, deleted_at=0).update(is_default=False)
         selected.is_default = True
         await selected.save(update_fields=["is_default"])
