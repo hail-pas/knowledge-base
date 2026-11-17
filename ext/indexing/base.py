@@ -148,6 +148,17 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
         """批量插入或更新（upsert）"""
 
     @abstractmethod
+    async def search_native(
+        self,
+        model_class: type["BaseIndexModel"],
+        query_clause: QueryClause,
+        filter_clause: FilterClause | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> list[tuple[dict[str, Any], float]]:
+        """Run one dense or sparse query with a backend-normalized hit shape."""
+
+    @abstractmethod
     async def health_check(self) -> bool:
         """健康检查"""
 
