@@ -41,7 +41,7 @@ def _fuse_rrf(
 
 
 class SearchStrategyFactory:
-    """One search entrypoint regardless of provider and query type."""
+    """One search entrypoint; every backend uses the same weighted RRF for hybrid queries."""
 
     @classmethod
     async def execute(
@@ -55,8 +55,6 @@ class SearchStrategyFactory:
             return await provider.search_native(model, query, filters, limit, offset)
         if not isinstance(query, HybridSearchClause):
             raise TypeError(f"Unsupported search clause: {type(query).__name__}")
-        if getattr(provider, "supports_native_hybrid", False):
-            return await provider.search_native(model, query, filters, limit, offset)
         requested = offset + limit
         candidate_limit = max(requested, query.dense.top_k, query.sparse.top_k)
         dense, sparse = await asyncio.gather(
