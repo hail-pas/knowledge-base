@@ -13,7 +13,7 @@ from pydantic import Field
 
 from ext.indexing.base import BaseIndexModel, BaseProvider
 from ext.indexing.providers.types import ProviderConfig
-from ext.indexing.types import DenseSearchClause, FilterClause, SparseSearchClause
+from ext.indexing.types import DenseSearchClause, FilterClause, SparseSearchClause, parse_sort
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
 
 
@@ -226,7 +226,8 @@ class PostgreSQLProvider(BaseProvider[PostgreSQLConfig]):
         where, args = self._where(filter_clause)
         order = ""
         if sort:
-            order = f" ORDER BY {self._q(sort.lstrip('-'))} {'DESC' if sort.startswith('-') else 'ASC'}"
+            field, direction = parse_sort(sort)
+            order = f" ORDER BY {self._q(field)} {direction.upper()}"
         sql = f"SELECT * FROM {self._table(model_class)}" + (f" WHERE {where}" if where else "")
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(sql + order + f" LIMIT {int(limit)} OFFSET {int(offset)}", *args)
