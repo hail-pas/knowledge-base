@@ -42,7 +42,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     async def connect(self) -> None:
         """建立连接"""
 
-        scheme = "https" if self.config.verify_ssl else "http"
+        scheme = "https" if self.config.use_ssl else "http"
         hosts = (
             f"{scheme}://{self.config.host}:{self.config.port}"
             if self.config.port
@@ -63,6 +63,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         """断开连接"""
         if self._client:
             await self._client.close()
+            self._client = None
 
     async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False) -> None:
         """创建索引"""
@@ -486,17 +487,16 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         if query_clause.output_fields and "*" not in query_clause.output_fields:
             search_body["_source"] = query_clause.output_fields
 
+        routing = None
         if model_class.Meta.partition_key:
             routing_value = self._get_routing_value_from_filter(filter_clause, model_class.Meta.partition_key)
             if routing_value:
-                search_body["routing"] = routing_value
+                routing = routing_value
 
         search_body["size"] = limit
         search_body["from"] = offset
 
-        logger.info(f"search body: {search_body}")
-
-        response = await self._client.search(index=index_name, body=search_body)
+        response = await self._client.search(index=index_name, body=search_body, routing=routing)
 
         results = []
         for hit in response["hits"]["hits"]:
@@ -506,62 +506,6 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             results.append((doc, score))
 
         return results
-
-    async def search_cursor_native(
-        self,
-        model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        page_size: int = 100,
-        cursor: str | None = None,
-    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
-        """搜索（Cursor 方式）"""
-        index_name = self.build_collection_name(model_class)
-
-        search_body = self._build_search_body(model_class, query_clause, filter_clause)
-
-        if query_clause.output_fields and "*" not in query_clause.output_fields:
-            search_body["_source"] = query_clause.output_fields
-
-        if model_class.Meta.partition_key:
-            routing_value = self._get_routing_value_from_filter(filter_clause, model_class.Meta.partition_key)
-            if routing_value:
-                search_body["routing"] = routing_value
-
-        if "sort" not in search_body:
-            search_body["sort"] = ["_score"]
-
-        search_body["size"] = page_size
-        search_body["from"] = 0
-
-        # Parse cursor from JSON string to list
-        if cursor:
-            try:
-                search_body["search_after"] = json.loads(cursor)
-            except (json.JSONDecodeError, TypeError):
-                # Fallback to single value for backward compatibility
-                search_body["search_after"] = [cursor]
-
-        response = await self._client.search(index=index_name, body=search_body)
-
-        results = []
-        for hit in response["hits"]["hits"]:
-            doc = hit.get("_source", {})
-            doc["id"] = hit["_id"]
-            score = hit["_score"]
-            results.append((doc, score))
-
-        next_cursor = None
-        if response["hits"]["hits"]:
-            last_hit = response["hits"]["hits"][-1]
-            if "sort" in last_hit and last_hit["sort"]:
-                # Encode sort array as JSON string for cursor
-                next_cursor = json.dumps(last_hit["sort"])
-            else:
-                # Fallback to using _id
-                next_cursor = json.dumps([last_hit["_id"]])
-
-        return results, next_cursor
 
     def _build_search_body(
         self,
