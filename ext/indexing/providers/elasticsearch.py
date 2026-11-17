@@ -12,6 +12,7 @@ from ext.indexing.types import (
     FilterClause,
     DenseSearchClause,
     SparseSearchClause,
+    parse_sort,
 )
 from ext.indexing.providers.types import ElasticsearchConfig
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
@@ -237,6 +238,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         if filter_clause:
             search_body["query"] = self._convert_filter(model_class, filter_clause)  # type: ignore
 
+        routing = None
         # 添加 routing（如果有 partition_key）
         if model_class.Meta.partition_key:
             # 从 filter_clause 中提取 partition_key 的值
@@ -246,13 +248,13 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 else None
             )
             if partition_value:
-                search_body["routing"] = partition_value
+                routing = partition_value
 
         if sort:
-            sort_field, sort_order = sort.split(":")
+            sort_field, sort_order = parse_sort(sort)
             search_body["sort"] = [{sort_field: {"order": sort_order}}]
 
-        response = await self._client.search(index=index_name, body=search_body)
+        response = await self._client.search(index=index_name, body=search_body, routing=routing)
 
         results = []
         for hit in response["hits"]["hits"]:
@@ -428,6 +430,8 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> None:
         """根据条件删除（支持 routing）"""
         index_name = self.build_collection_name(model_class)
+        if not filter_clause.has_conditions():
+            raise ValueError("delete_by_query requires a non-empty filter")
         query = self._convert_filter(model_class, filter_clause)
 
         if not model_class.Meta.partition_key:
