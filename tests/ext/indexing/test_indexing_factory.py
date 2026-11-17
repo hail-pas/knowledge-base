@@ -61,7 +61,7 @@ class MockProvider(BaseProvider):
     async def count(self, model_class, filter_clause):
         return 0
 
-    async def search(self, model_class, query_clause, filter_clause=None, limit=10, offset=0):
+    async def search_native(self, model_class, query_clause, filter_clause=None, limit=10, offset=0):
         return []
 
     async def search_cursor(self, model_class, query_clause, filter_clause=None, page_size=100, cursor=None):
@@ -156,7 +156,7 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
         assert dynamic_model.Meta.dense_vector_dimension == 1536
         assert dynamic_model.Meta.index_name == "chunks"
@@ -169,7 +169,7 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["3072"]
 
-        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
         assert dynamic_model.Meta.dense_vector_dimension == 3072
 
@@ -180,8 +180,8 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        model1 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
-        model2 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        model1 = await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
+        model2 = await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
         assert model1 is model2
 
@@ -193,8 +193,8 @@ class TestIndexModelFactory:
         emb_config_1536 = embedding_configs["1536"]
         emb_config_3072 = embedding_configs["3072"]
 
-        model_1536 = await IndexModelFactory.create_for_embedding(base_model, emb_config_1536)
-        model_3072 = await IndexModelFactory.create_for_embedding(base_model, emb_config_3072)
+        model_1536 = await IndexModelFactory.create_for_embedding(base_model, emb_config_1536, provider=mock_provider)
+        model_3072 = await IndexModelFactory.create_for_embedding(base_model, emb_config_3072, provider=mock_provider)
 
         assert model_1536 is not model_3072
         assert model_1536.Meta.dense_vector_dimension == 1536
@@ -207,7 +207,7 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1024"]
 
-        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        dynamic_model = await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
         assert issubclass(dynamic_model, BaseIndexModel)
         assert issubclass(dynamic_model, ChunkIndex)
@@ -219,10 +219,10 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        model1 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        model1 = await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
         IndexModelFactory.clear_cache()
 
-        model2 = await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        model2 = await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
         assert model1 is not model2
 
@@ -236,8 +236,8 @@ class TestIndexModelFactory:
         emb_config_1536 = embedding_configs["1536"]
         emb_config_3072 = embedding_configs["3072"]
 
-        await IndexModelFactory.create_for_embedding(base_model, emb_config_1536)
-        await IndexModelFactory.create_for_embedding(base_model, emb_config_3072)
+        await IndexModelFactory.create_for_embedding(base_model, emb_config_1536, provider=mock_provider)
+        await IndexModelFactory.create_for_embedding(base_model, emb_config_3072, provider=mock_provider)
 
         registered = IndexModelFactory.get_registered_models()
 
@@ -253,7 +253,7 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        await IndexModelFactory.create_for_embedding(base_model, emb_config)
+        await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
         retrieved_model = IndexModelFactory.get_model("ChunkIndex", 1536)
 
@@ -281,7 +281,7 @@ class TestIndexModelFactory:
                 base_url="test",
                 dimension=0,
             )
-            await IndexModelFactory.create_for_embedding(base_model, emb_config)
+            await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
         with pytest.raises(ValueError, match="Invalid dimension"):
             emb_config = EmbeddingModelConfig(
@@ -292,7 +292,7 @@ class TestIndexModelFactory:
                 base_url="test",
                 dimension=-1,
             )
-            await IndexModelFactory.create_for_embedding(base_model, emb_config)
+            await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider)
 
     async def test_provider_not_bound_raises_error(self, embedding_configs):
         """测试未绑定 provider 抛出错误"""
@@ -301,7 +301,7 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        with pytest.raises(RuntimeError, match="Meta.provider is not bound"):
+        with pytest.raises(ValueError, match="provider="):
             await IndexModelFactory.create_for_embedding(base_model, emb_config)
 
     async def test_wrong_config_type_raises_error(self, mock_provider):
@@ -310,7 +310,7 @@ class TestIndexModelFactory:
         base_model.Meta.provider = mock_provider
 
         with pytest.raises(TypeError, match="must be EmbeddingModelConfig"):
-            await IndexModelFactory.create_for_embedding(base_model, cast(EmbeddingModelConfig, "not-a-config"))
+            await IndexModelFactory.create_for_embedding(base_model, cast(EmbeddingModelConfig, "not-a-config"), provider=mock_provider)
 
     async def test_dynamic_model_can_be_instantiated(self, mock_provider, embedding_configs):
         """测试动态模型可以正常实例化"""
@@ -319,7 +319,7 @@ class TestIndexModelFactory:
 
         emb_config = embedding_configs["1536"]
 
-        dynamic_model = cast(type[ChunkIndex], await IndexModelFactory.create_for_embedding(base_model, emb_config))
+        dynamic_model = cast(type[ChunkIndex], await IndexModelFactory.create_for_embedding(base_model, emb_config, provider=mock_provider))
 
         instance = dynamic_model(
             content="test content",

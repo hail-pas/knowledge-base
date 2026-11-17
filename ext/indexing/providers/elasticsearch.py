@@ -1,6 +1,5 @@
 """Elasticsearch Provider 实现"""
 
-import json
 from enum import StrEnum
 from typing import Any, get_args, get_origin
 from datetime import datetime
@@ -12,8 +11,8 @@ from ext.indexing.base import BaseProvider, BaseIndexModel
 from ext.indexing.types import (
     FilterClause,
     DenseSearchClause,
-    HybridSearchClause,
     SparseSearchClause,
+    parse_sort,
 )
 from ext.indexing.providers.types import ElasticsearchConfig
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
@@ -28,8 +27,6 @@ class IndexMetadataEnum(StrEnum):
 class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     """Elasticsearch Provider 实现."""
 
-    supports_native_hybrid = True
-
     def __init__(self, config: IndexingBackendConfig) -> None:
         super().__init__(config, ElasticsearchConfig)
 
@@ -42,7 +39,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     async def connect(self) -> None:
         """建立连接"""
 
-        scheme = "https" if self.config.verify_ssl else "http"
+        scheme = "https" if self.config.use_ssl else "http"
         hosts = (
             f"{scheme}://{self.config.host}:{self.config.port}"
             if self.config.port
@@ -63,6 +60,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         """断开连接"""
         if self._client:
             await self._client.close()
+            self._client = None
 
     async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False) -> None:
         """创建索引"""
@@ -240,6 +238,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         if filter_clause:
             search_body["query"] = self._convert_filter(model_class, filter_clause)  # type: ignore
 
+        routing = None
         # 添加 routing（如果有 partition_key）
         if model_class.Meta.partition_key:
             # 从 filter_clause 中提取 partition_key 的值
@@ -249,13 +248,13 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 else None
             )
             if partition_value:
-                search_body["routing"] = partition_value
+                routing = partition_value
 
         if sort:
-            sort_field, sort_order = sort.split(":")
+            sort_field, sort_order = parse_sort(sort)
             search_body["sort"] = [{sort_field: {"order": sort_order}}]
 
-        response = await self._client.search(index=index_name, body=search_body)
+        response = await self._client.search(index=index_name, body=search_body, routing=routing)
 
         results = []
         for hit in response["hits"]["hits"]:
@@ -431,6 +430,8 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     async def delete_by_query(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> None:
         """根据条件删除（支持 routing）"""
         index_name = self.build_collection_name(model_class)
+        if not filter_clause.has_conditions():
+            raise ValueError("delete_by_query requires a non-empty filter")
         query = self._convert_filter(model_class, filter_clause)
 
         if not model_class.Meta.partition_key:
@@ -473,7 +474,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
     async def search_native(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
@@ -486,17 +487,16 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         if query_clause.output_fields and "*" not in query_clause.output_fields:
             search_body["_source"] = query_clause.output_fields
 
+        routing = None
         if model_class.Meta.partition_key:
             routing_value = self._get_routing_value_from_filter(filter_clause, model_class.Meta.partition_key)
             if routing_value:
-                search_body["routing"] = routing_value
+                routing = routing_value
 
         search_body["size"] = limit
         search_body["from"] = offset
 
-        logger.info(f"search body: {search_body}")
-
-        response = await self._client.search(index=index_name, body=search_body)
+        response = await self._client.search(index=index_name, body=search_body, routing=routing)
 
         results = []
         for hit in response["hits"]["hits"]:
@@ -507,66 +507,10 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
 
         return results
 
-    async def search_cursor_native(
-        self,
-        model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        page_size: int = 100,
-        cursor: str | None = None,
-    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
-        """搜索（Cursor 方式）"""
-        index_name = self.build_collection_name(model_class)
-
-        search_body = self._build_search_body(model_class, query_clause, filter_clause)
-
-        if query_clause.output_fields and "*" not in query_clause.output_fields:
-            search_body["_source"] = query_clause.output_fields
-
-        if model_class.Meta.partition_key:
-            routing_value = self._get_routing_value_from_filter(filter_clause, model_class.Meta.partition_key)
-            if routing_value:
-                search_body["routing"] = routing_value
-
-        if "sort" not in search_body:
-            search_body["sort"] = ["_score"]
-
-        search_body["size"] = page_size
-        search_body["from"] = 0
-
-        # Parse cursor from JSON string to list
-        if cursor:
-            try:
-                search_body["search_after"] = json.loads(cursor)
-            except (json.JSONDecodeError, TypeError):
-                # Fallback to single value for backward compatibility
-                search_body["search_after"] = [cursor]
-
-        response = await self._client.search(index=index_name, body=search_body)
-
-        results = []
-        for hit in response["hits"]["hits"]:
-            doc = hit.get("_source", {})
-            doc["id"] = hit["_id"]
-            score = hit["_score"]
-            results.append((doc, score))
-
-        next_cursor = None
-        if response["hits"]["hits"]:
-            last_hit = response["hits"]["hits"][-1]
-            if "sort" in last_hit and last_hit["sort"]:
-                # Encode sort array as JSON string for cursor
-                next_cursor = json.dumps(last_hit["sort"])
-            else:
-                # Fallback to using _id
-                next_cursor = json.dumps([last_hit["_id"]])
-
-        return results, next_cursor
-
     def _build_search_body(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause | None,
     ) -> dict:
         """根据查询类型构建 ES Query DSL"""
@@ -575,8 +519,6 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             search_body = self._build_dense_search_body(model_class, query_clause)
         elif isinstance(query_clause, SparseSearchClause):
             search_body = self._build_sparse_search_body(model_class, query_clause)
-        elif isinstance(query_clause, HybridSearchClause):
-            search_body = self._build_hybrid_search_body(model_class, query_clause)
         else:
             raise RuntimeError(f"Not supported query clause: {query_clause}")
 
@@ -595,7 +537,7 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
                 "knn": {
                     "field": model_class.Meta.dense_vector_field,
                     "query_vector": query_clause.vector,
-                    "num_candidates": query_clause.top_k * 50,
+                    "num_candidates": min(max(query_clause.top_k * 5, 100), 10000),
                 },
             },
         }
@@ -608,53 +550,10 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
             field_name = self._get_default_text_field(model_class)
 
         return {
+            "min_score": query_clause.min_score,
             "query": {
                 "match": {
-                    field_name: {
-                        "query": query_clause.query_text,
-                        "min_score": query_clause.min_score,
-                    },
-                },
-            },
-        }
-
-    def _build_hybrid_search_body(self, model_class: type[BaseIndexModel], query_clause: HybridSearchClause) -> dict:
-        """构建混合搜索 query body（带权重）"""
-        if not model_class.Meta.dense_vector_field:
-            raise RuntimeError("Not supported hybrid query without dense vector field")
-
-        field_name = getattr(query_clause.sparse, "field_name", None)
-        if not field_name:
-            field_name = self._get_default_text_field(model_class)
-
-        return {
-            "query": {
-                "bool": {
-                    "should": [
-                        {
-                            "knn": {
-                                "field": model_class.Meta.dense_vector_field,
-                                "query_vector": query_clause.dense.vector,
-                                "num_candidates": query_clause.dense.top_k * 50,
-                                "boost": query_clause.weight_dense,
-                            },
-                        },
-                        {
-                            "bool": {
-                                "must": [
-                                    {
-                                        "match": {
-                                            field_name: {
-                                                "query": query_clause.sparse.query_text,
-                                                "boost": query_clause.weight_sparse,
-                                            },
-                                        },
-                                    },
-                                ],
-                                "min_score": query_clause.sparse.min_score,
-                            },
-                        },
-                    ],
+                    field_name: {"query": query_clause.query_text},
                 },
             },
         }
@@ -663,23 +562,16 @@ class ElasticsearchProvider(BaseProvider[ElasticsearchConfig]):
         self,
         model_class: type[BaseIndexModel],
         search_body: dict,
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause,
     ) -> dict:
-        """应用过滤条件到搜索 body"""
-        if isinstance(query_clause, DenseSearchClause | HybridSearchClause):
-            converted_filter = self._convert_filter(model_class, filter_clause)
-            if "knn" in search_body["query"]:
-                search_body["query"]["knn"]["filter"] = converted_filter
-            elif "bool" in search_body["query"] and "should" in search_body["query"]["bool"]:
-                for clause in search_body["query"]["bool"]["should"]:
-                    if "knn" in clause:
-                        clause["knn"]["filter"] = converted_filter
+        """Apply filters to vector search and full-text search consistently."""
+        converted_filter = self._convert_filter(model_class, filter_clause)
+        if isinstance(query_clause, DenseSearchClause):
+            search_body["query"]["knn"]["filter"] = converted_filter
         else:
-            search_body["query"]["bool"] = {
-                "must": [search_body["query"], self._convert_filter(model_class, filter_clause)],
-            }
-
+            original_query = search_body["query"]
+            search_body["query"] = {"bool": {"must": [original_query, converted_filter]}}
         return search_body
 
     def _convert_filter(self, model_class: type[BaseIndexModel], filter_clause: FilterClause) -> dict:

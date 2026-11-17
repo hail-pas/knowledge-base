@@ -52,12 +52,13 @@ class DocumentContentDenseIndex(DocumentContentSparseIndex):
 
     class Meta:  # type: ignore
         index_name: str = "document_content"
+        dense_vector_field: str = "dense_vector"
         # partition_key = "tenant_id"
 
 
 class DocumentFAQDenseIndex(_DocumentBaseIndexModel):
 
-    id: int = Field(default_factory=lambda: DocumentContentDenseIndex._get_id_default(), index_metadata={})  # type: ignore
+    id: int = Field(default_factory=lambda: DocumentFAQDenseIndex._get_id_default(), index_metadata={})  # type: ignore
     question: str
     dense_vector: list[float]
     answer: str
@@ -89,8 +90,8 @@ class CollectionIndexModelHelper:
 
     def __init__(self, collection: Collection) -> None:
         self.collection = collection
-        assert self.collection.embedding_model_config
-        assert isinstance(self.collection.embedding_model_config, EmbeddingModelConfig)
+        if not isinstance(self.collection.embedding_model_config, EmbeddingModelConfig):
+            raise ValueError("Collection requires a valid embedding model configuration")
 
     async def get_provider(self) -> BaseProvider:
         """Resolve this collection's backend without mutating shared model metadata."""
@@ -106,10 +107,7 @@ class CollectionIndexModelHelper:
                 )
             return await IndexingProviderFactory.create(config)
 
-        provider = DocumentContentDenseIndex.Meta.provider
-        if provider is None:
-            raise RuntimeError("No collection indexing backend or default provider is configured")
-        return provider
+        return await IndexingProviderFactory.get_default()
 
     async def get_sparse_model(self) -> type[DocumentContentSparseIndex]:
         provider = await self.get_provider()
@@ -161,7 +159,8 @@ class CollectionIndexModelHelper:
     async def delete_by_documents(self, documents: list[Document]) -> None:
         if not documents:
             return
-        assert all(self.collection.id == doc.collection_id for doc in documents)  # type: ignore
+        if any(self.collection.id != doc.collection_id for doc in documents):
+            raise ValueError("Cannot delete documents from another collection")
 
         equal_clause = FilterClause(in_list={"file_id": [doc.id for doc in documents]})
         dense_model = await self.get_dense_model()

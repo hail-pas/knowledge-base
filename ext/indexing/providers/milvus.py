@@ -8,10 +8,8 @@ from datetime import UTC, datetime, timezone
 from pymilvus import (
     DataType,
     Function,
-    RRFRanker,
     FieldSchema,
     FunctionType,
-    AnnSearchRequest,
     CollectionSchema,
     AsyncMilvusClient,
 )
@@ -21,8 +19,8 @@ from ext.indexing.base import BaseProvider, BaseIndexModel
 from ext.indexing.types import (
     FilterClause,
     DenseSearchClause,
-    HybridSearchClause,
     SparseSearchClause,
+    parse_sort,
 )
 from ext.indexing.providers.types import MilvusConfig
 from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
@@ -41,8 +39,6 @@ class IndexMetadataEnum(StrEnum):
 class MilvusProvider(BaseProvider[MilvusConfig]):
     """Milvus Provider 实现."""
 
-    supports_native_hybrid = True
-
     def __init__(self, config: "IndexingBackendConfig") -> None:
         super().__init__(config, MilvusConfig)
 
@@ -57,7 +53,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
     async def connect(self) -> None:
         """建立连接"""
-        scheme = "https" if self.config.verify_ssl else "http"
+        scheme = "https" if self.config.use_ssl else "http"
         uri = (
             f"{scheme}://{self.config.host}:{self.config.port}"
             if self.config.port
@@ -66,7 +62,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         kwargs = {
             "uri": uri,
-            "secure": self.config.verify_ssl,
+            "secure": self.config.use_ssl,
             "timeout": self.config.timeout or 30,
         }
 
@@ -83,6 +79,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         """断开连接"""
         if self._client:
             await self._client.close()
+            self._client = None
 
     async def create_collection(self, model_class: type[BaseIndexModel], drop_existing: bool = False) -> None:
         """创建集合"""
@@ -453,15 +450,14 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         collection_name = self.build_collection_name(model_class)
 
         if filter_clause:
+            filter_clause = filter_clause.model_copy(deep=True)
             self._convert_filter_datetime(filter_clause, model_class)
 
         filter_expr = self._convert_filter(model_class, filter_clause) if filter_clause else ""
 
         order_by_field = None
         if sort:
-            parts = sort.split(":")
-            field_name = parts[0]
-            direction = parts[1] if len(parts) > 1 else "asc"
+            field_name, direction = parse_sort(sort)
             # If primary field is not id, add secondary sort by id desc
             order_by_field = f"{field_name} {direction}, id desc" if field_name != "id" else f"{field_name} {direction}"
 
@@ -527,35 +523,37 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         self,
         model_class: type[BaseIndexModel],
         documents: list[dict[str, Any]],
-    ) -> list[dict[str, Any]] | None:
-        """批量插入或更新（upsert）"""
+    ) -> list[dict[str, Any]]:
+        """Insert missing IDs and upsert existing IDs without fake primary keys.
+
+        Preserve input order and ensure auto-generated primary keys reach callers.
+        """
         if not documents:
-            return None
-        for doc in documents:
-            if not doc.get("id"):
-                doc["id"] = model_class._get_id_default()
-
-        collection_name = self.build_collection_name(model_class)
-
-        converted_documents = self._convert_datetime_for_write(documents, model_class)
-
-        result = await self._client.upsert(collection_name=collection_name, data=converted_documents)
-
-        if self.extra_config.auto_flush:
-            await self._client.flush(collection_name)
-
-        if result and result.get("upsert_count", 0) > 0:
+            return []
+        new_positions = [i for i, doc in enumerate(documents) if not doc.get("id")]
+        existing_positions = [i for i, doc in enumerate(documents) if doc.get("id")]
+        if new_positions and not model_class.Meta.auto_generate_id:
+            raise ValueError("An ID is required for this index")
+        output = [dict(doc) for doc in documents]
+        if new_positions:
+            created = await self.insert(model_class, [documents[i] for i in new_positions])
+            if created is None or len(created) != len(new_positions):
+                raise RuntimeError("Milvus insert did not return all generated IDs")
+            for i, row in zip(new_positions, created, strict=True):
+                output[i] = row
+        if existing_positions:
+            collection_name = self.build_collection_name(model_class)
+            updates = [documents[i] for i in existing_positions]
+            converted = self._convert_datetime_for_write(updates, model_class)
+            result = await self._client.upsert(collection_name=collection_name, data=converted)
+            if result.get("upsert_count", 0) != len(updates):
+                raise RuntimeError("Milvus upsert did not acknowledge all documents")
             ids = result.get("ids", [])
-            if ids:
-                result_docs = []
-                for i, doc in enumerate(documents):
-                    result_doc = doc.copy()
-                    if i < len(ids):
-                        result_doc["id"] = ids[i]
-                    result_docs.append(result_doc)
-                return result_docs
-
-        return None
+            for position, row_id in zip(existing_positions, ids, strict=False):
+                output[position]["id"] = row_id
+            if self.extra_config.auto_flush:
+                await self._client.flush(collection_name)
+        return output
 
     async def delete(self, model_class: type[BaseIndexModel], ids: list[str]) -> None:
         """删除文档（带 partition）"""
@@ -564,9 +562,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         collection_name = self.build_collection_name(model_class)
 
-        ids_str = [str(id_) for id_ in ids]
-
-        await self._client.delete(collection_name=collection_name, ids=ids_str)
+        await self._client.delete(collection_name=collection_name, ids=ids)
 
         if self.extra_config.auto_flush:
             await self._client.flush(collection_name)
@@ -577,7 +573,11 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
         if not await self._client.has_collection(collection_name):
             return
 
-        filter_expr = self._convert_filter(model_class, filter_clause)
+        if not filter_clause.has_conditions():
+            raise ValueError("delete_by_query requires a non-empty filter")
+        safe_filter = filter_clause.model_copy(deep=True)
+        self._convert_filter_datetime(safe_filter, model_class)
+        filter_expr = self._convert_filter(model_class, safe_filter)
         await self._client.delete(collection_name=collection_name, filter=filter_expr)
 
         if self.extra_config.auto_flush:
@@ -600,25 +600,19 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
     async def search_native(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_clause: FilterClause | None = None,
         limit: int = 10,
         offset: int = 0,
     ) -> list[tuple[dict[str, Any], float]]:
         """搜索"""
         if filter_clause:
+            filter_clause = filter_clause.model_copy(deep=True)
             self._convert_filter_datetime(filter_clause, model_class)
 
         filter_expr = self._convert_filter(model_class, filter_clause) if filter_clause else None
 
         results = await self._execute_search(model_class, query_clause, filter_expr, limit + offset)
-
-        if isinstance(query_clause, HybridSearchClause):
-            converted_results = []
-            for doc, score in results[offset : offset + limit]:
-                converted_docs = self._convert_datetime_for_read([doc], model_class)
-                converted_results.append((converted_docs[0], score))
-            return converted_results
 
         final_results = []
         if results and len(results) > 0:
@@ -631,7 +625,7 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
     async def _execute_search(
         self,
         model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
+        query_clause: DenseSearchClause | SparseSearchClause,
         filter_expr: str | None,
         limit: int,
     ) -> Any:
@@ -643,9 +637,6 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
 
         if isinstance(query_clause, SparseSearchClause):
             return await self._execute_sparse_search(collection_name, model_class, query_clause, filter_expr, limit)
-
-        if isinstance(query_clause, HybridSearchClause):
-            return await self._execute_hybrid_search(collection_name, model_class, query_clause, filter_expr)
 
         raise RuntimeError(f"Unsupported query clause type: {type(query_clause)}")
 
@@ -700,175 +691,16 @@ class MilvusProvider(BaseProvider[MilvusConfig]):
             output_fields=["*"],
         )
 
-    async def _execute_hybrid_search(
-        self,
-        collection_name: str,
-        model_class: type[BaseIndexModel],
-        query_clause: HybridSearchClause,
-        filter_expr: str | None,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """执行混合向量搜索并合并结果"""
-        if not model_class.Meta.dense_vector_field:
-            raise RuntimeError("Hybrid search requires dense vector field")
-
-        if self.extra_config.enable_hybrid_search:
-            return await self._execute_native_hybrid_search(
-                collection_name,
-                model_class,
-                query_clause,
-                filter_expr,
-            )
-        return await self._execute_legacy_hybrid_search(
-            collection_name,
-            model_class,
-            query_clause,
-            filter_expr,
-        )
-
-    async def _execute_native_hybrid_search(
-        self,
-        collection_name: str,
-        model_class: type[BaseIndexModel],
-        query_clause: HybridSearchClause,
-        filter_expr: str | None,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """使用原生 hybrid_search 方法（RRFRanker）"""
-        if not model_class.Meta.dense_vector_field:
-            raise RuntimeError("Hybrid search requires dense vector field")
-
-        field_name = getattr(query_clause.sparse, "field_name", None)
-        if not field_name:
-            text_fields_info = self._get_text_search_fields_info(model_class)
-            if not text_fields_info:
-                raise RuntimeError("No text search fields configured")
-            field_name = text_fields_info[0][0]
-
-        sparse_field_name = self._get_sparse_vector_field_name(field_name)
-
-        sparse_data = [query_clause.sparse.query_text]
-
-        sparse_request = AnnSearchRequest(
-            data=sparse_data,
-            anns_field=sparse_field_name,
-            param={"metric_type": "BM25"},
-            limit=query_clause.sparse.top_k * 2,
-        )
-
-        dense_request = AnnSearchRequest(
-            data=[query_clause.dense.vector],
-            anns_field=model_class.Meta.dense_vector_field,
-            param={"metric_type": self.extra_config.metric_type, "params": {}},
-            limit=query_clause.dense.top_k * 2,
-        )
-
-        results = await self._client.hybrid_search(
-            collection_name=collection_name,
-            reqs=[sparse_request, dense_request],
-            ranker=RRFRanker(),
-            limit=query_clause.dense.top_k,
-            output_fields=["*"],
-        )
-
-        converted_results = []
-        for result in results[0]:
-            converted_results.append((result["entity"], result["distance"]))
-
-        return converted_results
-
-    async def _execute_legacy_hybrid_search(
-        self,
-        collection_name: str,
-        model_class: type[BaseIndexModel],
-        query_clause: HybridSearchClause,
-        filter_expr: str | None,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """执行传统混合向量搜索并合并结果"""
-        dense_results = await self._execute_dense_search(
-            collection_name,
-            model_class,
-            query_clause.dense,
-            filter_expr,
-            query_clause.dense.top_k * 2,
-        )
-
-        sparse_results = await self._execute_sparse_search(
-            collection_name,
-            model_class,
-            query_clause.sparse,
-            filter_expr,
-            query_clause.sparse.top_k * 2,
-        )
-
-        return self._merge_hybrid_results(dense_results[0], sparse_results[0], query_clause)
-
-    def _merge_hybrid_results(
-        self,
-        dense_results: list[dict[str, Any]],
-        sparse_results: list[dict[str, Any]],
-        query_clause: HybridSearchClause,
-    ) -> list[tuple[dict[str, Any], float]]:
-        """合并混合搜索结果"""
-        dense_dict = {result["id"]: (result, result["distance"]) for result in dense_results}
-        sparse_dict = {result["id"]: (result, result["distance"]) for result in sparse_results}
-
-        all_ids = set(dense_dict.keys()) | set(sparse_dict.keys())
-
-        combined_results = []
-        for id_ in all_ids:
-            dense_doc, dense_score = dense_dict.get(id_, ({}, 0))
-            sparse_doc, sparse_score = sparse_dict.get(id_, ({}, 0))
-
-            final_doc = dense_doc if dense_doc else sparse_doc
-            final_score = query_clause.weight_dense * dense_score + query_clause.weight_sparse * sparse_score
-
-            combined_results.append((final_doc, final_score))
-
-        combined_results.sort(key=lambda x: x[1], reverse=True)
-        return combined_results
-
-    async def search_cursor_native(
-        self,
-        model_class: type[BaseIndexModel],
-        query_clause: DenseSearchClause | SparseSearchClause | HybridSearchClause,
-        filter_clause: FilterClause | None = None,
-        page_size: int = 100,
-        cursor: str | None = None,
-    ) -> tuple[list[tuple[dict[str, Any], float]], str | None]:
-        """搜索（Cursor 方式）"""
-        if filter_clause:
-            self._convert_filter_datetime(filter_clause, model_class)
-
-        filter_expr = self._convert_filter(model_class, filter_clause) if filter_clause else None
-
-        offset = 0
-        if cursor:
-            try:
-                offset = int(cursor)
-            except (ValueError, TypeError):
-                offset = 0
-
-        results = await self._execute_search(model_class, query_clause, filter_expr, page_size)
-
-        if isinstance(query_clause, HybridSearchClause):
-            final_offset = offset % len(results) if results else 0
-            paginated_results = results[final_offset : final_offset + page_size]
-            next_cursor = str(final_offset + len(paginated_results)) if paginated_results else None
-            return paginated_results, next_cursor
-
-        final_results = []
-        if results and len(results) > 0:
-            for result in results[0]:
-                converted_docs = self._convert_datetime_for_read([result["entity"]], model_class)
-                final_results.append((converted_docs[0], result["distance"]))
-
-        next_cursor = str(offset + len(final_results)) if final_results else None
-
-        return final_results, next_cursor
-
     async def health_check(self) -> bool:
-        """健康检查"""
-        await self._client.list_databases()
-        return True
+        """Return false for a disconnected/unavailable backend."""
+        try:
+            if self._client is None:
+                return False
+            await self._client.list_databases()
+            return True
+        except Exception:
+            logger.exception("Milvus indexing health check failed")
+            return False
 
     async def exists(self, model_class: type[BaseIndexModel], id: str | int) -> bool:
         """检查文档是否存在"""

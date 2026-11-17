@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends, Query, Request, APIRouter
 from tortoise.queryset import QuerySet
+from tortoise.transactions import in_transaction
 from tortoise.expressions import Q
 
 from core.types import ApiException
@@ -48,6 +49,7 @@ from ext.ext_tortoise.models.knowledge_base import (
     LLMModelConfig,
     EmbeddingModelConfig,
     IndexingBackendConfig,
+    Document,
 )
 
 router = APIRouter(dependencies=[Depends(api_permission_check)])
@@ -235,6 +237,14 @@ async def create_indexing_backend(
     schema.validate_extra_config()
 
     data = schema.model_dump(exclude_unset=True)
+    if data.get("is_default") and data.get("is_enabled") is False:
+        raise ApiException("Disabled indexing backend cannot be the default", code=400)
+    if data.get("is_default") and await Document.filter(
+        deleted_at=0, collection__indexing_backend_config__isnull=True,
+    ).exists():
+        raise ApiException(
+            "存在使用默认后端的非空知识库；请先固定原后端并完成索引迁移", code=409,
+        )
     data["password"] = encrypt_secret(data.get("password"), purpose="indexing_backend.password")
     data["extra_config"] = transform_extra_config_secrets(
         data.get("extra_config"),
@@ -244,12 +254,37 @@ async def create_indexing_backend(
 
     if obj.is_default:  # type: ignore
         await (
-            IndexingBackendConfig.filter(is_default=True, type=obj.type, deleted_at=0)  # type: ignore
+            IndexingBackendConfig.filter(is_default=True, deleted_at=0)  # type: ignore
             .exclude(pk=obj.id)  # type: ignore
             .update(is_default=False)
         )  # type: ignore
 
     return Resp(data=IndexingBackendConfigList.model_validate(obj))
+
+
+@router.put("/indexing-backend/{pk}/default", summary="切换系统默认索引后端")
+async def set_default_indexing_backend(
+    request: Request, pk: int,
+) -> Resp[IndexingBackendConfigList]:
+    """Select one system-wide default backend; collections with explicit bindings are unchanged."""
+    user: CurrentUser = request.scope["user"]
+    await ensure_super_admin(user.id)
+    async with in_transaction("knowledge_base"):
+        # Serialize concurrent default-selection requests.
+        configs = await IndexingBackendConfig.filter(deleted_at=0).select_for_update().all()
+        selected = next((obj for obj in configs if obj.id == pk), None)
+        if selected is None or not selected.is_enabled:
+            raise ApiException("索引后端配置不存在或已停用", code=404)
+        if not selected.is_default and await Document.filter(
+            deleted_at=0, collection__indexing_backend_config__isnull=True,
+        ).exists():
+            raise ApiException(
+                "存在使用默认后端的非空知识库；请先固定原后端并完成索引迁移", code=409,
+            )
+        await IndexingBackendConfig.filter(is_default=True, deleted_at=0).update(is_default=False)
+        selected.is_default = True
+        await selected.save(update_fields=["is_default"])
+    return Resp(data=IndexingBackendConfigList.model_validate(selected))
 
 
 @router.get("/indexing-backend", summary="索引后端配置列表")

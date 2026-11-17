@@ -148,6 +148,17 @@ class BaseProvider(ABC, Generic[ExtraConfigT]):
         """批量插入或更新（upsert）"""
 
     @abstractmethod
+    async def search_native(
+        self,
+        model_class: type["BaseIndexModel"],
+        query_clause: QueryClause,
+        filter_clause: FilterClause | None = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> list[tuple[dict[str, Any], float]]:
+        """Run one dense or sparse query with a backend-normalized hit shape."""
+
+    @abstractmethod
     async def health_check(self) -> bool:
         """健康检查"""
 
@@ -205,14 +216,22 @@ class BaseIndexModel(BaseModel):
         """自动合并父类 Meta 属性到子类 Meta"""
         super().__init_subclass__(**kwargs)
 
-        # 遍历父类 MRO，合并 Meta 属性
-        # 优先级：子类 > 直接父类 > 间接父类
-        for parent_cls in reversed(cls.__mro__[:-1]):  # 排除 object
-            if hasattr(parent_cls, "Meta"):
-                for attr_name, attr_value in parent_cls.Meta.__dict__.items():
-                    # 跳过私有属性和已定义的属性
-                    if not attr_name.startswith("_") and not hasattr(cls.Meta, attr_name):
-                        setattr(cls.Meta, attr_name, attr_value)
+        # Always give subclasses their own Meta object. Mutating an inherited
+        # Meta leaks provider/dimension changes into sibling model classes.
+        declared_meta = cls.__dict__.get("Meta")
+        inherited = next(
+            (parent.Meta for parent in cls.__mro__[1:] if hasattr(parent, "Meta")),
+            BaseIndexModel.Meta,
+        )
+        if declared_meta is None:
+            cls.Meta = type("Meta", (inherited,), {})
+        elif not issubclass(declared_meta, inherited):
+            overrides = {
+                name: value
+                for name, value in vars(declared_meta).items()
+                if not name.startswith("__")
+            }
+            cls.Meta = type("Meta", (inherited,), overrides)
 
     id: str | int = Field(default_factory=lambda: BaseIndexModel._get_id_default(), index_metadata={})  # type: ignore
     created_at: datetime = Field(
@@ -297,10 +316,10 @@ class BaseIndexModel(BaseModel):
         offset: int = 0,
     ) -> list[tuple[Self, float]]:
         """Execute a backend-neutral retrieval strategy."""
-        from ext.indexing.search import SearchStrategyFactory
+        from ext.indexing.search import IndexSearch
 
         provider = cls.get_provider()
-        results = await SearchStrategyFactory.execute(
+        results = await IndexSearch.execute(
             provider, cls, query_clause, filter_clause, limit, offset
         )
         return [(cls.model_validate(document), score) for document, score in results]
@@ -314,106 +333,99 @@ class BaseIndexModel(BaseModel):
         cursor: str | None = None,
     ) -> SearchCursor:
         """Cursor pagination is handled by the strategy layer."""
-        from ext.indexing.search import SearchStrategyFactory
+        from ext.indexing.search import IndexSearch
 
         provider = cls.get_provider()
-        results, next_cursor = await SearchStrategyFactory.execute_cursor(
+        results, next_cursor = await IndexSearch.execute_cursor(
             provider, cls, query_clause, filter_clause, page_size, cursor
         )
         converted = [(cls.model_validate(document), score) for document, score in results]
         return SearchCursor(results=converted, next_cursor=next_cursor)
 
     async def save(self) -> None:
-        """保存/更新当前实例"""
-        if self.__class__.Meta.auto_generate_id and self.id:
-            self.id = self.__class__._get_id_default()
-
-        if not self.__class__.Meta.auto_generate_id and not self.id:
-            raise RuntimeError("Must specify id")
-
+        """Insert new documents, upsert documents that already have a stable ID."""
+        cls = type(self)
         self.updated_at = datetime.now(UTC)
-
-        provider = self.get_provider()
-        doc_data = self.model_dump(mode="json")
-        if self.__class__.Meta.auto_generate_id:
-            doc_data.pop("id", None)
-
-        result = await provider.insert(self.__class__, documents=[doc_data])
-        if result and len(result) > 0:
-            self.id = result[0].get("id", self.id)
+        payload = self.model_dump(mode="json")
+        if not self.id:
+            if not cls.Meta.auto_generate_id:
+                raise ValueError("An ID is required when auto_generate_id is disabled")
+            payload.pop("id", None)
+            rows = await cls.get_provider().insert(cls, [payload])
+        else:
+            rows = await cls.get_provider().bulk_upsert(cls, [payload])
+        if rows and rows[0].get("id") is not None:
+            self.id = rows[0]["id"]
 
     @classmethod
-    async def bulk_insert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5) -> None:
-        """批量插入（自动并发）"""
+    async def _write_batches(
+        cls, documents: list[Self], *, upsert: bool,
+        batch_size: int = 100, concurrent_batches: int = 5,
+    ) -> None:
+        """One bounded batch pipeline for insert and upsert operations."""
+        if batch_size <= 0 or concurrent_batches <= 0:
+            raise ValueError("batch_size and concurrent_batches must be positive")
+        if not documents:
+            return
+        if any(not isinstance(doc, cls) for doc in documents):
+            raise TypeError("Every document must match the index model")
         provider = cls.get_provider()
-
-        batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
-
-        # Use semaphore to limit concurrent batch operations
         semaphore = asyncio.Semaphore(concurrent_batches)
 
-        async def insert_batch(batch: list[Self]) -> None:
+        async def run(batch: list[Self]) -> None:
             async with semaphore:
-                batch_docs = []
+                payloads = []
                 for doc in batch:
-                    doc_data = doc.model_dump(mode="json")
-                    if cls.Meta.auto_generate_id:
-                        doc_data.pop("id", None)
-                    batch_docs.append(doc_data)
+                    data = doc.model_dump(mode="json")
+                    if not doc.id:
+                        if not cls.Meta.auto_generate_id:
+                            raise ValueError("An ID is required when auto_generate_id is disabled")
+                        data.pop("id", None)
+                    elif not upsert and cls.Meta.auto_generate_id:
+                        data.pop("id", None)
+                    payloads.append(data)
+                if upsert:
+                    rows = await provider.bulk_upsert(cls, payloads)
+                else:
+                    rows = await provider.insert(cls, payloads)
+                if rows:
+                    for document, row in zip(batch, rows, strict=False):
+                        if row.get("id") is not None:
+                            document.id = row["id"]
 
-                result = await provider.bulk_upsert(cls, documents=batch_docs)
-                # Update each document with the actual id from the result
-                if result and len(result) > 0:
-                    for i, doc in enumerate(batch):
-                        if i < len(result) and "id" in result[i]:
-                            doc.id = result[i]["id"]
+        await asyncio.gather(
+            *(run(documents[i:i + batch_size]) for i in range(0, len(documents), batch_size))
+        )
 
-        await asyncio.gather(*[insert_batch(batch) for batch in batches])  # type: ignore
+    @classmethod
+    async def bulk_insert(
+        cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5,
+    ) -> None:
+        await cls._write_batches(
+            documents, upsert=False, batch_size=batch_size, concurrent_batches=concurrent_batches,
+        )
 
     @classmethod
     async def bulk_update(cls, documents: list[Self]) -> None:
-        """批量更新"""
-        assert all(isinstance(doc, cls) for doc in documents)
-
-        provider = cls.get_provider()
-        ids = await provider.update(cls, documents=[d.model_dump(mode="json") for d in documents])
-
-        # milvus 会更新id
-        for doc, id in zip(documents, ids, strict=False):
-            if id:
-                doc.id = id
+        if any(not isinstance(doc, cls) for doc in documents):
+            raise TypeError("Every document must match the index model")
+        if not documents:
+            return
+        ids = await cls.get_provider().update(
+            cls, [document.model_dump(mode="json") for document in documents],
+        )
+        if ids:
+            for document, new_id in zip(documents, ids, strict=False):
+                if new_id is not None:
+                    document.id = new_id
 
     @classmethod
-    async def bulk_upsert(cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5) -> None:
-        """批量插入或更新（upsert，自动并发）"""
-        provider = cls.get_provider()
-
-        batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
-
-        # Use semaphore to limit concurrent batch operations
-        semaphore = asyncio.Semaphore(concurrent_batches)
-
-        async def upsert_batch(batch: list[Self]) -> None:
-            async with semaphore:
-                batch_docs = []
-                for doc in batch:
-                    doc_data = doc.model_dump(mode="json")
-                    # 如果 auto_generate_id 为 True，只在 id 无效时移除（用于插入）
-                    # id 有效则保留（用于更新）
-                    if cls.Meta.auto_generate_id:
-                        doc_id = doc_data.get("id")
-                        if not doc_id:
-                            doc_data.pop("id", None)
-                    batch_docs.append(doc_data)
-
-                result = await provider.bulk_upsert(cls, documents=batch_docs)
-                # Update each document with the actual id from the result
-                if result and len(result) > 0:
-                    for i, doc in enumerate(batch):
-                        if i < len(result) and "id" in result[i]:
-                            doc.id = result[i]["id"]
-
-        await asyncio.gather(*[upsert_batch(batch) for batch in batches])
+    async def bulk_upsert(
+        cls, documents: list[Self], batch_size: int = 100, concurrent_batches: int = 5,
+    ) -> None:
+        await cls._write_batches(
+            documents, upsert=True, batch_size=batch_size, concurrent_batches=concurrent_batches,
+        )
 
     @classmethod
     async def bulk_delete(cls, ids: list[str]) -> None:
@@ -423,7 +435,9 @@ class BaseIndexModel(BaseModel):
 
     @classmethod
     async def delete_by_query(cls, filter_clause: FilterClause) -> None:
-        """根据条件删除"""
+        """Delete only when the caller supplies at least one real predicate."""
+        if not filter_clause.has_conditions():
+            raise ValueError("delete_by_query requires a non-empty filter")
         provider = cls.get_provider()
         await provider.delete_by_query(cls, filter_clause=filter_clause)
 

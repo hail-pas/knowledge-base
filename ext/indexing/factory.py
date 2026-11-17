@@ -1,6 +1,9 @@
 """Indexing Provider 工厂（管理连接池缓存）"""
 
 import asyncio
+import hashlib
+import json
+from importlib import import_module
 from typing import ClassVar
 
 from ext.indexing.base import BaseProvider, BaseIndexModel
@@ -14,32 +17,56 @@ from ext.ext_tortoise.models.knowledge_base import (
 class IndexingProviderFactory:
     """Indexing Provider 工厂"""
 
-    _providers: dict[str, type[BaseProvider]] = {}
+    _providers: dict[str, type[BaseProvider] | str] = {}
     _instances: dict[tuple[int, str], BaseProvider] = {}
     _locks: dict[tuple[int, str], asyncio.Lock] = {}
 
+    @staticmethod
+    def _cache_key(config: IndexingBackendConfig) -> tuple[int, str]:
+        """Identify a connection by backend settings, not mutable timestamps."""
+        identity = int(config.id) if config.id is not None else 0
+        settings = {
+            "type": str(config.type),
+            "host": config.host,
+            "port": config.port,
+            "username": config.username,
+            "password": config.password,
+            "use_ssl": config.use_ssl,
+            "verify_ssl": config.verify_ssl,
+            "timeout": config.timeout,
+            "max_connections": config.max_connections,
+            "max_retries": config.max_retries,
+            "extra_config": config.extra_config,
+        }
+        serialized = json.dumps(settings, sort_keys=True, default=str)
+        return identity, hashlib.sha256(serialized.encode()).hexdigest()
+
     @classmethod
-    def register(cls, backend_type: str, provider_class: type[BaseProvider]) -> None:
+    def register(cls, backend_type: str, provider_class: type[BaseProvider] | str) -> None:
         """注册 provider"""
         cls._providers[backend_type] = provider_class
 
     @classmethod
     async def create(cls, config: IndexingBackendConfig, use_cache: bool = True) -> BaseProvider:
         """创建 provider 实例（带连接池缓存）"""
-        provider_class = cls._providers.get(config.type)
-        if not provider_class:
+        registered = cls._providers.get(config.type)
+        if registered is None:
             raise RuntimeError(f"Provider not found: {config.type}")
+        if isinstance(registered, str):
+            module, _, name = registered.partition(":")
+            provider_class = getattr(import_module(module), name)
+            if not issubclass(provider_class, BaseProvider):
+                raise TypeError(f"Invalid indexing provider: {registered}")
+            cls._providers[config.type] = provider_class
+        else:
+            provider_class = registered
 
         if not use_cache:
             provider = provider_class(config)
             await provider.connect()
             return provider
 
-        config_id = int(config.id) if config.id is not None else id(config)
-        version = str(getattr(config, "updated_at", None) or hash(
-            (config.host, config.port, config.username, config.password, str(config.extra_config))
-        ))
-        key = (config_id, version)
+        key = cls._cache_key(config)
         lock = cls._locks.setdefault(key, asyncio.Lock())
         async with lock:
             cached = cls._instances.get(key)
@@ -47,25 +74,27 @@ class IndexingProviderFactory:
                 return cached
             # Keep older provider instances alive for in-flight requests; all are closed on shutdown.
             provider = provider_class(config)
-            await provider.connect()
+            try:
+                await provider.connect()
+            except BaseException:
+                await provider.disconnect()
+                raise
             cls._instances[key] = provider
             return provider
 
     @classmethod
-    async def get_config(cls, backend_type: str) -> IndexingBackendConfig:
-        """获取配置（从数据库）"""
-        from ext.ext_tortoise.models.knowledge_base import IndexingBackendConfig
+    async def get_default(cls) -> BaseProvider:
+        """Resolve default backend at call time so switching requires no restart."""
+        configs = await IndexingBackendConfig.filter(
+            is_enabled=True, is_default=True, deleted_at=0,
+        ).limit(2)
+        if len(configs) > 1:
+            raise RuntimeError("Multiple default indexing backends configured")
+        if configs:
+            return await cls.create(configs[0])
+        from ext.indexing.main import default_postgresql_config
 
-        config = await IndexingBackendConfig.filter(
-            type=IndexingBackendTypeEnum(backend_type),
-            is_enabled=True,
-            is_default=True,
-        ).first()
-
-        if not config:
-            raise RuntimeError(f"No active config found for backend: {backend_type}")
-
-        return config
+        return await cls.create(default_postgresql_config())
 
     @classmethod
     async def clear_cache(cls) -> None:
@@ -78,14 +107,16 @@ class IndexingProviderFactory:
             await provider.disconnect()
 
 
-from ext.indexing.providers.milvus import MilvusProvider
-from ext.indexing.providers.elasticsearch import ElasticsearchProvider
-from ext.indexing.providers.postgresql import PostgreSQLProvider
-
-IndexingProviderFactory.register(IndexingBackendTypeEnum.postgresql.value, PostgreSQLProvider)
-IndexingProviderFactory.register(IndexingBackendTypeEnum.elasticsearch.value, ElasticsearchProvider)
-IndexingProviderFactory.register(IndexingBackendTypeEnum.milvus.value, MilvusProvider)
-
+# Import only the selected backend and its optional dependencies.
+IndexingProviderFactory.register(
+    IndexingBackendTypeEnum.postgresql.value, "ext.indexing.providers.postgresql:PostgreSQLProvider",
+)
+IndexingProviderFactory.register(
+    IndexingBackendTypeEnum.elasticsearch.value, "ext.indexing.providers.elasticsearch:ElasticsearchProvider",
+)
+IndexingProviderFactory.register(
+    IndexingBackendTypeEnum.milvus.value, "ext.indexing.providers.milvus:MilvusProvider",
+)
 
 class IndexModelFactory:
     """IndexModel 动态工厂
@@ -121,6 +152,18 @@ class IndexModelFactory:
     """
 
     _model_registry: dict[str, type[BaseIndexModel]] = {}
+    _schema_locks: dict[str, asyncio.Lock] = {}
+    _schemas_ready: set[str] = set()
+
+    @classmethod
+    async def _ensure_schema(cls, key: str, model: type[BaseIndexModel]) -> None:
+        """Create each provider-scoped schema once per process, including concurrent callers."""
+        lock = cls._schema_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            if key not in cls._schemas_ready:
+                await model.create_schema()
+                cls._schemas_ready.add(key)
+
 
     @classmethod
     async def create_for_embedding(
@@ -151,12 +194,9 @@ class IndexModelFactory:
         if not dimension or dimension <= 0:
             raise ValueError(f"Invalid dimension: {dimension}")
 
-        selected_provider = provider or base_model.Meta.provider
-        if not selected_provider:
-            raise RuntimeError(
-                f"{base_model.__name__}.Meta.provider is not bound; "
-                "pass provider= or bind Meta.provider before creating the index model."
-            )
+        if provider is None:
+            raise ValueError("provider= is required; model definitions must not own connection state")
+        selected_provider = provider
 
         model_key = cls._get_model_key(base_model.__name__, dimension, selected_provider)
 
@@ -167,7 +207,7 @@ class IndexModelFactory:
 
         _m = cls._model_registry[model_key]
 
-        await _m.create_schema()
+        await cls._ensure_schema(model_key, _m)
 
         return _m
 
@@ -184,7 +224,7 @@ class IndexModelFactory:
                 base_model, None, model_key, provider
             )
         model = cls._model_registry[model_key]
-        await model.create_schema()
+        await cls._ensure_schema(model_key, model)
         return model
 
     @classmethod
@@ -250,6 +290,8 @@ class IndexModelFactory:
             IndexModelFactory.clear_cache()
         """
         cls._model_registry.clear()
+        cls._schemas_ready.clear()
+        cls._schema_locks.clear()
 
     @classmethod
     def get_registered_models(cls) -> list[str]:
