@@ -1,0 +1,34 @@
+name: Indexing contracts
+
+on:
+  pull_request:
+    paths:
+      - "ext/indexing/**"
+      - "tests/ext/indexing/**"
+      - "api/knowledge_base/v1/config.py"
+      - ".github/workflows/indexing-contracts.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ext/indexing/**"
+      - "tests/ext/indexing/**"
+
+permissions:
+  contents: read
+
+jobs:
+  indexing-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: Install workspace and test dependencies
+        run: uv sync --locked --group dev
+      - name: Check indexing module syntax
+        run: uv run python -m compileall -q ext/indexing
+      - name: Run isolated indexing contracts
+        run: uv run pytest -q tests/ext/indexing/test_contract_refactor.py tests/ext/indexing/test_lifecycle_refactor.py tests/ext/indexing/test_indexing_factory.py
