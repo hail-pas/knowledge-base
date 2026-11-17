@@ -1,5 +1,6 @@
 """查询条件类型定义（Provider 无感知）"""
 
+import re
 from enum import StrEnum
 from typing import Any, Literal
 from dataclasses import dataclass
@@ -76,6 +77,14 @@ class FilterClause(QueryClause):
     and_conditions: list["FilterClause"] | None = Field(default=None, description="AND 逻辑")
     or_conditions: list["FilterClause"] | None = Field(default=None, description="OR 逻辑")
 
+    def has_conditions(self) -> bool:
+        """Whether this filter contains at least one effective predicate."""
+        return bool(
+            self.equals or self.in_list or self.range
+            or any(child.has_conditions() for child in self.and_conditions or [])
+            or any(child.has_conditions() for child in self.or_conditions or [])
+        )
+
 
 @dataclass
 class SearchCursor:
@@ -84,3 +93,20 @@ class SearchCursor:
     results: list[tuple[Any, float]]
     next_cursor: str | None
     total: int | None = None
+
+
+def parse_sort(value: str) -> tuple[str, Literal["asc", "desc"]]:
+    """Parse one safe, backend-independent sort expression.
+
+    Supported: `field`, `-field`, `field:asc`, `field:desc`.
+    """
+    if value.startswith("-"):
+        field, direction = value[1:], "desc"
+    else:
+        field, sep, direction = value.partition(":")
+        direction = (direction if sep else "asc").lower()
+    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*", field):
+        raise ValueError(f"Invalid sort field: {field!r}")
+    if direction not in {"asc", "desc"}:
+        raise ValueError("Sort direction must be asc or desc")
+    return field, direction  # type: ignore[return-value]
