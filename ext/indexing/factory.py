@@ -17,7 +17,7 @@ from ext.ext_tortoise.models.knowledge_base import (
 class IndexingProviderFactory:
     """Indexing Provider 工厂"""
 
-    _providers: dict[str, type[BaseProvider] | str] = {
+    _providers: dict[str, type[BaseProvider] | str] = {}
     _instances: dict[tuple[int, str], BaseProvider] = {}
     _locks: dict[tuple[int, str], asyncio.Lock] = {}
 
