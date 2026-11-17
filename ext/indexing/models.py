@@ -52,6 +52,7 @@ class DocumentContentDenseIndex(DocumentContentSparseIndex):
 
     class Meta:  # type: ignore
         index_name: str = "document_content"
+        dense_vector_field: str = "dense_vector"
         # partition_key = "tenant_id"
 
 
