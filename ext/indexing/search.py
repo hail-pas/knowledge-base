@@ -40,7 +40,7 @@ def _fuse_rrf(
     return sorted(fused.values(), key=lambda hit: (-hit[1], str(hit[0]["id"])))
 
 
-class SearchStrategyFactory:
+class IndexSearch:
     """One search entrypoint; every backend uses the same weighted RRF for hybrid queries."""
 
     @classmethod
