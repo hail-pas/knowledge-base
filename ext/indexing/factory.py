@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+from importlib import import_module
 from typing import ClassVar
 
 from ext.indexing.base import BaseProvider, BaseIndexModel
@@ -16,7 +17,7 @@ from ext.ext_tortoise.models.knowledge_base import (
 class IndexingProviderFactory:
     """Indexing Provider 工厂"""
 
-    _providers: dict[str, type[BaseProvider]] = {}
+    _providers: dict[str, type[BaseProvider] | str] = {
     _instances: dict[tuple[int, str], BaseProvider] = {}
     _locks: dict[tuple[int, str], asyncio.Lock] = {}
 
@@ -41,16 +42,24 @@ class IndexingProviderFactory:
         return identity, hashlib.sha256(serialized.encode()).hexdigest()
 
     @classmethod
-    def register(cls, backend_type: str, provider_class: type[BaseProvider]) -> None:
+    def register(cls, backend_type: str, provider_class: type[BaseProvider] | str) -> None:
         """注册 provider"""
         cls._providers[backend_type] = provider_class
 
     @classmethod
     async def create(cls, config: IndexingBackendConfig, use_cache: bool = True) -> BaseProvider:
         """创建 provider 实例（带连接池缓存）"""
-        provider_class = cls._providers.get(config.type)
-        if not provider_class:
+        registered = cls._providers.get(config.type)
+        if registered is None:
             raise RuntimeError(f"Provider not found: {config.type}")
+        if isinstance(registered, str):
+            module, _, name = registered.partition(":")
+            provider_class = getattr(import_module(module), name)
+            if not issubclass(provider_class, BaseProvider):
+                raise TypeError(f"Invalid indexing provider: {registered}")
+            cls._providers[config.type] = provider_class
+        else:
+            provider_class = registered
 
         if not use_cache:
             provider = provider_class(config)
@@ -98,14 +107,16 @@ class IndexingProviderFactory:
             await provider.disconnect()
 
 
-from ext.indexing.providers.milvus import MilvusProvider
-from ext.indexing.providers.elasticsearch import ElasticsearchProvider
-from ext.indexing.providers.postgresql import PostgreSQLProvider
-
-IndexingProviderFactory.register(IndexingBackendTypeEnum.postgresql.value, PostgreSQLProvider)
-IndexingProviderFactory.register(IndexingBackendTypeEnum.elasticsearch.value, ElasticsearchProvider)
-IndexingProviderFactory.register(IndexingBackendTypeEnum.milvus.value, MilvusProvider)
-
+# Import only the selected backend and its optional dependencies.
+IndexingProviderFactory.register(
+    IndexingBackendTypeEnum.postgresql.value, "ext.indexing.providers.postgresql:PostgreSQLProvider",
+)
+IndexingProviderFactory.register(
+    IndexingBackendTypeEnum.elasticsearch.value, "ext.indexing.providers.elasticsearch:ElasticsearchProvider",
+)
+IndexingProviderFactory.register(
+    IndexingBackendTypeEnum.milvus.value, "ext.indexing.providers.milvus:MilvusProvider",
+)
 
 class IndexModelFactory:
     """IndexModel 动态工厂
