@@ -23,7 +23,7 @@ class IndexingProviderFactory:
     @staticmethod
     def _cache_key(config: IndexingBackendConfig) -> tuple[int, str]:
         """Identify a connection by backend settings, not mutable timestamps."""
-        identity = int(config.id) if config.id is not None else id(config)
+        identity = int(config.id) if config.id is not None else 0
         settings = {
             "type": str(config.type),
             "host": config.host,
