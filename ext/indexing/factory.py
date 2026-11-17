@@ -137,6 +137,27 @@ class IndexModelFactory:
     _model_registry: dict[tuple[type[BaseIndexModel], int, int], type[BaseIndexModel]] = {}
 
     @classmethod
+    def bind_provider(
+        cls, base_model: type[BaseIndexModel], provider: BaseProvider
+    ) -> type[BaseIndexModel]:
+        """为当前调用者绑定后端，不修改全局模型（稀疏索引也可切换）。"""
+        key = (base_model, 0, id(provider))
+        if key not in cls._model_registry:
+            name = f"{base_model.__name__}Bound{provider.config.id}"
+            class BoundMeta(base_model.Meta):
+                pass
+
+            BoundMeta.provider = provider
+            cls._model_registry[key] = type(
+                name, (base_model,), {
+                    "Meta": BoundMeta,
+                    "__module__": base_model.__module__,
+                    "__annotations__": {"Meta": ClassVar},
+                },
+            )
+        return cls._model_registry[key]
+
+    @classmethod
     async def create_for_embedding(
         cls,
         base_model: type[BaseIndexModel],
