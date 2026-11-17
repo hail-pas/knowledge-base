@@ -435,7 +435,9 @@ class BaseIndexModel(BaseModel):
 
     @classmethod
     async def delete_by_query(cls, filter_clause: FilterClause) -> None:
-        """根据条件删除"""
+        """Delete only when the caller supplies at least one real predicate."""
+        if not filter_clause.has_conditions():
+            raise ValueError("delete_by_query requires a non-empty filter")
         provider = cls.get_provider()
         await provider.delete_by_query(cls, filter_clause=filter_clause)
 
