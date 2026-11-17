@@ -105,7 +105,7 @@ def parse_sort(value: str) -> tuple[str, Literal["asc", "desc"]]:
     else:
         field, sep, direction = value.partition(":")
         direction = (direction if sep else "asc").lower()
-    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*", field):
+    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*", field):
         raise ValueError(f"Invalid sort field: {field!r}")
     if direction not in {"asc", "desc"}:
         raise ValueError("Sort direction must be asc or desc")
